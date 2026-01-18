@@ -1,0 +1,569 @@
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué criterios aplican para credit risk?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nCredit risk | European Banking Authority Skip to main content Credit risk Credit risk focuses on the development of BTS, Guidelines and Reports regarding the calculation of capital requirements under the Standardised Approach and IRB Approach for credit risk and dilution risk in respect of all the business activities of an institution, excluding the trading book business. The objective is to provide a consistent implementation across the EU of the provisions related to topics such as credit risk adjustments, definition of default, permission to use Standardised/IRB approach, appropriateness of risk weights or credit risk mitigation techniques. links Single Rulebook Q&A on Credit risk Technical Standards, Guidelines & Recommendations Technical standards Status - Any - Under consultation Under development Final draft RTS/ITS adopted by the EBA and submitted to the European Commission Draft RTS/ITS adopted by the European Commission [and under scrutiny by EU legislators] Final and awaiting translation into the EU official languages Adopted and published in the Official Journal of the EU Final and translated into the EU official languages Type of institution - Any - Legal act - Any - Regulation (EU) No 575/2013 (CRR) Directive 2013/36/EU (CRD) Regulation (EU) No 2022/2554 (DORA Reg) Regulation (EU) No 2023/1114 (MiCAR) Regulation (EU) No 2017/2402 (SecReg) Directive 2009/110/EC (EMD) Directive (EU) 2019/2034 (IFD) Directive 2014/17/EU (MCD) Directive 2002/65/EC (DMD) - relevant p\n\nFuente: Credit risk (https://www.eba.europa.eu/regulation-and-policy/credit-risk)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/credit-risk",
+      "title": "Credit risk"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué establece la normativa sobre ratios de capital?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuáles son los requisitos del enfoque basado en calificaciones internas?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nOPINION OF THE EBA O N THE USE OF THE 180 DAYS PAST DUE CR ITERION 1 EBA/Op/2017/1722 December 2017 Opinion of the European Banking Authority on the use of the 180 days past due criterion Introduction and legal basis The EBA competence to deliver an opinion is based on Article 34(1) of Regulation (EU) No 1093/20101, as the appropriateness of the continued application of the 180 days past due criterion relates to the EBA’s area of competence. The EBA is mandated in Article 506 CRR to report to the European Commission, by 31 December 2017, on how replacing 90 days by 180 days past due in Article 178(1) CRR impacts risk -weighted exposure amounts and the appropriateness of the continued application of that provision after 31 December 2019. The national discretion to replace the 90 days past due (DPD) with 180 DPD is specified in Article 178(1)(b) CRR: “Competent authorities may replace the 90 days with 180 days for exposures secured by residential or SME commercial real estate in the retail exposure class, as well as exposures to public sector entities”. The 180 days shall not apply for the purposes of Article 127.\n\nFuente: (Opinion on the use of 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf",
+      "title": "(Opinion on the use of 180 DPD)"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "Explica los requisitos de ifrs 9 según la regulación bancaria"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nANNEX TO THE EBA OPI NION EBA-OP-2017 -17 REPORT ON THE USE OF THE 180 DAYS PAST DUE CRITERION 22 DECEMBER 2017 EBA REPORT ON THE 180 DAYS PAST DUE CRIT ERION 2 Contents List of figures 31. Executive summary 62. Introduction 83. Summary of practices 93.1 Belgium 103.2 France 103.3 Italy 103.4 UK 103.5 Greece 103.6 SSM 113.7 Conclusion 114. Methodology 124.1 Overview 124.2 Caveats and mitigating factors 175. Empirical results 186. Conclusion 22 Annex I: Example template for data request 23 Annex II: COREP data 28 Annex III: Methodology to assess the impact on REA and capital 29 EBA RE PORT ON THE 180 DAYS PAST DUE CRITERION 3 List of figures Figure 1: Schematic composition of current portfolio (where the 180 DPD provision is applied) 13 Figure 2: Schematic composition of portfolio under the hypothetical scenario where the 180 DPD provision would be removed, i.e. only the 90 DPD provision would be allowed 13 Figure 3: Risk parameters re -calibration (current versus hypothetical, re -calibrated values) 14 Figure 4: Supervisory RW (only of non -defaulted exposures) as a function of PD (retail exposures secured by immovable property) 15 Figure 5: Supervisory RW as a function of LGD (retail exposures secured by immovable property) 15 Figure 6: Supervisory RW (only of non -defaulted expos ures) as a function of PD (retail exposures secured by immovable property) 15 EBA RE PORT ON THE 180 DAYS PAST DUE CRITERION 4 Abbreviations A-IRB Advanced internal ratings -based approach CA Compe\n\nFuente: (Annex to the EBA Opinion on 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/3292faad-957e-427f-851a-23f5a3fd5bc5/EBA%20Op%202017%2017%20%28Annex%20to%20the%20EBA%20Opinion%20on%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/3292faad-957e-427f-851a-23f5a3fd5bc5/EBA%20Op%202017%2017%20%28Annex%20to%20the%20EBA%20Opinion%20on%20180%20DPD%29.pdf",
+      "title": "(Annex to the EBA Opinion on 180 DPD)"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué criterios aplican para retail?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nCredit risk | European Banking Authority Skip to main content Credit risk Credit risk focuses on the development of BTS, Guidelines and Reports regarding the calculation of capital requirements under the Standardised Approach and IRB Approach for credit risk and dilution risk in respect of all the business activities of an institution, excluding the trading book business. The objective is to provide a consistent implementation across the EU of the provisions related to topics such as credit risk adjustments, definition of default, permission to use Standardised/IRB approach, appropriateness of risk weights or credit risk mitigation techniques. links Single Rulebook Q&A on Credit risk Technical Standards, Guidelines & Recommendations Technical standards Status - Any - Under consultation Under development Final draft RTS/ITS adopted by the EBA and submitted to the European Commission Draft RTS/ITS adopted by the European Commission [and under scrutiny by EU legislators] Final and awaiting translation into the EU official languages Adopted and published in the Official Journal of the EU Final and translated into the EU official languages Type of institution - Any - Legal act - Any - Regulation (EU) No 575/2013 (CRR) Directive 2013/36/EU (CRD) Regulation (EU) No 2022/2554 (DORA Reg) Regulation (EU) No 2023/1114 (MiCAR) Regulation (EU) No 2017/2402 (SecReg) Directive 2009/110/EC (EMD) Directive (EU) 2019/2034 (IFD) Directive 2014/17/EU (MCD) Directive 2002/65/EC (DMD) - relevant p\n\nFuente: Credit risk (https://www.eba.europa.eu/regulation-and-policy/credit-risk)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/credit-risk",
+      "title": "Credit risk"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuál es la metodología para estimar minorista?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cómo se calculan los activos ponderados por riesgo?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según BOE:\n\nBOE-A-2013-12887 Ley 19/2013, de 9 de diciembre, de transparencia, acceso a la información pública y buen gobierno. Agencia Estatal Boletín Oficial del Estado Ir a contenido Consultar el diario oficial BOE Idioma actual: Castellano / es Puede seleccionar otro idioma: es / Castellano ca / Català gl / Galego eu / Euskara va / Valencià en / English fr / Français Buscar Mi BOE Desconectado. Pulse para acceder al servicio 'Mi BOE' Menú Menú Diarios Oficiales BOE BORME Otros diarios oficiales Información Jurídica Todo el Derecho Biblioteca Jurídica Digital Otros servicios Notificaciones Edictos judiciales Portal de subastas Anunciantes Datos abiertos Está Vd. en Inicio Buscar Documento consolidado BOE-A-2013-12887 Legislación consolidada Este texto consolidado es de carácter informativo y no tiene valor jurídico. La consolidación consiste en integrar en un solo texto, sin valor oficial, las modificaciones, correcciones y derogaciones de carácter expreso que una norma ha tenido desde su origen, con el objetivo de facilitar el acceso al Derecho vigente. Para fines jurídicos, debe consultarse la publicación oficial. Ayuda Ley 19/2013, de 9 de diciembre, de transparencia, acceso a la información pública y buen gobierno. Publicado en: «BOE» núm. 295, de 10/12/2013. Entrada en vigor: 10/12/2014 Departamento: Jefatura del Estado Referencia: BOE-A-2013-12887 Permalink ELI: https://www.boe.\n\nFuente: ley de transparencia (https://www.boe.es/buscar/act.php?id=BOE-A-2013-12887)"
+      }
+    ],
+    "metadata": {
+      "source": "BOE",
+      "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2013-12887",
+      "title": "ley de transparencia"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué criterios aplican para minorista?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuáles son las directrices sobre probability of default?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nANNEX TO THE EBA OPI NION EBA-OP-2017 -17 REPORT ON THE USE OF THE 180 DAYS PAST DUE CRITERION 22 DECEMBER 2017 EBA REPORT ON THE 180 DAYS PAST DUE CRIT ERION 2 Contents List of figures 31. Executive summary 62. Introduction 83. Summary of practices 93.1 Belgium 103.2 France 103.3 Italy 103.4 UK 103.5 Greece 103.6 SSM 113.7 Conclusion 114. Methodology 124.1 Overview 124.2 Caveats and mitigating factors 175. Empirical results 186. Conclusion 22 Annex I: Example template for data request 23 Annex II: COREP data 28 Annex III: Methodology to assess the impact on REA and capital 29 EBA RE PORT ON THE 180 DAYS PAST DUE CRITERION 3 List of figures Figure 1: Schematic composition of current portfolio (where the 180 DPD provision is applied) 13 Figure 2: Schematic composition of portfolio under the hypothetical scenario where the 180 DPD provision would be removed, i.e. only the 90 DPD provision would be allowed 13 Figure 3: Risk parameters re -calibration (current versus hypothetical, re -calibrated values) 14 Figure 4: Supervisory RW (only of non -defaulted exposures) as a function of PD (retail exposures secured by immovable property) 15 Figure 5: Supervisory RW as a function of LGD (retail exposures secured by immovable property) 15 Figure 6: Supervisory RW (only of non -defaulted expos ures) as a function of PD (retail exposures secured by immovable property) 15 EBA RE PORT ON THE 180 DAYS PAST DUE CRITERION 4 Abbreviations A-IRB Advanced internal ratings -based approach CA Compe\n\nFuente: (Annex to the EBA Opinion on 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/3292faad-957e-427f-851a-23f5a3fd5bc5/EBA%20Op%202017%2017%20%28Annex%20to%20the%20EBA%20Opinion%20on%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/3292faad-957e-427f-851a-23f5a3fd5bc5/EBA%20Op%202017%2017%20%28Annex%20to%20the%20EBA%20Opinion%20on%20180%20DPD%29.pdf",
+      "title": "(Annex to the EBA Opinion on 180 DPD)"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué establece la regulación sobre provision?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nOPINION OF THE EBA O N THE USE OF THE 180 DAYS PAST DUE CR ITERION 1 EBA/Op/2017/1722 December 2017 Opinion of the European Banking Authority on the use of the 180 days past due criterion Introduction and legal basis The EBA competence to deliver an opinion is based on Article 34(1) of Regulation (EU) No 1093/20101, as the appropriateness of the continued application of the 180 days past due criterion relates to the EBA’s area of competence. The EBA is mandated in Article 506 CRR to report to the European Commission, by 31 December 2017, on how replacing 90 days by 180 days past due in Article 178(1) CRR impacts risk -weighted exposure amounts and the appropriateness of the continued application of that provision after 31 December 2019. The national discretion to replace the 90 days past due (DPD) with 180 DPD is specified in Article 178(1)(b) CRR: “Competent authorities may replace the 90 days with 180 days for exposures secured by residential or SME commercial real estate in the retail exposure class, as well as exposures to public sector entities”. The 180 days shall not apply for the purposes of Article 127.\n\nFuente: (Opinion on the use of 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf",
+      "title": "(Opinion on the use of 180 DPD)"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué establece el Reglamento de Requisitos de Capital (CRR)?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nOPINION OF THE EBA O N THE USE OF THE 180 DAYS PAST DUE CR ITERION 1 EBA/Op/2017/1722 December 2017 Opinion of the European Banking Authority on the use of the 180 days past due criterion Introduction and legal basis The EBA competence to deliver an opinion is based on Article 34(1) of Regulation (EU) No 1093/20101, as the appropriateness of the continued application of the 180 days past due criterion relates to the EBA’s area of competence. The EBA is mandated in Article 506 CRR to report to the European Commission, by 31 December 2017, on how replacing 90 days by 180 days past due in Article 178(1) CRR impacts risk -weighted exposure amounts and the appropriateness of the continued application of that provision after 31 December 2019. The national discretion to replace the 90 days past due (DPD) with 180 DPD is specified in Article 178(1)(b) CRR: “Competent authorities may replace the 90 days with 180 days for exposures secured by residential or SME commercial real estate in the retail exposure class, as well as exposures to public sector entities”. The 180 days shall not apply for the purposes of Article 127.\n\nFuente: (Opinion on the use of 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf",
+      "title": "(Opinion on the use of 180 DPD)"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué requisitos establece la normativa para las provisiones?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según BOE:\n\nBOE-A-2013-12887 Ley 19/2013, de 9 de diciembre, de transparencia, acceso a la información pública y buen gobierno. Agencia Estatal Boletín Oficial del Estado Ir a contenido Consultar el diario oficial BOE Idioma actual: Castellano / es Puede seleccionar otro idioma: es / Castellano ca / Català gl / Galego eu / Euskara va / Valencià en / English fr / Français Buscar Mi BOE Desconectado. Pulse para acceder al servicio 'Mi BOE' Menú Menú Diarios Oficiales BOE BORME Otros diarios oficiales Información Jurídica Todo el Derecho Biblioteca Jurídica Digital Otros servicios Notificaciones Edictos judiciales Portal de subastas Anunciantes Datos abiertos Está Vd. en Inicio Buscar Documento consolidado BOE-A-2013-12887 Legislación consolidada Este texto consolidado es de carácter informativo y no tiene valor jurídico. La consolidación consiste en integrar en un solo texto, sin valor oficial, las modificaciones, correcciones y derogaciones de carácter expreso que una norma ha tenido desde su origen, con el objetivo de facilitar el acceso al Derecho vigente. Para fines jurídicos, debe consultarse la publicación oficial. Ayuda Ley 19/2013, de 9 de diciembre, de transparencia, acceso a la información pública y buen gobierno. Publicado en: «BOE» núm. 295, de 10/12/2013. Entrada en vigor: 10/12/2014 Departamento: Jefatura del Estado Referencia: BOE-A-2013-12887 Permalink ELI: https://www.boe.\n\nFuente: ley de transparencia (https://www.boe.es/buscar/act.php?id=BOE-A-2013-12887)"
+      }
+    ],
+    "metadata": {
+      "source": "BOE",
+      "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2013-12887",
+      "title": "ley de transparencia"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cómo se calculan las provisiones por riesgo de crédito?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según BOE:\n\nBOE-A-2013-12887 Ley 19/2013, de 9 de diciembre, de transparencia, acceso a la información pública y buen gobierno. Agencia Estatal Boletín Oficial del Estado Ir a contenido Consultar el diario oficial BOE Idioma actual: Castellano / es Puede seleccionar otro idioma: es / Castellano ca / Català gl / Galego eu / Euskara va / Valencià en / English fr / Français Buscar Mi BOE Desconectado. Pulse para acceder al servicio 'Mi BOE' Menú Menú Diarios Oficiales BOE BORME Otros diarios oficiales Información Jurídica Todo el Derecho Biblioteca Jurídica Digital Otros servicios Notificaciones Edictos judiciales Portal de subastas Anunciantes Datos abiertos Está Vd. en Inicio Buscar Documento consolidado BOE-A-2013-12887 Legislación consolidada Este texto consolidado es de carácter informativo y no tiene valor jurídico. La consolidación consiste en integrar en un solo texto, sin valor oficial, las modificaciones, correcciones y derogaciones de carácter expreso que una norma ha tenido desde su origen, con el objetivo de facilitar el acceso al Derecho vigente. Para fines jurídicos, debe consultarse la publicación oficial. Ayuda Ley 19/2013, de 9 de diciembre, de transparencia, acceso a la información pública y buen gobierno. Publicado en: «BOE» núm. 295, de 10/12/2013. Entrada en vigor: 10/12/2014 Departamento: Jefatura del Estado Referencia: BOE-A-2013-12887 Permalink ELI: https://www.boe.\n\nFuente: ley de transparencia (https://www.boe.es/buscar/act.php?id=BOE-A-2013-12887)"
+      }
+    ],
+    "metadata": {
+      "source": "BOE",
+      "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2013-12887",
+      "title": "ley de transparencia"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuáles son los requisitos regulatorios para el cálculo de LGD?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nOPINION OF THE EBA O N THE USE OF THE 180 DAYS PAST DUE CR ITERION 1 EBA/Op/2017/1722 December 2017 Opinion of the European Banking Authority on the use of the 180 days past due criterion Introduction and legal basis The EBA competence to deliver an opinion is based on Article 34(1) of Regulation (EU) No 1093/20101, as the appropriateness of the continued application of the 180 days past due criterion relates to the EBA’s area of competence. The EBA is mandated in Article 506 CRR to report to the European Commission, by 31 December 2017, on how replacing 90 days by 180 days past due in Article 178(1) CRR impacts risk -weighted exposure amounts and the appropriateness of the continued application of that provision after 31 December 2019. The national discretion to replace the 90 days past due (DPD) with 180 DPD is specified in Article 178(1)(b) CRR: “Competent authorities may replace the 90 days with 180 days for exposures secured by residential or SME commercial real estate in the retail exposure class, as well as exposures to public sector entities”. The 180 days shall not apply for the purposes of Article 127.\n\nFuente: (Opinion on the use of 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf",
+      "title": "(Opinion on the use of 180 DPD)"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué condiciones debe cumplir una entidad para usar el método IRB?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nCredit risk | European Banking Authority Skip to main content Credit risk Credit risk focuses on the development of BTS, Guidelines and Reports regarding the calculation of capital requirements under the Standardised Approach and IRB Approach for credit risk and dilution risk in respect of all the business activities of an institution, excluding the trading book business. The objective is to provide a consistent implementation across the EU of the provisions related to topics such as credit risk adjustments, definition of default, permission to use Standardised/IRB approach, appropriateness of risk weights or credit risk mitigation techniques. links Single Rulebook Q&A on Credit risk Technical Standards, Guidelines & Recommendations Technical standards Status - Any - Under consultation Under development Final draft RTS/ITS adopted by the EBA and submitted to the European Commission Draft RTS/ITS adopted by the European Commission [and under scrutiny by EU legislators] Final and awaiting translation into the EU official languages Adopted and published in the Official Journal of the EU Final and translated into the EU official languages Type of institution - Any - Legal act - Any - Regulation (EU) No 575/2013 (CRR) Directive 2013/36/EU (CRD) Regulation (EU) No 2022/2554 (DORA Reg) Regulation (EU) No 2023/1114 (MiCAR) Regulation (EU) No 2017/2402 (SecReg) Directive 2009/110/EC (EMD) Directive (EU) 2019/2034 (IFD) Directive 2014/17/EU (MCD) Directive 2002/65/EC (DMD) - relevant p\n\nFuente: Credit risk (https://www.eba.europa.eu/regulation-and-policy/credit-risk)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/credit-risk",
+      "title": "Credit risk"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué criterios aplican para capital requirements?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nEBA OPINION ON THE I MPLEMENTATION OF THE IRB APPROACH REG ULATORY REVIEW 1 EBA/Op/2016/014th February 2016 Opinion of the European Banking Authority on the implementation of the regulatory review of the IRB Approach Introduction and legal basis 1. The EBA has been working on identifying the main drivers of variability in the implementation of IRB models in light of concerns that were raised about the lack of comparability of capital requiremen ts determined under the IRB Approach across institutions. In the course of this work, a substantial number of areas were identified as potential sources of variability and the EBA published a d iscussion paper on the future of the IRB Approach (EBA/DP/2015/ 01) in March 2015, which detailed the EBA ’s proposed regulatory response to the identified issues. This is a follow -up action o n the content of the regulatory review of the IRB Approach within the scope of the CRR. 2. The regulatory products envisaged as par t of the IRB framework review will either be based on the mandates specified in Regulation (EU) No 575/20131 or will result from the EBA’s own initiative work. They are expected to take the form of regulatory technical standards (RTS) and guidelines (GL) and to be introduced sequentially throughout the years 2015 –2017. The EBA has , however , also recognised that the implementation of these regulatory tools will require substantial work and time on the part of both the institutions and their competent author ities.\n\nFuente: Opinion on IRB implementation (https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf",
+      "title": "Opinion on IRB implementation"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuáles son los requisitos mínimos de capital según Basilea III?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué establece la Directiva de Requisitos de Capital (CRD)?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nCredit risk | European Banking Authority Skip to main content Credit risk Credit risk focuses on the development of BTS, Guidelines and Reports regarding the calculation of capital requirements under the Standardised Approach and IRB Approach for credit risk and dilution risk in respect of all the business activities of an institution, excluding the trading book business. The objective is to provide a consistent implementation across the EU of the provisions related to topics such as credit risk adjustments, definition of default, permission to use Standardised/IRB approach, appropriateness of risk weights or credit risk mitigation techniques. links Single Rulebook Q&A on Credit risk Technical Standards, Guidelines & Recommendations Technical standards Status - Any - Under consultation Under development Final draft RTS/ITS adopted by the EBA and submitted to the European Commission Draft RTS/ITS adopted by the European Commission [and under scrutiny by EU legislators] Final and awaiting translation into the EU official languages Adopted and published in the Official Journal of the EU Final and translated into the EU official languages Type of institution - Any - Legal act - Any - Regulation (EU) No 575/2013 (CRR) Directive 2013/36/EU (CRD) Regulation (EU) No 2022/2554 (DORA Reg) Regulation (EU) No 2023/1114 (MiCAR) Regulation (EU) No 2017/2402 (SecReg) Directive 2009/110/EC (EMD) Directive (EU) 2019/2034 (IFD) Directive 2014/17/EU (MCD) Directive 2002/65/EC (DMD) - relevant p\n\nFuente: Credit risk (https://www.eba.europa.eu/regulation-and-policy/credit-risk)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/credit-risk",
+      "title": "Credit risk"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cómo se debe calcular capital requirements según la normativa?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nEBA OPINION ON THE I MPLEMENTATION OF THE IRB APPROACH REG ULATORY REVIEW 1 EBA/Op/2016/014th February 2016 Opinion of the European Banking Authority on the implementation of the regulatory review of the IRB Approach Introduction and legal basis 1. The EBA has been working on identifying the main drivers of variability in the implementation of IRB models in light of concerns that were raised about the lack of comparability of capital requiremen ts determined under the IRB Approach across institutions. In the course of this work, a substantial number of areas were identified as potential sources of variability and the EBA published a d iscussion paper on the future of the IRB Approach (EBA/DP/2015/ 01) in March 2015, which detailed the EBA ’s proposed regulatory response to the identified issues. This is a follow -up action o n the content of the regulatory review of the IRB Approach within the scope of the CRR. 2. The regulatory products envisaged as par t of the IRB framework review will either be based on the mandates specified in Regulation (EU) No 575/20131 or will result from the EBA’s own initiative work. They are expected to take the form of regulatory technical standards (RTS) and guidelines (GL) and to be introduced sequentially throughout the years 2015 –2017. The EBA has , however , also recognised that the implementation of these regulatory tools will require substantial work and time on the part of both the institutions and their competent author ities.\n\nFuente: Opinion on IRB implementation (https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf",
+      "title": "Opinion on IRB implementation"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "Explica los requisitos de basilea según la regulación bancaria"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué establece la regulación sobre basilea?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué factores afectan la estimación de la severidad?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nOPINION OF THE EBA O N THE USE OF THE 180 DAYS PAST DUE CR ITERION 1 EBA/Op/2017/1722 December 2017 Opinion of the European Banking Authority on the use of the 180 days past due criterion Introduction and legal basis The EBA competence to deliver an opinion is based on Article 34(1) of Regulation (EU) No 1093/20101, as the appropriateness of the continued application of the 180 days past due criterion relates to the EBA’s area of competence. The EBA is mandated in Article 506 CRR to report to the European Commission, by 31 December 2017, on how replacing 90 days by 180 days past due in Article 178(1) CRR impacts risk -weighted exposure amounts and the appropriateness of the continued application of that provision after 31 December 2019. The national discretion to replace the 90 days past due (DPD) with 180 DPD is specified in Article 178(1)(b) CRR: “Competent authorities may replace the 90 days with 180 days for exposures secured by residential or SME commercial real estate in the retail exposure class, as well as exposures to public sector entities”. The 180 days shall not apply for the purposes of Article 127.\n\nFuente: (Opinion on the use of 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf",
+      "title": "(Opinion on the use of 180 DPD)"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "Explica los requisitos de loss given default según la regulación bancaria"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nEBA REPORT ON SMES AND SME SUPPORTING FACTO R EBA/OP /2016/0423 MARCH 2016 EBA REPORT ON SMES A ND SME SUPPORTING FA CTOR 1 Contents List of figures 3 Executive Summary 8 Main findings 8 Conclusion and recommendation s 101. Introduction 152. Market developments and sources of SME financing 17 SME financing in the EU 172.1 SMEs’ reliance on bank financing 182.2 Other sources of finance for SMEs 202.3 Policies to Support SME Access to Finance in the EU 252.43. Riskiness of SMEs in the EU over a full economic cycle 28 Measuring SME riskiness 283.1 Default rates 313.2 Financial ratios as an indicator of riskiness 343.3 Industry indicators of riskiness 383.4 Asset correlations as an indicator of systematic risk 403.5 Asset correlations 403.5.1 Regulatory treatment of SMEs in the current framework 423.5.24. SME lending trends and conditions 45 SME lending trends 454.1 Evolution of SME lending over the cycle 454.1.1 Heterogeneity of lending across banks 544.1.2 SME lending conditions 564.2 Interest rates 564.2.1 Collateral 594.2.2 Survey results on lending conditions 604.2.35. SME SF – Application 66 Background and rationale 665.1 Application of the SME SF 675.2 Impact of the SME SF on capital ratios 685.36. SME SF – Consistency of own funds requirements w ith lending trends and conditions 75 Bank capital and lending behaviour – Literature review 756.1 Data 766.2 Methodology 796.3 Results 806.4 EBA REPORT ON SMES A ND SME SUPPORTING FA CTOR 27.\n\nFuente: Report on SMEs and SME supporting factor (https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/602d5c61-b501-4df9-8c89-71e32ab1bf84/EBA-Op-2016-04%20%20Report%20on%20SMEs%20and%20SME%20supporting%20factor.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/602d5c61-b501-4df9-8c89-71e32ab1bf84/EBA-Op-2016-04%20%20Report%20on%20SMEs%20and%20SME%20supporting%20factor.pdf",
+      "title": "Report on SMEs and SME supporting factor"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "Explica los requisitos de credit risk según la regulación bancaria"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nEBA OPINION ON THE I MPLEMENTATION OF THE IRB APPROACH REG ULATORY REVIEW 1 EBA/Op/2016/014th February 2016 Opinion of the European Banking Authority on the implementation of the regulatory review of the IRB Approach Introduction and legal basis 1. The EBA has been working on identifying the main drivers of variability in the implementation of IRB models in light of concerns that were raised about the lack of comparability of capital requiremen ts determined under the IRB Approach across institutions. In the course of this work, a substantial number of areas were identified as potential sources of variability and the EBA published a d iscussion paper on the future of the IRB Approach (EBA/DP/2015/ 01) in March 2015, which detailed the EBA ’s proposed regulatory response to the identified issues. This is a follow -up action o n the content of the regulatory review of the IRB Approach within the scope of the CRR. 2. The regulatory products envisaged as par t of the IRB framework review will either be based on the mandates specified in Regulation (EU) No 575/20131 or will result from the EBA’s own initiative work. They are expected to take the form of regulatory technical standards (RTS) and guidelines (GL) and to be introduced sequentially throughout the years 2015 –2017. The EBA has , however , also recognised that the implementation of these regulatory tools will require substantial work and time on the part of both the institutions and their competent author ities.\n\nFuente: Opinion on IRB implementation (https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf",
+      "title": "Opinion on IRB implementation"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuáles son los requisitos regulatorios para credit risk?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nCredit risk | European Banking Authority Skip to main content Credit risk Credit risk focuses on the development of BTS, Guidelines and Reports regarding the calculation of capital requirements under the Standardised Approach and IRB Approach for credit risk and dilution risk in respect of all the business activities of an institution, excluding the trading book business. The objective is to provide a consistent implementation across the EU of the provisions related to topics such as credit risk adjustments, definition of default, permission to use Standardised/IRB approach, appropriateness of risk weights or credit risk mitigation techniques. links Single Rulebook Q&A on Credit risk Technical Standards, Guidelines & Recommendations Technical standards Status - Any - Under consultation Under development Final draft RTS/ITS adopted by the EBA and submitted to the European Commission Draft RTS/ITS adopted by the European Commission [and under scrutiny by EU legislators] Final and awaiting translation into the EU official languages Adopted and published in the Official Journal of the EU Final and translated into the EU official languages Type of institution - Any - Legal act - Any - Regulation (EU) No 575/2013 (CRR) Directive 2013/36/EU (CRD) Regulation (EU) No 2022/2554 (DORA Reg) Regulation (EU) No 2023/1114 (MiCAR) Regulation (EU) No 2017/2402 (SecReg) Directive 2009/110/EC (EMD) Directive (EU) 2019/2034 (IFD) Directive 2014/17/EU (MCD) Directive 2002/65/EC (DMD) - relevant p\n\nFuente: Credit risk (https://www.eba.europa.eu/regulation-and-policy/credit-risk)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/regulation-and-policy/credit-risk",
+      "title": "Credit risk"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cómo se debe calcular credit risk según la normativa?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nEBA OPINION ON THE I MPLEMENTATION OF THE IRB APPROACH REG ULATORY REVIEW 1 EBA/Op/2016/014th February 2016 Opinion of the European Banking Authority on the implementation of the regulatory review of the IRB Approach Introduction and legal basis 1. The EBA has been working on identifying the main drivers of variability in the implementation of IRB models in light of concerns that were raised about the lack of comparability of capital requiremen ts determined under the IRB Approach across institutions. In the course of this work, a substantial number of areas were identified as potential sources of variability and the EBA published a d iscussion paper on the future of the IRB Approach (EBA/DP/2015/ 01) in March 2015, which detailed the EBA ’s proposed regulatory response to the identified issues. This is a follow -up action o n the content of the regulatory review of the IRB Approach within the scope of the CRR. 2. The regulatory products envisaged as par t of the IRB framework review will either be based on the mandates specified in Regulation (EU) No 575/20131 or will result from the EBA’s own initiative work. They are expected to take the form of regulatory technical standards (RTS) and guidelines (GL) and to be introduced sequentially throughout the years 2015 –2017. The EBA has , however , also recognised that the implementation of these regulatory tools will require substantial work and time on the part of both the institutions and their competent author ities.\n\nFuente: Opinion on IRB implementation (https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/1359456/fa2b7468-fb9d-413c-bf2a-c2ab39a39fef/EBA-Op-2016-01%20Opinion%20on%20IRB%20implementation.pdf",
+      "title": "Opinion on IRB implementation"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "Explica los requisitos de retail según la regulación bancaria"
+      },
+      {
+        "role": "assistant",
+        "content": "Según EBA:\n\nOPINION OF THE EBA O N THE USE OF THE 180 DAYS PAST DUE CR ITERION 1 EBA/Op/2017/1722 December 2017 Opinion of the European Banking Authority on the use of the 180 days past due criterion Introduction and legal basis The EBA competence to deliver an opinion is based on Article 34(1) of Regulation (EU) No 1093/20101, as the appropriateness of the continued application of the 180 days past due criterion relates to the EBA’s area of competence. The EBA is mandated in Article 506 CRR to report to the European Commission, by 31 December 2017, on how replacing 90 days by 180 days past due in Article 178(1) CRR impacts risk -weighted exposure amounts and the appropriateness of the continued application of that provision after 31 December 2019. The national discretion to replace the 90 days past due (DPD) with 180 DPD is specified in Article 178(1)(b) CRR: “Competent authorities may replace the 90 days with 180 days for exposures secured by residential or SME commercial real estate in the retail exposure class, as well as exposures to public sector entities”. The 180 days shall not apply for the purposes of Article 127.\n\nFuente: (Opinion on the use of 180 DPD) (https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf)"
+      }
+    ],
+    "metadata": {
+      "source": "EBA",
+      "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2071742/c8b7d037-3e6e-44a1-b552-d223387f6b38/EBA%20BS%202017%2017%20%28Opinion%20on%20the%20use%20of%20180%20DPD%29.pdf",
+      "title": "(Opinion on the use of 180 DPD)"
+    }
+  }
+]

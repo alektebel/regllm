@@ -1,0 +1,47 @@
+# Spanish Banking Regulation Data Sources
+
+
+# PD, LGD estimation guidelines
+https://www.eba.europa.eu/activities/single-rulebook/regulatory-activities/model-validation/guidelines-pd-estimation-lgd
+
+
+# EBA
+https://www.managementsolutions.com/sites/default/files/publicaciones/eng/20221017-eba-validation-of-rating-systems-under-the-irb-approach.pdf
+https://clubgestionriesgos.org/wp-content/uploads/ssm.supervisory_guides202402_internalmodels.en_.pdf
+https://www.eba.europa.eu/documents/10180/1720738/0212ecde-426d-4e18-84f8-04b036dcce00/EBA%20Report%20on%20IRB%20modelling%20practices.pdf
+
+## basel
+
+# Bank of Spain (Banco de España)
+https://www.bde.es/bde/es/areas/supervision/
+https://www.bde.es/bde/es/areas/supervision/normativa/
+https://www.bde.es/bde/es/secciones/normativas/Circulares_y_otra_no/
+
+# European Central Bank (ECB)
+https://www.bankingsupervision.europa.eu/banking/tasks/supervisory/html/index.en.html
+https://www.ecb.europa.eu/pub/pdf/other/
+
+# Basel Committee on Banking Supervision
+https://www.bis.org/bcbs/publ/
+
+# BOE - Boletín Oficial del Estado (Official Spanish Gazette)
+https://www.boe.es/buscar/act.php?id=BOE-A-2013-12887
+https://www.boe.es/legislacion/legislacion.php
+https://www.boe.es/buscar/doc.php?id=BOE-A-2017-14334
+
+
+##CRR III
+https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:02013R0575-20250101
+
+# CNMV - Spanish Securities Market Commission
+https://www.cnmv.es/portal/legislacion/legislacion.aspx
+
+# EBA - European Banking Authority (Credit Risk)
+https://www.eba.europa.eu/regulation-and-policy/credit-risk
+https://www.eba.europa.eu/regulation-and-policy/single-rulebook/interactive-single-rulebook
+
+# Specific Credit Risk Regulation Documents
+https://www.bde.es/f/webbde/Secciones/Normativa/circulares/relacionadas/ficheros/cbepdf4_2017.pdf
+https://www.bde.es/f/webbde/Secciones/Normativa/circulares/relacionadas/ficheros/Circ_4_2016_Consolidada.pdf
+
+

@@ -1,0 +1,10 @@
+| Component                              | Approx. VRAM in FP16/bf16 full fine-tune               | With LoRA (r=16–64)      | With QLoRA (4-bit NF4) | Main driver / notes                             |
+| -------------------------------------- | ------------------------------------------------------ | ------------------------ | ---------------------- | ----------------------------------------------- |
+| Model weights                          | ~14–15 GB                                              | ~14–15 GB                | ~4–5.5 GB              | 7B × 2 bytes (fp16)                             |
+| Gradients                              | ~14–15 GB                                              | Very small (~0.1–0.5 GB) | Very small             | Only for trainable params in LoRA/QLoRA         |
+| Optimizer states (AdamW)               | ~28–30 GB (2× momentum + variance)                     | Tiny                     | Tiny                   | Huge in full FT                                 |
+| Activations / forward-backward         | 8–25+ GB (depends strongly on seq len & batch)         | 8–25 GB                  | 6–18 GB                | KV cache + intermediates — quadratic in seq len |
+| KV cache (during training)             | ~ seq_len × layers × 2 × hidden_size × 2 bytes × batch | Same                     | Slightly less          | ~0.5–1 GB per 1k tokens per sample in batch     |
+| Temporary buffers / flash-attn         | 1–4 GB                                                 | 1–4 GB                   | 1–3 GB                 | Overhead                                        |
+| **Typical peak (batch=1, seq=2048)**   | **65–90+ GB** (impossible on 1× RTX 4090)              | **18–30 GB**             | **9–18 GB**            | Realistic range                                 |
+| **Typical peak (batch=4–8, seq=4096)** | —                                                      | **25–45+ GB**            | **14–28 GB**           | Needs tricks                                    |

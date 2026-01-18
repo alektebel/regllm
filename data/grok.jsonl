@@ -1,0 +1,626 @@
+{
+  "Resumen ejecutivo": [
+    {
+      "question": "¿Cuál es el propósito de las directrices sobre estimación de PD y LGD?",
+      "answer": "Las directrices están destinadas a reducir la variabilidad injustificada de parámetros de riesgo y requisitos de fondos propios bajo el enfoque IRB.",
+      "justification": "The guidelines (GL) are one of the initiatives undertaken by the European Banking Authority (EBA) to reduce unjustified variability of risk parameters and own funds requirements and are part of a broader review of the Internal Ratings-Based (IRB) Approach..."
+    },
+    {
+      "question": "¿Cuándo se publicó el Informe sobre la revisión del enfoque IRB?",
+      "answer": "En febrero de 2016.",
+      "justification": "the plan outlined in the Report on the review of the IRB Approach published in February 2016¹."
+    },
+    {
+      "question": "¿Cuáles son los parámetros clave para exposiciones en default mencionados en el resumen ejecutivo?",
+      "answer": "LGD in-default y estimación mejor de pérdida esperada (ELBE).",
+      "justification": "In the case of defaulted exposures, institutions are required to estimate LGD (so called LGD in-default) and expected loss best estimate (ELBE)."
+    },
+    {
+      "question": "¿Cuál es la fecha límite propuesta para la implementación de las directrices?",
+      "answer": "Fin de 2020.",
+      "justification": "The proposed deadline for implementation is the end of 2020, based on the Opinion on the implementation of the review of the IRB Approach published by the EBA in February 2016³."
+    },
+    {
+      "question": "¿Por qué hay necesidad de estas directrices según el resumen ejecutivo?",
+      "answer": "Para lograr la comparabilidad de parámetros de riesgo estimados en base a modelos internos y restaurar la confianza en estos modelos por parte de los participantes del mercado.",
+      "justification": "The EBA considers these clarifications and harmonisation necessary to achieve comparability of risk parameters estimated on the basis of internal models, and to restore trust in these models by market participants while at the same time preserving risk sensitivity of capital requirements."
+    },
+    {
+      "question": "¿Qué informes confirmaron discrepancias en parámetros de riesgo?",
+      "answer": "Cinco informes sobre la comparabilidad y prociclicidad de requisitos de capital publicados por la EBA en diciembre de 2013.",
+      "justification": "The EBA has in its previous work identified a clear need for these GL, including in five reports on the comparabilidad and pro-cyclicality of capital requirements, developed in accordance with Article 502 of Regulation (EU) No 575/2013 and published by the EBA in December 2013², in addition to subsequent benchmarking reports."
+    },
+    {
+      "question": "¿Cuál es el objetivo de las directrices en términos de desarrollo y calibración de modelos?",
+      "answer": "Permitir flexibilidad en el desarrollo de modelos para modelos sensibles al riesgo, pero identificar la calibración y requisitos de capital de manera objetiva.",
+      "justification": "The goal of the GL is ultimately to reduce the unwarranted variability in capital requirements stemming from differences in model practices. For this purpose, the GL differentiate between model development and model calibration, as it has been important for the EBA to allow flexibility in terms of model development, such that risk-sensitive models continue to be allowed. However, the calibration and the determination of capital requirements have to be identified in an objective manner."
+    },
+    {
+      "question": "¿Qué aspectos comunes a todos los parámetros de riesgo se especifican en las GL?",
+      "answer": "El uso de juicio humano, margen apropiado de conservadurismo y revisiones regulares de los modelos.",
+      "justification": "In addition, the GL specify aspects common to all risk parameters, such as the use of human judgement both in the development and in the application of the internal models, appropriate margin of conservatism (MoC) that should be incorporated in risk parameters, and regular reviews of the models to ensure timely implementation of necessary changes in case of deteriorated performance of the models."
+    },
+    {
+      "question": "¿Cuál es el enfoque principal de las GL en el proceso de estimación?",
+      "answer": "Más enfoque en la calibración, dejando mayor flexibilidad para las instituciones en el desarrollo de modelos.",
+      "justification": "Consequently, the GL have put the highest emphasis on the requirements for model calibration. For instance, whereas the model development may exclude observations during the building of the model to obtain an accurate model, all loss observations have to be used for the calibration of the actual capital requirements."
+    },
+    {
+      "question": "¿Qué aclarará otros aspectos relacionados con la aplicación del enfoque IRB según el resumen ejecutivo?",
+      "answer": "Otros productos regulatorios desarrollados en el proceso de revisión.",
+      "justification": "These GL are focused on the definitions and modelling techniques used in the estimation of risk parameters for both non-defaulted and defaulted exposures, whereas other regulatory products developed in the review process will clarify other aspects related to the application of the IRB Approach."
+    }
+  ],
+  "Antecedentes y fundamentos": [
+    {
+      "question": "¿Cuándo se introdujo por primera vez el concepto del enfoque IRB para riesgo de crédito?",
+      "answer": "Por las Directivas 2006/48/CE y 2006/49/CE de 14 de junio de 2006.",
+      "justification": "The concept of the Internal Ratings Based (IRB) Approach for credit risk was first introduced by Directives 2006/48/EC and 2006/49/EC of 14 June 2006 (known as the Capital Requirements Directive)..."
+    },
+    {
+      "question": "¿Cuál es el objetivo principal de las GL según los antecedentes?",
+      "answer": "Proporcionar las reglas que llevarán a una mayor comparabilidad de los resultados de los modelos.",
+      "justification": "The main objective of the GL is to provide the rules that will lead to increased comparability of the model outcomes."
+    },
+    {
+      "question": "¿Qué aspectos no se abordan en las GL pero en otros productos regulatorios?",
+      "answer": "La definición de default, procesos de calificación, procesos de calidad de datos y otros aspectos de la aplicación del enfoque IRB.",
+      "justification": "The GL focus on aspects related to modelling of parameters such as PD, LGD, best estimate of expected loss (ELBE) and LGD in-default, whereas other elements, including the definition of default on which these parameters should be based, rating processes, data quality processes and other aspects of the application of the IRB Approach, are addressed in other regulatory products."
+    },
+    {
+      "question": "¿Cuál es el ámbito de las directrices en términos de parámetros de riesgo?",
+      "answer": "PD y LGD; los factores de conversión no están dentro del ámbito.",
+      "justification": "The GL are focused on two of three main risk parameters underlying the IRB Approach, namely PD and LGD; conversion factors are not within the scope of these GL."
+    },
+    {
+      "question": "¿Qué se entiende por desarrollo de modelo en las GL?",
+      "answer": "La parte del proceso de estimación de parámetros de riesgo que lleva a una diferenciación apropiada de riesgo.",
+      "justification": "Model development is understood in the GL as the part of the process of estimation of risk parameters that leads to appropriate risk differentiation..."
+    },
+    {
+      "question": "¿Qué se entiende por calibración en las GL?",
+      "answer": "La parte del proceso de estimación que lleva a una cuantificación apropiada de riesgo.",
+      "justification": "whereas calibration is the part of the estimation process that leads to appropriate risk quantification."
+    },
+    {
+      "question": "¿Cuál es el rango de aplicación de un sistema de calificación?",
+      "answer": "Un tipo de exposiciones, es decir, grupos de exposiciones que se gestionan de manera homogénea.",
+      "justification": "Rating systems should be developed for specific types of exposures, i.e. groups of exposures that are homogeneously managed in accordance with the definition included in Article 142(1) of the CRR. The type of exposures for which the rating system is developed form the range of application of a rating system."
+    },
+    {
+      "question": "¿Qué puede implicar un modelo de PD?",
+      "answer": "Varios métodos de ranking.",
+      "justification": "A PD model may entail various ranking methods. A common example of such a combination may be an application or customer scorecard and a behavioural scorecard for retail exposures..."
+    },
+    {
+      "question": "¿Qué puede ser necesario cuando el ámbito de aplicación de un modelo de PD o LGD incluye carteras con niveles de riesgo significativamente diferentes?",
+      "answer": "Calibración realizada por separado para diferentes segmentos de calibración.",
+      "justification": "Furthermore, the calibration of either PD or LGD may be performed separately for different calibration segments. This may be necessary where the scope of application of a PD or LGD model includes portfolios of exposures which carry significantly different level of risk..."
+    },
+    {
+      "question": "¿Para qué se deben normalizar las puntuaciones resultantes de diferentes métodos de ranking?",
+      "answer": "Para realizar una calibración significativa cuando un segmento de calibración incluye obligados o exposiciones sujetas a diferentes métodos de ranking.",
+      "justification": "Where a calibration segment includes obligors or exposures that are subject to different ranking methods, the scores resulting from these methods should be normalised to perform a meaningful calibration."
+    }
+  ],
+  "Cumplimiento y obligaciones de informe": [
+    {
+      "question": "¿Cuál es el estatus de estas directrices?",
+      "answer": "Directrices emitidas de conformidad con el artículo 16 del Reglamento (UE) n.° 1093/2010.",
+      "justification": "This document contains guidelines issued pursuant to Article 16 of Regulation (EU) No 1093/2010⁹. In accordance with Article 16(3) of Regulation (EU) No 1093/2010, competent authorities and financial institutions must make every effort to comply with the guidelines."
+    },
+    {
+      "question": "¿Quién debe hacer todo lo posible para cumplir con las directrices?",
+      "answer": "Autoridades competentes e instituciones financieras.",
+      "justification": "competent authorities and financial institutions must make every effort to comply with the guidelines."
+    },
+    {
+      "question": "¿Qué deben hacer las autoridades competentes para cumplir?",
+      "answer": "Incorporarlas en sus prácticas según proceda.",
+      "justification": "Competent authorities as defined in Article 4(2) of Regulation (EU) No 1093/2010 to whom guidelines apply should comply by incorporating them into their practices as appropriate (e.g. by amending their legal framework or their supervisory processes)..."
+    },
+    {
+      "question": "¿Para cuándo deben notificar las autoridades competentes a la EBA sobre el cumplimiento?",
+      "answer": "Para [dd.mm.yyyy].",
+      "justification": "competent authorities must notify the EBA as to whether they comply or intend to comply with these guidelines, or otherwise give reasons for non-compliance, by ([dd.mm.yyyy])."
+    },
+    {
+      "question": "¿Qué sucede si no se recibe notificación para la fecha límite?",
+      "answer": "Las autoridades competentes se considerarán no cumplidoras.",
+      "justification": "In the absence of any notification by this deadline, competent authorities will be considered by the EBA to be non-compliant."
+    },
+    {
+      "question": "¿Dónde se deben enviar las notificaciones?",
+      "answer": "A compliance@eba.europa.eu con la referencia 'EBA/GL/201x/xx'.",
+      "justification": "Notifications should be sent by submitting the form available on the EBA website to compliance@eba.europa.eu with the reference 'EBA/GL/201x/xx'."
+    },
+    {
+      "question": "¿Quién debe presentar las notificaciones?",
+      "answer": "Personas con autoridad apropiada para informar sobre el cumplimiento.",
+      "justification": "Notifications should be submitted by persons with appropriate authority to report compliance on behalf of their competent authorities."
+    },
+    {
+      "question": "¿Qué se debe informar si cambia el estatus de cumplimiento?",
+      "answer": "Cualquier cambio en el estatus de cumplimiento.",
+      "justification": "Any change in the status of compliance must also be reported to the EBA."
+    },
+    {
+      "question": "¿Dónde se publicarán las notificaciones?",
+      "answer": "En el sitio web de la EBA.",
+      "justification": "Notifications will be published on the EBA website, in line with Article 16(3)."
+    },
+    {
+      "question": "¿De acuerdo con qué artículo se publicarán las notificaciones?",
+      "answer": "Artículo 16(3).",
+      "justification": "Notifications will be published on the EBA website, in line with Article 16(3)."
+    }
+  ],
+  "Asunto, ámbito y definiciones": [
+    {
+      "question": "¿Qué especifican estas directrices?",
+      "answer": "Los requisitos para la estimación de PD y LGD, incluyendo LGD in-default y ELBE.",
+      "justification": "These guidelines specify the requirements for the estimation of probability of default (PD) and loss given default (LGD), including LGD for defaulted exposures (LGD in-default) and best estimate of expected loss (ELBE) in accordance with Part Three, Title II, Chapter 3, Section 6 of Regulation (EU) No 575/2013..."
+    },
+    {
+      "question": "¿De acuerdo con qué se aplican estas directrices?",
+      "answer": "Parte Tres, Título II, Capítulo 3, Sección 6 del Reglamento (UE) n.° 575/2013, artículo 159 de ese Reglamento y los RTS de la EBA sobre metodología de evaluación IRB.",
+      "justification": "in accordance with Part Three, Title II, Chapter 3, Section 6 of Regulation (EU) No 575/2013, Article 159 of that Regulation and the EBA final draft regulatory technical standards on the IRB assessment methodology EBA/RTS/2016/03 [RTS on IRB assessment methodology] of 21 July 2016."
+    },
+    {
+      "question": "¿A qué se aplican estas directrices en relación con el enfoque IRB?",
+      "answer": "Todos los métodos basados en estimaciones propias de PD y LGD.",
+      "justification": "These guidelines apply in relation to the IRB Approach in accordance with Part Three, Title II, Chapter 3 of Regulation (EU) No 575/2013 for all methods based on own estimates of PD and LGD."
+    },
+    {
+      "question": "¿Cuándo no se aplican las directrices al cálculo de requisitos de fondos propios por riesgo de dilución?",
+      "answer": "De acuerdo con el artículo 157 del Reglamento (UE) n.° 575/2013.",
+      "justification": "These guidelines do not apply to the calculation of own funds requirements for dilution risk in accordance with Article 157 of Regulation (EU) No 575/2013."
+    },
+    {
+      "question": "¿A quiénes se dirigen estas directrices?",
+      "answer": "Autoridades competentes definidas en el punto (i) del artículo 4(2) del Reglamento (UE) n.° 1093/2010 e instituciones financieras definidas en el artículo 4(1) del Reglamento (UE) n.° 575/2013.",
+      "justification": "These guidelines are addressed to competent authorities as defined in point (i) of Article 4(2) of Regulation (EU) No 1093/2010 and to financial institutions as defined in Article 4(1) of Regulation (EU) No 575/2013."
+    },
+    {
+      "question": "¿Cuál es la definición de parámetros de riesgo?",
+      "answer": "Uno o todos de los siguientes: PD, LGD, ELBE y LGD in-default.",
+      "justification": "Risk parameters: One or all of the following: PD, LGD, ELBE and LGD in-default."
+    },
+    {
+      "question": "¿Cuál es la definición de conjunto de datos de referencia (RDS)?",
+      "answer": "Todos los conjuntos de datos usados para la estimación de parámetros de riesgo, incluyendo los conjuntos de datos relevantes para el desarrollo de modelos así como los conjuntos de datos usados para la calibración de un parámetro de riesgo.",
+      "justification": "Reference data set (RDS): All the datasets used for the purpose of estimation of risk parameters, including the datasets relevant for model development as well as the datasets used for calibration of a risk parameter."
+    },
+    {
+      "question": "¿Qué es un modelo de PD?",
+      "answer": "Todos los datos y métodos usados como parte de un sistema de calificación que se relacionan con la diferenciación y cuantificación de estimaciones propias de PD y que se usan para evaluar el riesgo de default para cada obligado o exposición cubierta por ese modelo.",
+      "justification": "PD model: All data and methods used as part of a rating system within the meaning of Article 142(1) point (1) of Regulation (EU) No 575/2013, which relate to the differentiation and quantification of own estimates of PD and which are used to assess the default risk for each obligor or exposure covered by that model."
+    },
+    {
+      "question": "¿Qué es el método de ranking de un modelo de PD?",
+      "answer": "El método, que forma parte de un modelo de PD, usado para clasificar los obligados o exposiciones con respecto al riesgo de default.",
+      "justification": "Ranking method of a PD model: The method, forming part of a PD model, used to rank the obligors or exposures with respect to the risk of a default."
+    },
+    {
+      "question": "¿Qué es el método de puntuación de un modelo de PD?",
+      "answer": "Un método de ranking de un modelo de PD que asigna valores ordinales ('puntuaciones') para clasificar obligados o exposiciones.",
+      "justification": "Scoring method of a PD model: A ranking method of a PD model which assigns ordinal values ('scores') to rank obligors or exposures."
+    }
+  ],
+  "Implementación": [
+    {
+      "question": "¿Cuál es la fecha de aplicación de estas directrices?",
+      "answer": "Estas directrices se aplican a partir del 1 de enero de 2021.",
+      "justification": "These guidelines apply from 1 January 2021. Institutions should incorporate the requirements of these guidelines in their rating systems by that time..."
+    },
+    {
+      "question": "¿Qué deben hacer las instituciones con los requisitos de estas directrices?",
+      "answer": "Incorporar los requisitos en sus sistemas de calificación para esa fecha.",
+      "justification": "Institutions should incorporate the requirements of these guidelines in their rating systems by that time..."
+    },
+    {
+      "question": "¿Pueden las autoridades competentes acelerar la línea de tiempo?",
+      "answer": "Sí, a su discreción.",
+      "justification": "but competent authorities may accelerate the timeline of this transition at their discretion."
+    },
+    {
+      "question": "¿Qué debe verificar la función de validación interna?",
+      "answer": "Los cambios aplicados a los sistemas de calificación como resultado de la aplicación de estas directrices y los estándares técnicos regulatorios.",
+      "justification": "The internal validation function should verify the changes which are applied to the rating systems as a result of the application of these guidelines and the regulatory technical standards..."
+    },
+    {
+      "question": "¿Qué deben clasificar las instituciones?",
+      "answer": "Los cambios de acuerdo con el Reglamento Delegado de la Comisión (UE) n.° 529/2014.",
+      "justification": "and the classification of the changes in accordance with Commission Delegated Regulation (EU) No 529/2014."
+    },
+    {
+      "question": "¿Qué deben hacer las instituciones que necesitan permiso previo?",
+      "answer": "Acordar con sus autoridades competentes la fecha límite final para presentar la solicitud de dicho permiso previo.",
+      "justification": "Institutions that need to obtain prior permission from competent authorities in accordance with Article 143(3) of Regulation (EU) No 575/2013 and Regulation (EU) No 529/2014 for the changes in the rating systems required to incorporate these guidelines for the first time by the deadline referred to in paragraph 9 should agree with their competent authorities the final deadline for submitting the application for such prior permission."
+    },
+    {
+      "question": "¿Qué artículo regula la clasificación de cambios?",
+      "answer": "Reglamento Delegado de la Comisión (UE) n.° 529/2014.",
+      "justification": "the classification of the changes in accordance with Commission Delegated Regulation (EU) No 529/2014."
+    },
+    {
+      "question": "¿Cuál es la referencia del RTS en metodología de evaluación IRB?",
+      "answer": "EBA/RTS/2016/03.",
+      "justification": "the regulatory technical standards to be developed in accordance with Article 144(2) of Regulation (EU) No 575/2013..."
+    },
+    {
+      "question": "¿Qué artículo del CRR se menciona para permiso previo?",
+      "answer": "Artículo 143(3) del Reglamento (UE) n.° 575/2013.",
+      "justification": "Institutions that need to obtain prior permission from competent authorities in accordance with Article 143(3) of Regulation (EU) No 575/2013..."
+    },
+    {
+      "question": "¿Cuál párrafo se refiere a la fecha límite?",
+      "answer": "Párrafo 9.",
+      "justification": "the deadline referred to in paragraph 9 should agree with their competent authorities the final deadline for submitting the application for such prior permission."
+    }
+  ],
+  "Requisitos generales de estimación": [
+    {
+      "question": "¿Qué debe cubrir un sistema de calificación?",
+      "answer": "Todas las exposiciones donde los obligados o instalaciones muestren drivers comunes de riesgo y credit-worthiness comparable.",
+      "justification": "A rating system in the sense of point (1) of Article 142(1) of Regulation (EU) No 575/2013 should cover all those exposures where the obligors or facilities show common drivers of risk and credit-worthiness and fundamentally comparable availability of credit-related information."
+    },
+    {
+      "question": "¿Qué puede comprender un modelo de PD y LGD en un sistema de calificación?",
+      "answer": "Varios segmentos de calibración.",
+      "justification": "The PD and LGD model within a rating system may comprise various calibration segments."
+    },
+    {
+      "question": "¿Cómo deben tratarse las exposiciones cubiertas por el mismo sistema de calificación?",
+      "answer": "De manera similar en términos de gestión de riesgo, toma de decisiones y proceso de aprobación de crédito.",
+      "justification": "Exposures covered by the same rating system should be treated similarly by the institution in terms of risk management, decision making and credit approval process..."
+    },
+    {
+      "question": "¿Qué deben aplicar las instituciones para la cuantificación de parámetros de riesgo?",
+      "answer": "La misma definición de default para las mismas observaciones históricas usadas en diferentes modelos.",
+      "justification": "For the purpose of quantification of various risk parameters within a rating system, institutions should apply the same definition of default for the same historical observations used in different models."
+    },
+    {
+      "question": "¿Qué deben hacer las instituciones para cumplir con la calidad de datos?",
+      "answer": "Tener políticas sólidas, procesos y métodos para evaluar y mejorar la calidad de datos.",
+      "justification": "In order to comply with the requirement of Article 76 of the RTS on IRB assessment methodology that institutions should have sound policies, processes and methods for assessing and improving the quality of data used for the purpose of credit risk measurement and management processes..."
+    },
+    {
+      "question": "¿Qué deben especificar las políticas internas para representatividad de datos?",
+      "answer": "Pruebas estadísticas y métricas para evaluar la representatividad de datos usados para diferenciación de riesgo y cuantificación.",
+      "justification": "institutions should ensure that those policies apply to all data used in model development and calibration, as well as to the data used in the application of the risk parameters."
+    },
+    {
+      "question": "¿Qué deben obtener las instituciones cuando usan datos externos o agrupados?",
+      "answer": "Información suficiente de los proveedores de datos para evaluar la representatividad.",
+      "justification": "To ensure good performance of the models and their good predictive power, institutions should have adequate policies, processes and methods for assessing the representativeness of data used for the purpose of estimation of risk parameters, and they should pay particular attention to situations where data from different sources are used."
+    },
+    {
+      "question": "¿Qué deben analizar las instituciones para representatividad de datos en desarrollo de modelo?",
+      "answer": "Representatividad de datos en modelos estadísticos y métodos mecánicos para asignar exposiciones a grados o pools.",
+      "justification": "The dimensions of representativeness specified in the GL include the scope of application of the model, definition of default, distribution of the relevant risk drivers, current and foreseeable economic and market conditions, and lending standards and recovery policies."
+    },
+    {
+      "question": "¿En qué términos deben analizar la representatividad en desarrollo de modelo?",
+      "answer": "Ámbito de aplicación, definición de default, distribución de características de riesgo relevantes, estándares de prestamo y políticas de recuperación.",
+      "justification": "The requirements for data representativeness are split into two sub-sections, namely requirements for data used in model development and for data used in calibration of risk parameters..."
+    },
+    {
+      "question": "¿Qué deben hacer las instituciones para representatividad en cuantificación de riesgo?",
+      "answer": "Asegurar que los datos usados en cuantificación de riesgo sean representativos del portafolio de aplicación.",
+      "justification": "The data requirements for risk differentiation and risk quantification differ both in terms of the methods for analysis and with regard to required actions where the analysis reveals insufficient data representativeness."
+    }
+  ],
+  "Estimación de PD": [
+    {
+      "question": "¿Para qué propósito deben asegurar las instituciones que cada persona natural o legal sea calificada?",
+      "answer": "Para asignar obligados a un grado de obligado como parte del proceso de aprobación de crédito.",
+      "justification": "For the purpose of assigning obligors to an obligor grade as part of the credit approval process in accordance with Article 172(1)(a) of Regulation (EU) No 575/2013 as well as for the purpose of the review of those assignments, in accordance with Article 173(1)(b) of that Regulation, institutions should ensure that each and every natural or legal person towards whom an IRB exposure exists is rated by the institution with the model approved to be used on a given type of exposures."
+    },
+    {
+      "question": "¿Qué modelo debe ajustarse al obligado original dentro del sistema de calificación aplicable?",
+      "answer": "El modelo aprobado para usarse en un tipo dado de exposiciones.",
+      "justification": "This model should fit the single original obligor within the applicable rating system, including exposures secured by unfunded credit protection as referred to in Article 161(3) of that Regulation."
+    },
+    {
+      "question": "¿Qué puede contener un modelo de PD?",
+      "answer": "Varios métodos diferentes para clasificar los obligados o exposiciones, así como varios segmentos de calibración.",
+      "justification": "A PD model can contain several different methods for ranking the obligors or exposures as well as various calibration segments."
+    },
+    {
+      "question": "¿Qué deben asegurar las instituciones para el desarrollo de modelo en estimación de PD?",
+      "answer": "Que el RDS contenga los valores de los drivers de riesgo para puntos en tiempo apropiados.",
+      "justification": "For the purpose of model development, institutions should ensure that the RDS contains the values of the risk drivers for appropriate points in time."
+    },
+    {
+      "question": "¿Qué deben considerar las instituciones en la selección de puntos en tiempo?",
+      "answer": "La dinámica y frecuencia de actualización de los drivers de riesgo.",
+      "justification": "These points in time may vary between different risk drivers. In the selection of appropriate points in time institutions should take into account the dynamics as well as the update frequency of the risk drivers throughout the whole period in which an obligor was in the portfolio and, in the case of a default, throughout the year prior to default."
+    },
+    {
+      "question": "¿Qué deben considerar las instituciones en el proceso de selección de drivers de riesgo y criterios de calificación?",
+      "answer": "Un conjunto amplio de información relevante para el tipo de exposiciones cubiertas por el sistema de calificación.",
+      "justification": "In the process of selecting risk drivers and rating criteria, institutions should consider a broad set of information relevant to the type of exposures covered by the rating system."
+    },
+    {
+      "question": "¿Qué tipos de información deben incluir los drivers de riesgo potenciales?",
+      "answer": "Características del obligado, información financiera, información de tendencias, información comportamental.",
+      "justification": "Potential risk drivers analysed by institutions should include in particular the following: (a) obligor characteristics, including sector and geographic location for corporates; (b) financial information, including financial statements or income statements; (c) trend information, including growing or shrinking sales or profit margin; (d) behavioural information, including delinquency and the use of credit facilities."
+    },
+    {
+      "question": "¿A quiénes deben consultar las instituciones para seleccionar drivers de riesgo y criterios de calificación?",
+      "answer": "Expertos relevantes de las áreas de negocio de la institución.",
+      "justification": "Institutions should ensure that for the purpose of selecting risk drivers and rating criteria the relevant experts from business areas of the institution are consulted with respect to the business rationale and risk contribution of the considered risk drivers and rating criteria."
+    },
+    {
+      "question": "¿Qué deben asegurar las instituciones respecto a la disminución de fiabilidad de la información con el tiempo?",
+      "answer": "Que se refleje apropiadamente en la estimación de PD.",
+      "justification": "Institutions should ensure that the decrease of reliability of information over time, for instance of information on obligor characteristics obtained at the time of the loan origination, is appropriately reflected in the PD estimation."
+    },
+    {
+      "question": "¿Qué deben usar las instituciones de manera consistente en desarrollo, calibración y aplicación de modelo?",
+      "answer": "Los drivers de riesgo y criterios de calificación, en particular con respecto al horizonte temporal considerado.",
+      "justification": "Institutions should use the risk drivers and rating criteria consistently, in particular with respect to the considered time horizon, in model development, model calibration and model application."
+    }
+  ],
+  "Estimación de LGD": [
+    {
+      "question": "¿Qué metodología principal para estimación de LGD?",
+      "answer": "Workout LGD basada en la experiencia de la institución en términos de procesos de recuperación y pérdidas.",
+      "justification": "Institutions should estimate their own LGDs based on their own loss and recovery experience, as it is reflected in historical data on defaulted exposures."
+    },
+    {
+      "question": "¿Cuál es la metodología alternativa para exposiciones retail y receivables corporativos comprados?",
+      "answer": "Derivar estimaciones de LGD de pérdidas realizadas y estimaciones apropiadas de PD.",
+      "justification": "Where in the case of retail exposures and purchased corporate receivables institutions derive LGD estimates from realised losses and appropriate estimates of PDs in accordance with Articles 161(2) and 181(2)(a) of Regulation (EU) No 575/2013..."
+    },
+    {
+      "question": "¿Cuál es el período mínimo para considerar dos defaults en la misma exposición como independientes?",
+      "answer": "Nueve meses desde el retorno a estatus no default.",
+      "justification": "where the time between the moment of the return of the exposure to non-defaulted status and the subsequent classification as default is shorter than nine months, institutions should treat such exposure as having been constantly defaulted from the first moment when the default occurred."
+    },
+    {
+      "question": "¿Qué debe incluir el conjunto de datos de referencia (RDS) para estimación de LGD?",
+      "answer": "Información completa para todas las instalaciones defaulted observadas durante el período de observación histórica.",
+      "justification": "For the purpose of LGD estimation institutions should use an RDS covering all of the following items: (a) all defaults identified during the historical observation period specified in accordance with section 6.3.2.1;"
+    },
+    {
+      "question": "¿Qué drivers de riesgo deben usarse en estimación de LGD?",
+      "answer": "Valores de drivers de riesgo antes del momento de default.",
+      "justification": "relevant drivers of loss, including their values at the moment of default and at least within the year before default when available."
+    },
+    {
+      "question": "¿Cómo deben tratarse las recuperaciones de collaterales?",
+      "answer": "Como recuperaciones independientemente de la forma de realización del collateral.",
+      "justification": "Institutions should recognise the recoveries as stemming from collaterals in all of the following situations: (a) the collateral is sold by the obligor and the obtained price has been used to cover parts or all of the outstanding amount of the defaulted credit obligation; (b) the collateral is repossessed or sold by the institution... "
+    },
+    {
+      "question": "¿Cómo debe tratarse la reposesión de collateral?",
+      "answer": "Como recuperación, con un haircut apropiado aplicado al valor de reposesión.",
+      "justification": "the collateral is repossessed or sold by the institution, the parent undertaking or any of its subsidiaries on behalf of the institution;"
+    },
+    {
+      "question": "¿Cómo deben asignarse los costos y recuperaciones para portafolios?",
+      "answer": "Asignados adecuadamente a exposiciones individuales.",
+      "justification": "Where aggregated information is collected and stored, institutions should develop an appropriate methodology for the allocation of recoveries and costs to individual defaulted exposures and should apply this methodology consistently across exposures and over time."
+    },
+    {
+      "question": "¿Qué tipos de drivers de riesgo potenciales deben tenerse en cuenta en desarrollo de modelo?",
+      "answer": "Factores relacionados con transacciones, obligados, instituciones y factores externos.",
+      "justification": "obligor-related, transaction-related and institution-related risk characteristics as well as external factors as referred to in paragraph 121 that are potential risk drivers at the relevant reference dates as specified in paragraph 122;"
+    },
+    {
+      "question": "¿Cuál es la fecha de referencia para analizar drivers de riesgo?",
+      "answer": "Una fecha representativa de las realizaciones del driver de riesgo dado dentro de un año antes del default.",
+      "justification": "the values of collaterals associated with the exposure and, where applicable, the type of valuation (such as market value or mortgage lending value as defined in points (74) and (76) of Article 4(1) of Regulation (EU) No 575/2013), date of valuation, a flag of whether the collateral has been sold and the sale price;"
+    }
+  ],
+  "Tratamiento de exposiciones en default": [
+    {
+      "question": "¿Cuál es el enfoque principal para estimar ELBE y LGD in-default?",
+      "answer": "Usar los mismos métodos de estimación usados para estimar LGD para no defaulted.",
+      "justification": "For the purposes of ELBE and LGD in-default estimation, and unless otherwise specified in this Chapter, institutions should use the same estimation methods used for estimating LGD on non-defaulted exposures, as set out in Chapter 6."
+    },
+    {
+      "question": "¿Qué artículo del CRR se refiere a ELBE y LGD in-default?",
+      "answer": "Artículo 181(1)(h).",
+      "justification": "For the purpose of Article 181(1)(h) of Regulation (EU) No 575/2013 the ELBE should not include any MoC in the sense of section 4.4.3."
+    },
+    {
+      "question": "¿Qué deben reflejar los parámetros para exposiciones en default?",
+      "answer": "La estimación mejor de pérdida esperada y LGD adicional para defaulted.",
+      "justification": "Institutions that have obtained permission to use own estimates of LGD in accordance with Article 143(2) of Regulation (EU) No 575/2013, should assign an ELBE estimate and an LGD in-default estimate to each defaulted exposure..."
+    },
+    {
+      "question": "¿Cómo se definen ELBE y LGD in-default?",
+      "answer": "A través de diferencias con LGD para exposiciones no defaulted.",
+      "justification": "LGD in-default and ELBE are therefore defined through differences between them and the LGD for non-defaulted exposures."
+    },
+    {
+      "question": "¿Qué requisitos de LGD son aplicables a LGD in-default y ELBE?",
+      "answer": "Todos, a menos que se especifique lo contrario en el Capítulo 7.",
+      "justification": "For the purposes of ELBE and LGD in-default estimation, and unless otherwise specified in this Chapter, institutions should use the same estimation methods used for estimating LGD on non-defaulted exposures..."
+    },
+    {
+      "question": "¿Qué deben hacer las instituciones para estimación de parámetros para defaulted?",
+      "answer": "Referirse a los requisitos en Capítulo 6 y 4.",
+      "justification": "Thus, Chapter 7 generally refers to the requirements on LGD estimation set out in Chapter 6, as well as general estimation requirements set out in Chapter 4, and the requirements on the application of risk parameters specified in Chapter 8."
+    },
+    {
+      "question": "¿Qué deben almacenar las instituciones además para tratamiento de defaulted?",
+      "answer": "Datos incluyendo drivers de riesgo relevantes que pueden volverse relevantes después de default.",
+      "justification": "For the purposes of taking into account the information on the time in-default and recoveries realised so far, in accordance with Article 54(2)(b) of the RTS on IRB assessment methodology institutions may take into account this information either directly as risk drivers or indirectly, for instance by setting the reference date for estimation..."
+    },
+    {
+      "question": "¿Cómo deben tratarse los eventos de default múltiples en estimación de LGD?",
+      "answer": "Tratar como default continuo si dentro del período de dependencia.",
+      "justification": "for the purpose of LGD estimation, with regard to defaults recognised on a single facility, where the time between the moment of the return of the exposure to non-defaulted status and the subsequent classification as default is shorter than nine months, institutions should treat such exposure as having been constantly defaulted from the first moment when the default occurred."
+    },
+    {
+      "question": "¿Qué período de dependencia se menciona?",
+      "answer": "Período donde los defaults están relacionados.",
+      "justification": "Institutions may specify a period longer than nine months for the purpose of considering two subsequent defaults as a single default in the LGD estimation, if this is adequate to the specific type of exposures and reflects the economic meaning of the default experience."
+    },
+    {
+      "question": "¿Deben ajustarse las condiciones de downturn para LGD in-default?",
+      "answer": "Sí, cumplir con todos los requisitos para LGD estimation.",
+      "justification": "The LGD in-default should reflect at least downturn conditions, where the estimates of LGD in-default that are appropriate for an economic downturn are more conservative than the long-run average LGD for defaulted exposures..."
+    }
+  ],
+  "Aplicación de parámetros de riesgo": [
+    {
+      "question": "¿Qué debe hacerse en la aplicación del modelo de PD o LGD cuando se recibe nueva información?",
+      "answer": "Tomar en cuenta esta información en la asignación de rating en un manera oportuna.",
+      "justification": "In the application of the PD or LGD model and where institutions receive new information with respect to a relevant risk driver or rating criterion, they should take this information into account in the rating assignment in a timely manner..."
+    },
+    {
+      "question": "¿Qué debe asegurarse con respecto a los sistemas IT?",
+      "answer": "Que los sistemas IT relevantes sean actualizados tan pronto como posible.",
+      "justification": "that the relevant IT systems are updated as soon as possible and that the corresponding rating and PD or LGD assignment is reviewed as soon as possible;"
+    },
+    {
+      "question": "¿Qué debe hacerse cuando la nueva información se relaciona con el default de un obligado?",
+      "answer": "Poner la PD del obligado a 1 en todos los sistemas IT relevantes en una manera oportuna.",
+      "justification": "where the new information relates to the default of an obligor, that the PD of the obligor is set to 1 in all relevant IT systems in a timely manner and in accordance with paragraph 108 of the Guidelines on the application of the definition of default under Article 178 of Regulation (EU) No 575/2013."
+    },
+    {
+      "question": "¿Qué es el conservadurismo adicional en la aplicación de parámetros de riesgo?",
+      "answer": "Aplicar conservadurismo adicional a los resultados de la asignación de rating donde se identifiquen deficiencias relacionadas con la implementación del modelo.",
+      "justification": "For the purpose of Article 171(2) of Regulation (EU) No 575/2013 institutions should apply additional conservatism to the outcomes of the rating assignment where any deficiencies are identified related to the implementation of the model in the IT system or to the process of assignment of risk parameters to obligors or facilities in the current portfolio (application of risk parameters)..."
+    },
+    {
+      "question": "¿Qué fases debe incluir el marco para conservadurismo adicional?",
+      "answer": "Identificación de deficiencias, especificación de la forma de conservadurismo, monitoreo de deficiencias y documentación.",
+      "justification": "They should do so by establishing a framework that consists of the following phases: (a) identification of deficiencies of implementation of the model in the IT system or application of risk parameters; (b) specification of the form of conservatism to be applied and quantification of the appropriate level of conservatism; (c) monitoring of the deficiencies and correcting them; (d) documentation."
+    },
+    {
+      "question": "¿Cuáles son algunos triggers para conservadurismo adicional?",
+      "answer": "Datos faltantes, actualizaciones faltantes de estados financieros, ratings desactualizados, ratings faltantes.",
+      "justification": "Institutions should consider at least the following triggers for additional conservatism: (a) missing data in the application portfolio; (b) missing updates of financial statements or credit bureau data as referred to in paragraph 59(h); (c) outdated ratings in the application portfolio; (d) missing ratings..."
+    },
+    {
+      "question": "¿Qué debe asegurarse con respecto al impacto de las deficiencias?",
+      "answer": "Que los requisitos de fondos propios no sean distorsionados por la necesidad de ajustes excesivos.",
+      "justification": "Institutions should consider the overall impact of the identified deficiencies and the resulting conservatism at the level of portfolio covered with the relevant model on the soundness of the assignments to grades or pools and ensure that the own funds requirements are not distorted by the necessity of excessive adjustments."
+    },
+    {
+      "question": "¿Qué debe hacerse con las deficiencias de implementación?",
+      "answer": "Monitorearlas regularmente y tomar pasos para abordarlas.",
+      "justification": "institutions should regularly monitor the implementation and application deficiencies and the levels of additional conservatism applied in relation to them. Whenever possible, institutions should take steps to address the identified deficiencies."
+    },
+    {
+      "question": "¿Qué debe documentarse respecto al conservadurismo adicional?",
+      "answer": "Manuales y procedimientos para aplicar conservadurismo adicional y el proceso para abordar deficiencias.",
+      "justification": "institutions should specify adequate manuals and procedure for applying additional conservatism and should document the process applied in addressing implementation and application deficiencies."
+    },
+    {
+      "question": "¿En qué casos puede usarse juicio humano en la aplicación del modelo?",
+      "answer": "En la aplicación de variables cualitativas, overrides de inputs, overrides de outputs.",
+      "justification": "Institutions may use human judgement in the application of the model in the following cases: (a) in the application of the qualitative variables used within the model; (b) via overrides of the inputs of the rating assignment process; (c) via overrides of the outputs of the rating assignment process."
+    }
+  ],
+  "Revisión de estimaciones": [
+    {
+      "question": "¿Qué deben especificar las instituciones en políticas internas para cambios de modelos?",
+      "answer": "Políticas para cambios de modelos y estimaciones de parámetros de riesgo.",
+      "justification": "Institutions should specify internal policies for changes of models and estimates of risk parameters used within a rating system."
+    },
+    {
+      "question": "¿Qué debe resultar en cambios en los modelos?",
+      "answer": "Revisiones regulares, validación independiente, cambios en el ambiente legal, revisión de auditoría interna, revisión de autoridad competentes.",
+      "justification": "Such policies should provide that changes in the models should be made as a result of at least the following: (a) regular review of estimates; (b) independent validation; (c) changes in the legal environment; (d) internal audit review; (e) competent authority review."
+    },
+    {
+      "question": "¿Qué debe hacerse cuando se identifiquen deficiencias materiales?",
+      "answer": "Tomar acciones apropiadas dependiendo de la severidad y aplicar MoC.",
+      "justification": "Where material deficiencies are identified as a result of the procedures referred to in paragraph 215 institutions should take appropriate actions depending on the severity of the deficiency and apply a MoC in accordance with section 4.4.3."
+    },
+    {
+      "question": "¿Qué debe incluir el marco para revisiones regulares de estimaciones?",
+      "answer": "Alcance mínimo y frecuencia de análisis, estándares predefinidos, acciones predefinidas.",
+      "justification": "For the purpose of regular reviews of estimates, institutions should have a framework in place which includes at least the following elements: (a) a minimum scope and frequency of analyses to be performed; (b) predefined standards; (c) predefined actions to be taken in case of adverse results of the review."
+    },
+    {
+      "question": "¿Qué debe comprender el alcance de revisiones anuales?",
+      "answer": "Análisis de representatividad de datos, incluyendo ámbito de aplicación, definición de default, distribución de risk drivers, etc.",
+      "justification": "The scope of such reviews should comprise at least the following elements: (a) an analysis of data representativeness, including all of the following: scope of application, definition of default, distribution of relevant risk characteristics..."
+    },
+    {
+      "question": "¿Qué métrica debe evaluarse en las revisiones anuales?",
+      "answer": "Métricas predefinidas para testing data representativeness, model performance, predictive power and stability.",
+      "justification": "including predefined metrics chosen by the institution to test data representativeness, model performance, its predictive power and stability;"
+    },
+    {
+      "question": "¿Qué debe hacerse en caso de resultados adversos en la revisión?",
+      "answer": "Tomar acciones predefinidas dependiendo de la severidad de la deficiencia.",
+      "justification": "predefined actions to be taken in case of adverse results of the review, depending on the severity of the deficiency."
+    },
+    {
+      "question": "¿Pueden las instituciones confiar en validación independiente para revisiones regulares?",
+      "answer": "Sí, si los resultados son up to date.",
+      "justification": "In their regular reviews of estimates institutions may rely on the results of independent validation where such results are up to date."
+    },
+    {
+      "question": "¿Qué artículo requiere revisiones anuales?",
+      "answer": "Artículo 179(1)(c) del Reglamento (UE) No 575/2013.",
+      "justification": "The reviews of estimates to be performed at least annually in accordance with Article 179(1)(c) of Regulation (EU) No 575/2013 should be performed taking into account the metrics, standards and thresholds defined by the institution in accordance with paragraph 217."
+    },
+    {
+      "question": "¿Qué debe incluir el análisis de representatividad de datos en revisiones anuales?",
+      "answer": "Todos los siguientes: ámbito de aplicación, definición de default, distribución de características de riesgo, etc.",
+      "justification": " (a) an analysis of data representativeness, including all of the following: "
+    }
+  ],
+  "Evaluación de impacto": [
+    {
+      "question": "¿Qué contiene la sección de evaluación de impacto?",
+      "answer": "Evaluación de impacto para las GL sobre PD, LGD y tratamiento de defaulted basado en resultados de encuesta IRB.",
+      "justification": "The impact assessment section contains the impact assessment for the GL on PD, LGD and treatment of defaulted exposures based on the results of the IRB survey."
+    },
+    {
+      "question": "¿Cuál es el objetivo de las GL en términos de convergencia?",
+      "answer": "Establecer convergencia de definiciones y prácticas de modelado.",
+      "justification": "The objective of the GL is to establish convergence of definitions and modelling practices."
+    },
+    {
+      "question": "¿Qué RTS se menciona?",
+      "answer": "RTS sobre metodología de evaluación IRB (EBA/RTS/2016/03).",
+      "justification": "the EBA final draft RTS on IRB assessment methodology (EBA/RTS/2016/03)."
+    },
+    {
+      "question": "¿Qué se evaluó en la encuesta IRB?",
+      "answer": "Prácticas de modelado en PD y LGD estimation.",
+      "justification": "The IRB survey evaluated modelling practices in PD and LGD estimation."
+    },
+    {
+      "question": "¿Qué proporción de CAs especifica reglas sobre enfoque de estimación de PD?",
+      "answer": "Un tercio de las CAs.",
+      "justification": "One third of the CAs specify rules on the approach to PD estimation."
+    },
+    {
+      "question": "¿Qué sobre requisitos generales para metodologías de estimación?",
+      "answer": "La mayoría de los Estados Miembros.",
+      "justification": "The majority of Member States have requirements for general methodologies for estimation."
+    },
+    {
+      "question": "¿Qué sobre cálculo de tasas de default observadas?",
+      "answer": "Aproximadamente un tercio de CAs tienen reglas.",
+      "justification": "Approximately one third of CAs have rules on the calculation of observed default rates."
+    },
+    {
+      "question": "¿Qué cambio puede implicar la política en las GL para algunos modelos?",
+      "answer": "Cambio significativo en la práctica.",
+      "justification": "The policy in the GL may lead to significant change for some models."
+    },
+    {
+      "question": "¿Qué propuesta puede llevar a cambio significativo para portafolios como leasing?",
+      "answer": "Propuesta sobre metodologías de LGD estimation.",
+      "justification": "The proposal on LGD estimation methodologies may lead to significant change for portfolios such as leasing."
+    },
+    {
+      "question": "¿Se permite ajuste de downturn para LGD in-default?",
+      "answer": "Sí, debe cumplir con requisitos.",
+      "justification": "The downturn adjustment for LGD in-default is allowed and must comply with the requirements."
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cómo se debe calcular minorista según la normativa?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cómo se debe calcular basilea según la normativa?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuáles son los requisitos mínimos de capital según Basilea III?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Cuáles son los principales componentes del riesgo de crédito?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Eres un experto en regulación bancaria española y europea. Tu tarea es responder preguntas sobre normativa prudencial, especialmente sobre parámetros de riesgo de crédito (PD, LGD, EAD), Basilea III, CRR y directrices de la EBA.\n\nREGLAS IMPORTANTES:\n- Responde SIEMPRE en español\n- Cita la fuente específica de tu información (artículo, directriz, documento)\n- Si no tienes información suficiente, indícalo claramente\n- Sé preciso y técnico en tus explicaciones\n- Nunca inventes información regulatoria"
+      },
+      {
+        "role": "user",
+        "content": "¿Qué establece la regulación sobre minorista?"
+      },
+      {
+        "role": "assistant",
+        "content": "Según ECB:\n\nManual de Supervisión del MUS Supervisión bancaria europea: funcionamiento del MUS y enfoque de supervisión Marzo 2018 Versión obsoleta. Puedes consultar la versión más reciente en el sitio web de Supervisión Bancaria . SSM Supervisory Manual: European banking supervision: functioning of the SSM and supervisory approach – Índice 1 Índice Uso del Manual de Supervisión 3 Introducción 3 Declaración de la misión 4 Propósitos estratégicos del Eurosistema y el Mecanismo Único de Supervisión 5 Principios organizativos del Eurosistema y del Mecanismo Único de Supervisión 61 Funcionamiento del Mecanismo Único de Supervisión 91.1 Organización del MUS 91.2 Estructura operativa del MUS 111.3 Adopción de decisiones en el marco del MUS 181.4 Cooperación con otras instituciones y autoridades 332 El ciclo de supervisión 452.1 Contribución a la normativa y a las políticas de supervisión 462.2 Definición y desarrollo de metodologías y normas 472.3 Realización de la supervisión diaria 492.4 Mejora de la supervisión bancaria 493 Supervisión de todas las entidades supervisadas por el MUS 543.1 Evaluación de las solicitudes de autorización relativas a propuestas de adquisición de participaciones cualificadas en entidades de crédito y procedimiento de pasaporte 553.2 Evaluación de la significatividad de las entidades 634 Supervisión de las entidades significativas 674.1 Planificación estratégica y operativa 674.\n\nFuente: probabilidad de impago PD (https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65)"
+      }
+    ],
+    "metadata": {
+      "source": "ECB",
+      "url": "https://www.bankingsupervision.europa.eu/ecb/pub/pdf/ssm.supervisorymanual201803.es.pdf?42da4200dd38971a82c2d15b9ebc0e65",
+      "title": "probabilidad de impago PD"
+    }
+  }
+]
