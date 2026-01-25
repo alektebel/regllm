@@ -113,14 +113,15 @@ class ModelSetup:
             logger.info("huggingface-cli login")
             raise
 
-        # Load model
+        # Load model with Flash Attention 2 for faster training
         try:
             model = AutoModelForCausalLM.from_pretrained(
                 self.model_path,
                 quantization_config=bnb_config if use_4bit else None,
                 device_map="auto" if self.device == "cuda" else None,
                 trust_remote_code=True,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                attn_implementation="flash_attention_2" if self.device == "cuda" else None,
             )
 
             logger.info("Model loaded successfully")

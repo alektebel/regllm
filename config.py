@@ -218,10 +218,116 @@ ENHANCED_SCRAPING = {
 }
 
 # ============================================================================
+# Telegram Bot Configuration
+# ============================================================================
+TELEGRAM = {
+    # Bot token from @BotFather (REQUIRED - replace with your token)
+    'bot_token': '***REDACTED_BOT_TOKEN***',
+
+    # Allowed user IDs (leave empty to allow all users, or add your Telegram user ID for security)
+    # Get your user ID by messaging @userinfobot on Telegram
+    'allowed_users': [],  # e.g., [123456789, 987654321]
+
+    # Base model to use (defaults to MODEL['base_model'] if not specified)
+    # Options: 'qwen2.5-7b', 'qwen2.5-3b', 'phi-3-mini', 'stablelm-3b', 'phi-2', 'gemma-2b', 'qwen-1.8b'
+    'base_model': None,  # None = use default from MODEL config
+
+    # Model path for the finetuned model
+    'model_path': MODELS_DIR / 'finetuned',
+
+    # Generation settings (uses INFERENCE defaults if not specified)
+    'max_response_length': 500,
+
+    # Rate limiting
+    'rate_limit_messages': 10,  # Max messages per minute per user
+    'rate_limit_window': 60,    # Window in seconds
+}
+
+# ============================================================================
 # Logging Configuration
 # ============================================================================
 LOGGING = {
     'level': 'INFO',
     'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     'file': LOGS_DIR / 'regllm.log',
+}
+
+# ============================================================================
+# Agent Configuration
+# ============================================================================
+AGENT = {
+    # Maximum reasoning steps before stopping
+    'max_steps': 10,
+
+    # Verbose logging
+    'verbose': True,
+
+    # LLM settings for agent
+    'llm': {
+        'model': 'gpt-4',  # Or local model
+        'temperature': 0.7,
+        'max_tokens': 2000,
+    },
+
+    # Tool execution settings
+    'tool_execution': {
+        'timeout_seconds': 30,
+        'max_retries': 2,
+        'retry_delay_seconds': 1,
+    },
+}
+
+# ============================================================================
+# Methodology Configuration
+# ============================================================================
+METHODOLOGY = {
+    # Directory containing methodology documents
+    'documents_dir': DATA_DIR / 'methodology',
+
+    # Supported methodology types
+    'types': [
+        'irb_foundation',
+        'irb_advanced',
+        'standardized',
+        'basel_evolution',
+    ],
+
+    # Document format settings
+    'document_format': {
+        'encoding': 'utf-8',
+        'supported_extensions': ['.md', '.txt', '.rst'],
+    },
+}
+
+# ============================================================================
+# Consistency Checking Configuration
+# ============================================================================
+CONSISTENCY = {
+    # Severity thresholds
+    'severity_levels': {
+        'error': 'critical',      # Must be fixed
+        'warning': 'important',   # Should be reviewed
+        'info': 'optional',       # Nice to have
+    },
+
+    # Default required components for banking regulation
+    'required_components': [
+        'PD calculation',
+        'LGD calculation',
+        'EAD calculation',
+        'RWA calculation',
+        'Capital requirement',
+        'Maturity adjustment',
+        'Asset correlation',
+    ],
+
+    # Parameter tolerance for numeric comparisons
+    'numeric_tolerance': 0.001,
+
+    # Report settings
+    'report': {
+        'output_format': 'json',  # 'json', 'markdown', 'html'
+        'include_code_snippets': True,
+        'max_issues_per_category': 20,
+    },
 }

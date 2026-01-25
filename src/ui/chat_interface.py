@@ -4,12 +4,19 @@ Supports both CLI and web-based interfaces.
 """
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 import gradio as gr
 import argparse
 from pathlib import Path
 import logging
+import sys
+
+# Add project root to path for config import
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from config import MODEL, INFERENCE
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,19 +25,37 @@ logger = logging.getLogger(__name__)
 class RegulationChatbot:
     """Chatbot for banking regulation queries."""
 
-    def __init__(self, model_path: str, base_model: str = 'microsoft/phi-2'):
+    # Map config model names to HuggingFace paths
+    AVAILABLE_MODELS = {
+        'qwen2.5-7b': 'Qwen/Qwen2.5-7B-Instruct',
+        'qwen2.5-3b': 'Qwen/Qwen2.5-3B-Instruct',
+        'phi-3-mini': 'microsoft/Phi-3-mini-4k-instruct',
+        'stablelm-3b': 'stabilityai/stablelm-3b-4e1t',
+        'phi-2': 'microsoft/phi-2',
+        'gemma-2b': 'google/gemma-2b-it',
+        'qwen-1.8b': 'Qwen/Qwen2-1.8B-Instruct',
+    }
+
+    def __init__(self, model_path: str, base_model: str = None):
         """
         Initialize chatbot.
 
         Args:
             model_path: Path to finetuned model
-            base_model: Base model name
+            base_model: Base model name (defaults to config.py MODEL['base_model'])
         """
         self.model_path = Path(model_path)
-        self.base_model = base_model
+
+        # Use config default if not specified
+        if base_model is None:
+            base_model = MODEL['base_model']
+
+        # Resolve model name to HuggingFace path
+        self.base_model = self.AVAILABLE_MODELS.get(base_model, base_model)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         logger.info(f"Loading model from {self.model_path}")
+        logger.info(f"Base model: {self.base_model}")
         logger.info(f"Using device: {self.device}")
 
         self.load_model()
@@ -44,41 +69,72 @@ class RegulationChatbot:
                 trust_remote_code=True
             )
 
-            # Load base model
+            # Quantization config for memory efficiency (same as training)
+            bnb_config = None
+            if self.device == "cuda" and MODEL.get('use_4bit', True):
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                )
+                logger.info("Using 4-bit quantization")
+
+            # Load base model with Flash Attention 2
             base_model = AutoModelForCausalLM.from_pretrained(
                 self.base_model,
+                quantization_config=bnb_config,
                 device_map="auto" if self.device == "cuda" else None,
                 trust_remote_code=True,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                attn_implementation="flash_attention_2" if self.device == "cuda" else None,
             )
 
             # Load LoRA weights
             self.model = PeftModel.from_pretrained(base_model, self.model_path)
             self.model.eval()
 
-            logger.info("Model loaded successfully!")
+            logger.info("Model loaded successfully with Flash Attention 2!")
 
         except Exception as e:
             logger.error(f"Error loading model: {e}")
             raise
 
-    def generate_response(self, question: str, max_length: int = 300,
-                         temperature: float = 0.7) -> str:
+    def generate_response(self, question: str, max_length: int = None,
+                         temperature: float = None) -> str:
         """
         Generate a response to a question.
 
         Args:
             question: User question
-            max_length: Maximum response length
-            temperature: Sampling temperature
+            max_length: Maximum response length (default from config.py)
+            temperature: Sampling temperature (default from config.py)
 
         Returns:
             Generated response
         """
-        # Format prompt
-        system_prompt = """Eres un experto en regulación bancaria española. Responde preguntas sobre regulación bancaria, especialmente sobre parámetros de riesgo de crédito. Siempre cita las fuentes de tu información. Si no estás seguro, di "No tengo información suficiente"."""
+        # Use config defaults if not specified
+        max_length = max_length if max_length is not None else INFERENCE.get('max_new_tokens', 300)
+        temperature = temperature if temperature is not None else INFERENCE.get('temperature', 0.7)
 
-        prompt = f"<|system|>\n{system_prompt}\n<|user|>\n{question}\n<|assistant|>\n"
+        # Format prompt using ChatML (Qwen format)
+        system_prompt = INFERENCE.get('system_prompt', """Eres un experto en regulación bancaria española. Responde preguntas sobre regulación bancaria, especialmente sobre parámetros de riesgo de crédito. Siempre cita las fuentes de tu información. Si no estás seguro, di "No tengo información suficiente".""")
+
+        # Use tokenizer's chat template if available (preferred)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question}
+        ]
+
+        if hasattr(self.tokenizer, 'apply_chat_template'):
+            prompt = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+        else:
+            # Fallback to ChatML format
+            prompt = f"<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{question}<|im_end|>\n<|im_start|>assistant\n"
 
         # Tokenize
         inputs = self.tokenizer(
@@ -103,9 +159,16 @@ class RegulationChatbot:
         # Decode
         full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        # Extract only the assistant's response
-        if "<|assistant|>" in full_response:
-            response = full_response.split("<|assistant|>")[-1].strip()
+        # Extract only the assistant's response (ChatML format)
+        if "<|im_start|>assistant" in full_response:
+            response = full_response.split("<|im_start|>assistant")[-1]
+            # Remove any trailing end tokens
+            if "<|im_end|>" in response:
+                response = response.split("<|im_end|>")[0]
+            response = response.strip()
+        elif "assistant\n" in full_response:
+            # Fallback for other formats
+            response = full_response.split("assistant\n")[-1].strip()
         else:
             response = full_response
 
@@ -187,8 +250,8 @@ def main():
     parser = argparse.ArgumentParser(description='Banking Regulation Chatbot')
     parser.add_argument('--model-path', type=str, required=True,
                        help='Path to finetuned model')
-    parser.add_argument('--base-model', type=str, default='microsoft/phi-2',
-                       help='Base model name')
+    parser.add_argument('--base-model', type=str, default=None,
+                       help='Base model name (default from config.py)')
     parser.add_argument('--interface', type=str, default='web',
                        choices=['web', 'cli'],
                        help='Interface type (web or cli)')

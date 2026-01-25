@@ -1,0 +1,94 @@
+{
+  "bancos": {
+    "santander": {
+      "nombre_completo": "Banco Santander S.A.",
+      "web_oficial": "https://www.santander.com/es/accionistas-e-inversores/informacion-economico-financiera",
+      "cuentas_anuales": {
+        "2023": {
+          "url": "https://www.santander.com/content/dam/santander-com/es/documentos/informacion-economico-financiera/2023/informe-anual-2023.pdf",
+          "descripcion": "Informe Anual 2023"
+        },
+        "2022": {
+          "url": "https://www.santander.com/content/dam/santander-com/es/documentos/informacion-economico-financiera/2022/informe-anual-2022.pdf",
+          "descripcion": "Informe Anual 2022"
+        },
+        "2021": {
+          "url": "https://www.santander.com/content/dam/santander-com/es/documentos/informacion-economico-financiera/2021/informe-anual-2021.pdf",
+          "descripcion": "Informe Anual 2021"
+        }
+      }
+    },
+    "caixabank": {
+      "nombre_completo": "CaixaBank S.A.",
+      "web_oficial": "https://www.caixabank.com/es/accionistas-inversores/informacion-economica-financiera.html",
+      "cuentas_anuales": {
+        "2023": {
+          "url": "https://www.caixabank.com/deployedfiles/caixabank_com/Estaticos/PDFs/Accionistas_inversores/Informacion_economica_financiera/Cuentas_anuales_2023.pdf",
+          "descripcion": "Cuentas Anuales 2023"
+        },
+        "2022": {
+          "url": "https://www.caixabank.com/deployedfiles/caixabank_com/Estaticos/PDFs/Accionistas_inversores/Informacion_economica_financiera/Cuentas_anuales_2022.pdf",
+          "descripcion": "Cuentas Anuales 2022"
+        },
+        "2021": {
+          "url": "https://www.caixabank.com/deployedfiles/caixabank_com/Estaticos/PDFs/Accionistas_inversores/Informacion_economica_financiera/Cuentas_anuales_2021.pdf",
+          "descripcion": "Cuentas Anuales 2021"
+        }
+      }
+    },
+    "bbva": {
+      "nombre_completo": "Banco Bilbao Vizcaya Argentaria S.A.",
+      "web_oficial": "https://shareholders.bbva.com/finanzas/informes-anuales/",
+      "cuentas_anuales": {
+        "2023": {
+          "url": "https://shareholders.bbva.com/wp-content/uploads/2024/02/BBVA-Informe-Anual-2023.pdf",
+          "descripcion": "Informe Anual 2023"
+        },
+        "2022": {
+          "url": "https://shareholders.bbva.com/wp-content/uploads/2023/02/BBVA-Informe-Anual-2022.pdf",
+          "descripcion": "Informe Anual 2022"
+        },
+        "2021": {
+          "url": "https://shareholders.bbva.com/wp-content/uploads/2022/02/BBVA-Informe-Anual-2021.pdf",
+          "descripcion": "Informe Anual 2021"
+        }
+      }
+    },
+    "sabadell": {
+      "nombre_completo": "Banco de Sabadell S.A.",
+      "web_oficial": "https://www.bancsabadell.com/cs/Satellite/SabAtl/Informes-y-presentaciones/",
+      "cuentas_anuales": {
+        "2023": {
+          "url": "https://www.grupbancsabadell.com/INFORMACION_ACCIONISTAS_E_INVERSORES/INFORMACION_FINANCIERA/ESTADOS_FINANCIEROS/Sabadell_Informe_Anual_2023.pdf",
+          "descripcion": "Informe Anual 2023"
+        },
+        "2022": {
+          "url": "https://www.grupbancsabadell.com/INFORMACION_ACCIONISTAS_E_INVERSORES/INFORMACION_FINANCIERA/ESTADOS_FINANCIEROS/Sabadell_Informe_Anual_2022.pdf",
+          "descripcion": "Informe Anual 2022"
+        },
+        "2021": {
+          "url": "https://www.grupbancsabadell.com/INFORMACION_ACCIONISTAS_E_INVERSORES/INFORMACION_FINANCIERA/ESTADOS_FINANCIEROS/Sabadell_Informe_Anual_2021.pdf",
+          "descripcion": "Informe Anual 2021"
+        }
+      }
+    },
+    "kutxabank": {
+      "nombre_completo": "Kutxabank S.A.",
+      "web_oficial": "https://www.kutxabank.es/es/sobre-kutxabank/informacion-corporativa/informacion-economica",
+      "cuentas_anuales": {
+        "2023": {
+          "url": "https://www.kutxabank.es/cs/Satellite?blobcol=urldata&blobkey=id&blobtable=MungoBlobs&blobwhere=1456491234567&ssbinary=true",
+          "descripcion": "Cuentas Anuales 2023"
+        },
+        "2022": {
+          "url": "https://www.kutxabank.es/cs/Satellite?blobcol=urldata&blobkey=id&blobtable=MungoBlobs&blobwhere=1456491234566&ssbinary=true",
+          "descripcion": "Cuentas Anuales 2022"
+        },
+        "2021": {
+          "url": "https://www.kutxabank.es/cs/Satellite?blobcol=urldata&blobkey=id&blobtable=MungoBlobs&blobwhere=1456491234565&ssbinary=true",
+          "descripcion": "Cuentas Anuales 2021"
+        }
+      }
+    }
+  }
+}

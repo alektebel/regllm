@@ -11,3 +11,4 @@
      ☐ Configure Flash Attention 2                                                                                                                                                      
      ☐ Switch to Paged AdamW 8-bit optimizer                                                                                                                                            
      ☐ Integrate Weights & Biases (wandb) for training visualization 
+- [ ] Add realtime feedback from  users, RHLF

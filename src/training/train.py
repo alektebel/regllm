@@ -294,7 +294,7 @@ class RegulationTrainer:
             metric_for_best_model="eval_loss",
             greater_is_better=False,
             fp16=torch.cuda.is_available(),
-            report_to="none",  # Disable wandb, tensorboard, etc.
+            report_to="wandb",  # Enable Weights & Biases for training visualization
             save_total_limit=TRAINING.get('save_total_limit', 2),
         )
 

@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.rag_system import RegulatoryRAGSystem
 from src.verification import SistemaVerificacion
+from src.rlhf.feedback_collector import FeedbackCollector
+from src.documents.attachment_handler import AttachmentHandler, ProcessedDocument
 
 # Set up logging
 logging.basicConfig(
@@ -28,15 +30,25 @@ logger = logging.getLogger(__name__)
 # Global instances (initialized at startup)
 rag_system = None
 verificador = None
+feedback_collector = None
+attachment_handler = None
+
+# State for tracking last query/response for feedback
+last_interaction = {"query": "", "response": ""}
+
+# State for document comparison
+uploaded_docs = {"doc_a": None, "doc_b": None}
 
 
 def initialize_system():
     """Initialize the RAG system and verifier."""
-    global rag_system, verificador
+    global rag_system, verificador, feedback_collector, attachment_handler
 
     logger.info("Initializing RAG system...")
     rag_system = RegulatoryRAGSystem()
     verificador = SistemaVerificacion()
+    feedback_collector = FeedbackCollector(model_name="regllm-rag")
+    attachment_handler = AttachmentHandler()
 
     # Auto-load most recent JSON if database is empty
     if rag_system.collection.count() == 0:
@@ -129,11 +141,113 @@ def responder_consulta(pregunta: str, num_fuentes: int, usar_hibrida: bool) -> T
 ---
 """
 
+        # Store for feedback
+        last_interaction["query"] = pregunta
+        last_interaction["response"] = respuesta
+
         return respuesta, verificacion_texto, fuentes_texto
 
     except Exception as e:
         logger.error(f"Error processing query: {e}")
         return f"Error procesando la consulta: {str(e)}", "", ""
+
+
+def record_positive_feedback() -> str:
+    """Record positive feedback (thumbs up)."""
+    if not last_interaction["query"]:
+        return "No hay interaccion previa para evaluar"
+
+    feedback_collector.record_feedback(
+        query=last_interaction["query"],
+        response=last_interaction["response"],
+        feedback="positive",
+    )
+    return "Gracias por tu feedback positivo!"
+
+
+def record_negative_feedback() -> str:
+    """Record negative feedback (thumbs down)."""
+    if not last_interaction["query"]:
+        return "No hay interaccion previa para evaluar"
+
+    feedback_collector.record_feedback(
+        query=last_interaction["query"],
+        response=last_interaction["response"],
+        feedback="negative",
+    )
+    return "Gracias por tu feedback. Trabajaremos en mejorar!"
+
+
+def get_feedback_stats() -> str:
+    """Get feedback statistics."""
+    if not feedback_collector:
+        return "Sistema de feedback no inicializado"
+
+    stats = feedback_collector.get_feedback_stats()
+    return f"""
+**Estadisticas de Feedback**
+
+- Total evaluaciones: {stats['total']}
+- Positivas: {stats['positive']}
+- Negativas: {stats['negative']}
+- Ratio positivo: {stats['positive_ratio']:.1%}
+"""
+
+
+def process_document_a(file) -> str:
+    """Process uploaded document A."""
+    if file is None:
+        return "No se ha subido ningun archivo"
+
+    try:
+        doc = attachment_handler.process_upload(file.name)
+        uploaded_docs["doc_a"] = doc
+        return f"Documento A cargado: {doc.filename}\n- Caracteres: {len(doc.text):,}\n- Chunks: {len(doc.chunks)}"
+    except Exception as e:
+        return f"Error procesando documento: {str(e)}"
+
+
+def process_document_b(file) -> str:
+    """Process uploaded document B."""
+    if file is None:
+        return "No se ha subido ningun archivo"
+
+    try:
+        doc = attachment_handler.process_upload(file.name)
+        uploaded_docs["doc_b"] = doc
+        return f"Documento B cargado: {doc.filename}\n- Caracteres: {len(doc.text):,}\n- Chunks: {len(doc.chunks)}"
+    except Exception as e:
+        return f"Error procesando documento: {str(e)}"
+
+
+def compare_documents() -> str:
+    """Compare the two uploaded documents."""
+    doc_a = uploaded_docs.get("doc_a")
+    doc_b = uploaded_docs.get("doc_b")
+
+    if not doc_a:
+        return "Por favor, sube primero el Documento A"
+    if not doc_b:
+        return "Por favor, sube primero el Documento B"
+
+    try:
+        comparison = attachment_handler.compare_documents(doc_a, doc_b)
+        return attachment_handler.format_comparison_summary(comparison)
+    except Exception as e:
+        return f"Error comparando documentos: {str(e)}"
+
+
+def get_document_preview(doc_key: str) -> str:
+    """Get preview of uploaded document."""
+    doc = uploaded_docs.get(doc_key)
+    if not doc:
+        return "Documento no cargado"
+
+    preview = doc.text[:2000]
+    if len(doc.text) > 2000:
+        preview += "\n\n... [truncado] ..."
+
+    return f"**{doc.filename}**\n\n{preview}"
 
 
 def _generar_respuesta(pregunta: str, fuentes: list) -> str:
@@ -256,6 +370,28 @@ def crear_interfaz():
                     with gr.Column():
                         respuesta_output = gr.Markdown(label="Respuesta")
 
+                        # Feedback buttons
+                        with gr.Row():
+                            gr.Markdown("**Fue util esta respuesta?**")
+                            like_btn = gr.Button("👍 Si", size="sm")
+                            dislike_btn = gr.Button("👎 No", size="sm")
+                            feedback_status = gr.Textbox(
+                                label="",
+                                interactive=False,
+                                show_label=False,
+                                max_lines=1,
+                            )
+
+                        # Connect feedback buttons
+                        like_btn.click(
+                            fn=record_positive_feedback,
+                            outputs=[feedback_status]
+                        )
+                        dislike_btn.click(
+                            fn=record_negative_feedback,
+                            outputs=[feedback_status]
+                        )
+
                 with gr.Row():
                     with gr.Column():
                         verificacion_output = gr.Markdown(label="Verificacion")
@@ -290,6 +426,84 @@ def crear_interfaz():
                     outputs=[respuesta_output, verificacion_output, fuentes_output]
                 )
 
+            # Document Comparison tab
+            with gr.Tab("Comparacion de Documentos"):
+                gr.Markdown("""
+                ### Comparar Documentos Regulatorios
+
+                Sube dos documentos (PDF, DOCX, TXT, MD) para comparar su contenido.
+                """)
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("**Documento A**")
+                        doc_a_upload = gr.File(
+                            label="Subir Documento A",
+                            file_types=[".pdf", ".txt", ".docx", ".md"]
+                        )
+                        doc_a_status = gr.Textbox(
+                            label="Estado",
+                            interactive=False,
+                            lines=3
+                        )
+
+                    with gr.Column():
+                        gr.Markdown("**Documento B**")
+                        doc_b_upload = gr.File(
+                            label="Subir Documento B",
+                            file_types=[".pdf", ".txt", ".docx", ".md"]
+                        )
+                        doc_b_status = gr.Textbox(
+                            label="Estado",
+                            interactive=False,
+                            lines=3
+                        )
+
+                # Process uploads
+                doc_a_upload.change(
+                    fn=process_document_a,
+                    inputs=[doc_a_upload],
+                    outputs=[doc_a_status]
+                )
+
+                doc_b_upload.change(
+                    fn=process_document_b,
+                    inputs=[doc_b_upload],
+                    outputs=[doc_b_status]
+                )
+
+                with gr.Row():
+                    compare_btn = gr.Button("Comparar Documentos", variant="primary")
+
+                comparison_output = gr.Markdown(label="Resultado de la Comparacion")
+
+                compare_btn.click(
+                    fn=compare_documents,
+                    outputs=[comparison_output]
+                )
+
+                gr.Markdown("---")
+                gr.Markdown("### Vista Previa de Documentos")
+
+                with gr.Row():
+                    with gr.Column():
+                        preview_a_btn = gr.Button("Ver Documento A")
+                        preview_a_output = gr.Markdown()
+
+                        preview_a_btn.click(
+                            fn=lambda: get_document_preview("doc_a"),
+                            outputs=[preview_a_output]
+                        )
+
+                    with gr.Column():
+                        preview_b_btn = gr.Button("Ver Documento B")
+                        preview_b_output = gr.Markdown()
+
+                        preview_b_btn.click(
+                            fn=lambda: get_document_preview("doc_b"),
+                            outputs=[preview_b_output]
+                        )
+
             # Administration tab
             with gr.Tab("Administracion"):
                 gr.Markdown("### Gestion de Documentos")
@@ -316,6 +530,19 @@ def crear_interfaz():
                         stats_btn.click(
                             fn=obtener_stats,
                             outputs=[stats_output]
+                        )
+
+                gr.Markdown("---")
+
+                gr.Markdown("### Feedback de Usuarios (RLHF)")
+                with gr.Row():
+                    with gr.Column():
+                        feedback_stats_btn = gr.Button("Ver Estadisticas de Feedback")
+                        feedback_stats_output = gr.Markdown()
+
+                        feedback_stats_btn.click(
+                            fn=get_feedback_stats,
+                            outputs=[feedback_stats_output]
                         )
 
                 gr.Markdown("---")
