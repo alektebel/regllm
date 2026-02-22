@@ -3,7 +3,13 @@ FastAPI server for Banking Regulatory Assistant.
 Provides REST API endpoints for querying regulatory information.
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+import os
+import time
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -18,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.rag_system import RegulatoryRAGSystem
 from src.verification import SistemaVerificacion, presentar_respuesta
+from src.db import init_db, dispose_engine, log_query, get_query_logs, get_db_stats
+from config import MODEL, INFERENCE
 
 # Set up logging
 logging.basicConfig(
@@ -49,6 +57,106 @@ rag_system: Optional[RegulatoryRAGSystem] = None
 verificador: Optional[SistemaVerificacion] = None
 model = None
 tokenizer = None
+model_path_used: str = "placeholder"
+
+
+# ============================================================================
+# Model Loading
+# ============================================================================
+
+# Map config model names to HuggingFace paths
+AVAILABLE_MODELS = {
+    'qwen2.5-7b': 'Qwen/Qwen2.5-7B-Instruct',
+    'qwen2.5-3b': 'Qwen/Qwen2.5-3B-Instruct',
+    'phi-3-mini': 'microsoft/Phi-3-mini-4k-instruct',
+    'stablelm-3b': 'stabilityai/stablelm-3b-4e1t',
+    'phi-2': 'microsoft/phi-2',
+    'gemma-2b': 'google/gemma-2b-it',
+    'qwen-1.8b': 'Qwen/Qwen2-1.8B-Instruct',
+}
+
+
+def _find_model_path() -> Optional[str]:
+    """Find the best available finetuned model path."""
+    # 1. Explicit env var
+    env_path = os.getenv("MODEL_PATH", "").strip()
+    if env_path and Path(env_path).exists():
+        return env_path
+
+    project_root = Path(__file__).parent.parent
+
+    # 2. GRPO final model
+    grpo_path = project_root / "models" / "grpo" / "final_model"
+    if grpo_path.exists():
+        return str(grpo_path)
+
+    # 3. Latest SFT finetuned run
+    finetuned_dir = project_root / "models" / "finetuned"
+    if finetuned_dir.exists():
+        runs = sorted(finetuned_dir.glob("run_*/final_model"), reverse=True)
+        if runs:
+            return str(runs[0])
+
+    return None
+
+
+def _load_model():
+    """Load the finetuned model with 4-bit quantization. Graceful degradation on failure."""
+    global model, tokenizer, model_path_used
+
+    found_path = _find_model_path()
+    if not found_path:
+        logger.warning("No finetuned model found. Running in placeholder mode.")
+        return
+
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        from peft import PeftModel
+
+        logger.info(f"Loading model from {found_path}...")
+
+        # Resolve base model
+        base_model_name = os.getenv("BASE_MODEL", "").strip()
+        if not base_model_name:
+            base_model_name = MODEL.get('base_model', 'qwen2.5-7b')
+        base_model_hf = AVAILABLE_MODELS.get(base_model_name, base_model_name)
+
+        # Load tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(found_path, trust_remote_code=True)
+
+        # Quantization config
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        bnb_config = None
+        if device == "cuda" and MODEL.get('use_4bit', True):
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+            )
+            logger.info("Using 4-bit quantization")
+
+        # Load base model
+        base = AutoModelForCausalLM.from_pretrained(
+            base_model_hf,
+            quantization_config=bnb_config,
+            device_map="auto" if device == "cuda" else None,
+            trust_remote_code=True,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+        )
+
+        # Load LoRA weights
+        model = PeftModel.from_pretrained(base, found_path)
+        model.eval()
+        model_path_used = found_path
+
+        logger.info(f"Model loaded successfully from {found_path}")
+
+    except Exception as e:
+        logger.warning(f"Failed to load model: {e}. Running in placeholder mode.")
+        model = None
+        tokenizer = None
 
 
 # ============================================================================
@@ -88,6 +196,7 @@ class RespuestaResponse(BaseModel):
     respuesta: str
     fuentes: List[FuenteResponse]
     verificacion: VerificacionResponse
+    confianza: float = Field(0.0, description="Score de confianza global (0-1)")
     advertencias: List[str] = []
     timestamp: str
 
@@ -130,6 +239,12 @@ async def startup_event():
     """Initialize system components on startup."""
     global rag_system, verificador
 
+    # Initialize database (non-blocking — if DB is down, API still works)
+    await init_db()
+
+    # Load LLM model
+    _load_model()
+
     logger.info("Inicializando sistema RAG...")
     try:
         rag_system = RegulatoryRAGSystem()
@@ -154,6 +269,7 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown."""
     logger.info("Cerrando sistema...")
+    await dispose_engine()
 
 
 # ============================================================================
@@ -175,7 +291,7 @@ async def health_check():
     """Check system health."""
     return HealthResponse(
         status="healthy" if rag_system else "initializing",
-        modelo="operativo" if model else "no_cargado",
+        modelo=model_path_used if model else "no_cargado (placeholder)",
         vector_db="conectada" if rag_system else "desconectada",
         total_documentos=rag_system.collection.count() if rag_system else 0,
         timestamp=datetime.now().isoformat()
@@ -198,7 +314,7 @@ async def get_stats():
 
 
 @app.post("/consultar", response_model=RespuestaResponse, tags=["Queries"])
-async def consultar(request: PreguntaRequest):
+async def consultar(request: PreguntaRequest, background_tasks: BackgroundTasks, req: Request):
     """
     Answer a question about banking regulation.
 
@@ -209,6 +325,8 @@ async def consultar(request: PreguntaRequest):
     """
     if not rag_system:
         raise HTTPException(status_code=503, detail="Sistema no inicializado")
+
+    t_start = time.time()
 
     try:
         # Search for relevant sources
@@ -244,8 +362,8 @@ async def consultar(request: PreguntaRequest):
         # Format context for response generation
         contexto = rag_system.formatear_contexto(fuentes)
 
-        # Generate response (placeholder - integrate with LLM)
-        respuesta = _generar_respuesta_placeholder(request.pregunta, fuentes)
+        # Generate response
+        respuesta = _generar_respuesta(request.pregunta, fuentes, contexto)
 
         # Verify response
         resultado_verificacion = verificador.verificar_respuesta(
@@ -277,7 +395,9 @@ async def consultar(request: PreguntaRequest):
         if verif['hallucination']['hallucination_detectada']:
             advertencias.append("Posible informacion no verificada en la respuesta.")
 
-        return RespuestaResponse(
+        latencia_ms = int((time.time() - t_start) * 1000)
+
+        response = RespuestaResponse(
             pregunta=request.pregunta,
             respuesta=respuesta,
             fuentes=fuentes_response,
@@ -289,13 +409,56 @@ async def consultar(request: PreguntaRequest):
                 coherencia=verif['coherencia']['nivel'],
                 es_espanol=verif['idioma']['es_español']
             ),
+            confianza=resultado_verificacion['score_confianza'],
             advertencias=advertencias,
             timestamp=datetime.now().isoformat()
         )
 
+        # Log to DB in background (never blocks response)
+        try:
+            client_ip = req.client.host if req.client else None
+            fuentes_log = [
+                {
+                    "documento": f.documento,
+                    "articulo": f.articulo,
+                    "relevancia": f.relevancia,
+                }
+                for f in fuentes_response
+            ]
+            background_tasks.add_task(
+                log_query,
+                pregunta=request.pregunta,
+                respuesta=respuesta,
+                fuentes=fuentes_log,
+                score_confianza=resultado_verificacion['score_confianza'],
+                nivel_confianza=resultado_verificacion['nivel_confianza'],
+                advertencias=advertencias,
+                modelo=model_path_used,
+                latencia_ms=latencia_ms,
+                ip_cliente=client_ip,
+            )
+        except Exception as e:
+            logger.error(f"Error scheduling DB log: {e}")
+
+        return response
+
     except Exception as e:
         logger.error(f"Error procesando consulta: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/logs", tags=["Admin"])
+async def get_logs(limit: int = 50, offset: int = 0):
+    """Get paginated query logs."""
+    logs = await get_query_logs(limit=limit, offset=offset)
+    return {"logs": logs, "limit": limit, "offset": offset}
+
+
+@app.get("/logs/stats", tags=["Admin"])
+async def get_logs_stats():
+    """Get aggregate query stats."""
+    stats = await get_db_stats()
+    return stats
 
 
 @app.post("/buscar", tags=["Search"])
@@ -446,10 +609,73 @@ async def limpiar_documentos():
 # Helper Functions
 # ============================================================================
 
+def _generar_respuesta(pregunta: str, fuentes: List[Dict], contexto: str) -> str:
+    """
+    Generate a response using the finetuned LLM if available,
+    otherwise fall back to the placeholder.
+    """
+    if model is None or tokenizer is None:
+        return _generar_respuesta_placeholder(pregunta, fuentes)
+
+    try:
+        import torch
+
+        system_prompt = INFERENCE.get('system_prompt', '')
+        user_content = (
+            f"Contexto de documentos regulatorios:\n{contexto}\n\n"
+            f"Pregunta: {pregunta}"
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+
+        if hasattr(tokenizer, 'apply_chat_template'):
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+        else:
+            prompt = (
+                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+                f"<|im_start|>user\n{user_content}<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
+
+        inputs = tokenizer(
+            prompt, return_tensors="pt", truncation=True, max_length=2048
+        ).to(model.device)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=INFERENCE.get('max_new_tokens', 300),
+                temperature=INFERENCE.get('temperature', 0.7),
+                top_p=INFERENCE.get('top_p', 0.95),
+                do_sample=INFERENCE.get('do_sample', True),
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+
+        # Decode only the new tokens
+        new_tokens = outputs[0][inputs['input_ids'].shape[1]:]
+        respuesta = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+        if not respuesta:
+            logger.warning("LLM returned empty response, falling back to placeholder")
+            return _generar_respuesta_placeholder(pregunta, fuentes)
+
+        return respuesta
+
+    except Exception as e:
+        logger.error(f"LLM generation failed: {e}. Falling back to placeholder.")
+        return _generar_respuesta_placeholder(pregunta, fuentes)
+
+
 def _generar_respuesta_placeholder(pregunta: str, fuentes: List[Dict]) -> str:
     """
     Generate a placeholder response based on sources.
-    Replace this with actual LLM integration.
+    Used when LLM is not available.
     """
     if not fuentes:
         return "No se encontraron fuentes relevantes para responder esta pregunta."
@@ -482,8 +708,10 @@ def _generar_respuesta_placeholder(pregunta: str, fuentes: List[Dict]) -> str:
 # Run Server
 # ============================================================================
 
-def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
+def run_server(host: str = None, port: int = None, reload: bool = False):
     """Run the FastAPI server."""
+    host = host or os.getenv("API_HOST", "0.0.0.0")
+    port = port or int(os.getenv("API_PORT", "8000"))
     uvicorn.run(
         "api.main:app",
         host=host,
@@ -497,8 +725,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Asistente Regulatorio API Server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--host", default=None, help="Host to bind to")
+    parser.add_argument("--port", type=int, default=None, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
 
     args = parser.parse_args()

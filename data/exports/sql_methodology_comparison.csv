@@ -1,0 +1,641 @@
+id,system_prompt,user_query,assistant_response
+1,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este SQL que calcula la PD:
+```sql
+SELECT cliente_id,
+       COUNT(CASE WHEN default_flag = 1 THEN 1 END) / COUNT(*) as pd
+FROM historico_clientes
+WHERE fecha >= DATEADD(year, -5, GETDATE())
+GROUP BY cliente_id;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Ventana temporal insuficiente**: El código usa 5 años, pero EBA/GL/2017/16 párrafo 74 requiere mínimo 5 años para PD y recomienda ciclo económico completo (7-10 años).
+2. ❌ **Definición de default incompleta**: Solo usa default_flag=1 sin verificar los 90 días de mora ni unlikely to pay según CRR Art. 178.
+3. ❌ **Sin ajuste al ciclo**: Falta ajuste Through-The-Cycle (TTC) o Point-In-Time (PIT) según metodología.
+4. ⚠️ **Sin margen de conservadurismo**: EBA/GL/2017/16 párrafo 122 requiere añadir margen cuando hay incertidumbre.
+
+**Código corregido:**
+```sql
+SELECT cliente_id,
+       (COUNT(CASE WHEN default_90d = 1 OR unlikely_to_pay = 1 THEN 1 END) / NULLIF(COUNT(*), 0)) 
+       * (1 + margin_conservadurismo) as pd_ajustada
+FROM historico_clientes
+WHERE fecha >= DATEADD(year, -7, GETDATE())
+GROUP BY cliente_id;
+```"
+2,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este cálculo de LGD:
+```sql
+SELECT segmento,
+       AVG(1 - recuperacion_total / exposicion_default) as lgd
+FROM defaults_historicos
+GROUP BY segmento;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Sin descuento temporal**: EBA/GL/2017/16 párrafo 156 exige descontar flujos de recuperación a valor presente usando tasa apropiada.
+2. ❌ **Costes no incluidos**: Falta incluir costes directos e indirectos de recuperación (párrafo 158).
+3. ❌ **Sin downturn LGD**: CRR Art. 181(1)(b) requiere LGD en condiciones de recesión, no solo promedio histórico.
+4. ⚠️ **Workout period**: No se verifica que los defaults estén completamente resueltos.
+
+**Código corregido:**
+```sql
+SELECT segmento,
+       AVG(1 - (recuperacion_descontada - costes_directos - costes_indirectos) 
+           / NULLIF(exposicion_default, 0)) as lgd_workout,
+       MAX(lgd_downturn_factor) as lgd_downturn
+FROM defaults_historicos
+WHERE workout_completo = 1
+GROUP BY segmento;
+```"
+3,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este SQL de EAD para líneas de crédito:
+```sql
+SELECT contrato_id,
+       saldo_dispuesto + (limite_credito - saldo_dispuesto) * 0.75 as ead
+FROM lineas_credito;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **CCF fijo incorrecto**: El factor 0.75 es arbitrario. EBA/GL/2017/16 párrafo 189 requiere estimar CCF con datos históricos propios.
+2. ❌ **Sin horizonte de 12 meses**: El CCF debe reflejar disposiciones adicionales en los 12 meses previos al default (párrafo 185).
+3. ❌ **Sin segmentación**: CCF debe estimarse por tipo de producto y perfil de riesgo.
+4. ⚠️ **Floor regulatorio**: CRR establece floors para CCF según tipo de exposición.
+
+**Código corregido:**
+```sql
+SELECT c.contrato_id,
+       c.saldo_dispuesto + 
+       (c.limite_credito - c.saldo_dispuesto) * 
+       GREATEST(ccf.ccf_estimado, ccf.ccf_floor_regulatorio) as ead
+FROM lineas_credito c
+JOIN ccf_por_segmento ccf ON c.segmento = ccf.segmento
+WHERE ccf.ventana_observacion = '12M';
+```"
+4,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa esta query de calibración de PD:
+```sql
+SELECT rating_bucket,
+       SUM(default_1y) / COUNT(*) as tasa_default_observada
+FROM portfolio_historico
+GROUP BY rating_bucket
+ORDER BY rating_bucket;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Sin long-run average**: EBA/GL/2017/16 párrafo 79 requiere PD como media de largo plazo, no tasa puntual.
+2. ❌ **Falta monotonicidad**: No se verifica que PD sea creciente con el rating (párrafo 99).
+3. ❌ **Sin test de discriminación**: Falta calcular Gini/AUC para validar poder discriminatorio.
+4. ⚠️ **Bins pequeños**: No hay control de mínimo de observaciones por bucket.
+
+**Código corregido:**
+```sql
+WITH tasas_anuales AS (
+    SELECT rating_bucket, año,
+           SUM(default_1y)*1.0 / COUNT(*) as dr_anual,
+           COUNT(*) as n_obs
+    FROM portfolio_historico
+    GROUP BY rating_bucket, año
+)
+SELECT rating_bucket,
+       AVG(dr_anual) as pd_long_run,
+       MIN(n_obs) as min_observaciones,
+       COUNT(DISTINCT año) as años_datos
+FROM tasas_anuales
+GROUP BY rating_bucket
+HAVING MIN(n_obs) >= 20
+ORDER BY pd_long_run;  -- Verificar monotonicidad
+```"
+5,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este cálculo de provisiones IFRS9:
+```sql
+SELECT cuenta_id,
+       CASE stage
+           WHEN 1 THEN ead * pd_12m * lgd
+           WHEN 2 THEN ead * pd_lifetime * lgd
+           WHEN 3 THEN ead * lgd
+       END as provision_ecl
+FROM cartera_creditos;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Sin descuento temporal**: IFRS 9 párrafo 5.5.17 requiere descontar ECL a valor presente usando TIE original.
+2. ❌ **Stage 3 incorrecto**: Para Stage 3, LGD debe ser específica del activo deteriorado, no genérica.
+3. ❌ **Sin escenarios macro**: IFRS 9 B5.5.42 exige ponderar escenarios macroeconómicos (base, adverso, favorable).
+4. ⚠️ **EAD sin CCF**: Para compromisos, EAD debe incluir factor de conversión.
+
+**Código corregido:**
+```sql
+SELECT cuenta_id,
+       CASE stage
+           WHEN 1 THEN ead * pd_12m * lgd / POWER(1 + tie_original, plazo_residual)
+           WHEN 2 THEN SUM(ead_t * pd_marginal_t * lgd_t / POWER(1 + tie_original, t))
+           WHEN 3 THEN ead * lgd_especifica / POWER(1 + tie_original, plazo_recuperacion)
+       END * escenario_ponderado as provision_ecl
+FROM cartera_creditos
+CROSS JOIN escenarios_macro;
+```"
+6,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este SQL de backtesting de PD:
+```sql
+SELECT rating,
+       COUNT(CASE WHEN real_default = 1 THEN 1 END) as defaults_reales,
+       SUM(pd_estimada) as defaults_esperados
+FROM backtesting_portfolio
+GROUP BY rating;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Sin test estadístico**: EBA/GL/2017/16 párrafo 231 requiere test binomial o chi-cuadrado para evaluar desviaciones.
+2. ❌ **Falta intervalo de confianza**: Debe calcularse IC al 95% para determinar si desviación es significativa.
+3. ❌ **Sin traffic light approach**: Supervisores usan semáforo (verde/amarillo/rojo) según severidad.
+4. ⚠️ **Agregación temporal**: Debe analizarse por año para detectar tendencias.
+
+**Código corregido:**
+```sql
+WITH bt_stats AS (
+    SELECT rating, año,
+           COUNT(*) as n,
+           SUM(CASE WHEN real_default = 1 THEN 1 ELSE 0 END) as d_real,
+           SUM(pd_estimada) as d_esperado,
+           AVG(pd_estimada) as pd_media
+    FROM backtesting_portfolio
+    GROUP BY rating, año
+)
+SELECT rating, año, n, d_real, d_esperado,
+       -- Test binomial aproximado
+       (d_real - d_esperado) / SQRT(n * pd_media * (1 - pd_media)) as z_score,
+       CASE 
+           WHEN ABS(z_score) < 1.96 THEN 'VERDE'
+           WHEN ABS(z_score) < 2.58 THEN 'AMARILLO'
+           ELSE 'ROJO'
+       END as semaforo
+FROM bt_stats;
+```"
+7,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza esta definición de default:
+```sql
+SELECT cliente_id,
+       CASE WHEN dias_mora > 90 THEN 1 ELSE 0 END as default_flag
+FROM clientes;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Definición incompleta**: CRR Art. 178 requiere TAMBIÉN unlikely to pay (UTP), no solo 90 días mora.
+2. ❌ **Sin materialidad**: Debe aplicarse umbral de materialidad (1% o 100€ para retail, según EBA/GL/2016/07).
+3. ❌ **Sin contagio**: Falta propagación del default a operaciones relacionadas del mismo cliente.
+4. ❌ **Sin cura**: No hay lógica de período de cura (mínimo 3 meses según EBA).
+
+**Código corregido:**
+```sql
+SELECT c.cliente_id,
+       CASE 
+           WHEN c.dias_mora > 90 
+                AND c.importe_vencido > GREATEST(c.exposicion * 0.01, 100)
+           THEN 1
+           WHEN c.unlikely_to_pay = 1 THEN 1
+           WHEN c.reestructurado_distress = 1 THEN 1
+           WHEN c.cliente_id IN (SELECT cliente_id FROM defaults_contagio) THEN 1
+           ELSE 0
+       END as default_flag,
+       CASE WHEN dias_desde_cura >= 90 THEN 1 ELSE 0 END as curado
+FROM clientes c;
+```"
+8,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este cálculo de RWA:
+```sql
+SELECT SUM(ead * pd * lgd * 12.5 * 0.08) as rwa
+FROM cartera_irb;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Fórmula IRB incorrecta**: CRR Art. 153 usa función de correlación y distribución normal, no multiplicación simple.
+2. ❌ **Sin correlación de activos**: Falta R = 0.12*(1-EXP(-50*PD))/(1-EXP(-50)) + 0.24*(1-(1-EXP(-50*PD))/(1-EXP(-50))).
+3. ❌ **Sin ajuste por madurez**: Falta factor de ajuste por vencimiento M según Art. 162.
+4. ❌ **Factor 12.5 mal aplicado**: Es 1/0.08 = 12.5, pero la fórmula es K * 12.5 * EAD.
+
+**Código corregido:**
+```sql
+WITH params AS (
+    SELECT ead, pd, lgd, m as madurez,
+           0.12 * (1-EXP(-50*pd))/(1-EXP(-50)) + 0.24 * (1-(1-EXP(-50*pd))/(1-EXP(-50))) as R,
+           (1 + (m-2.5) * b) / (1 - 1.5*b) as ajuste_madurez
+    FROM cartera_irb
+)
+SELECT SUM(
+    (lgd * NORMDIST_INV(0.999) * SQRT(R/(1-R)) + lgd * NORMDIST_INV(pd) * SQRT(1/(1-R)) - pd*lgd)
+    * ajuste_madurez * 12.5 * ead
+) as rwa
+FROM params;
+```"
+9,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este SQL de segmentación para modelos PD:
+```sql
+SELECT CASE
+           WHEN ingresos > 1000000 THEN 'CORPORATE'
+           ELSE 'RETAIL'
+       END as segmento
+FROM clientes;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Criterio único insuficiente**: CRR Art. 147 define categorías por tipo de contraparte, no solo ingresos.
+2. ❌ **Umbral incorrecto**: SME es ventas anuales < 50M€ (Art. 501), corporate > 50M€.
+3. ❌ **Sin subcategorías retail**: Debe distinguir hipotecas, renovables, otros retail (Art. 154).
+4. ⚠️ **Falta granularidad**: EBA requiere pools homogéneos por características de riesgo.
+
+**Código corregido:**
+```sql
+SELECT cliente_id,
+       CASE
+           WHEN tipo_contraparte = 'SOBERANO' THEN 'SOBERANOS'
+           WHEN tipo_contraparte = 'INSTITUCION' THEN 'INSTITUCIONES'
+           WHEN ventas_anuales >= 50000000 THEN 'CORPORATE'
+           WHEN ventas_anuales < 50000000 AND tipo = 'EMPRESA' THEN 'SME_CORPORATE'
+           WHEN garantia_hipotecaria = 1 THEN 'RETAIL_HIPOTECAS'
+           WHEN tipo_producto = 'RENOVABLE' THEN 'RETAIL_RENOVABLE_QRRE'
+           WHEN exposicion < 1000000 AND granularidad_ok = 1 THEN 'RETAIL_OTROS'
+           ELSE 'SME_RETAIL'
+       END as segmento_irb
+FROM clientes;
+```"
+10,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este cálculo de matriz de transición:
+```sql
+SELECT rating_inicio, rating_fin,
+       COUNT(*) as transiciones
+FROM historico_ratings
+GROUP BY rating_inicio, rating_fin;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Sin normalización**: Debe expresarse como probabilidad (%), no conteos absolutos.
+2. ❌ **Sin horizonte temporal**: EBA requiere matrices a 1 año, debe filtrarse por período.
+3. ❌ **Falta estado absorbente**: Default debe ser estado absorbente (no transiciones desde default).
+4. ⚠️ **Sin cohort vs duration**: Debe especificarse método de estimación.
+
+**Código corregido:**
+```sql
+WITH transiciones AS (
+    SELECT rating_inicio, rating_fin,
+           COUNT(*) as n_trans
+    FROM historico_ratings
+    WHERE DATEDIFF(month, fecha_inicio, fecha_fin) = 12
+      AND rating_inicio != 'DEFAULT'  -- Estado absorbente
+    GROUP BY rating_inicio, rating_fin
+),
+totales AS (
+    SELECT rating_inicio, SUM(n_trans) as total
+    FROM transiciones
+    GROUP BY rating_inicio
+)
+SELECT t.rating_inicio, t.rating_fin,
+       t.n_trans * 100.0 / NULLIF(tot.total, 0) as prob_transicion_pct
+FROM transiciones t
+JOIN totales tot ON t.rating_inicio = tot.rating_inicio
+ORDER BY t.rating_inicio, t.rating_fin;
+```"
+11,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este SQL de stress testing de PD:
+```sql
+SELECT cliente_id,
+       pd_base * 1.5 as pd_stress
+FROM cartera;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Factor arbitrario**: El multiplicador 1.5 no está basado en análisis macroeconómico.
+2. ❌ **Sin modelo satélite**: EBA/GL/2018/04 requiere vincular PD a variables macro (PIB, desempleo).
+3. ❌ **Sin escenarios EBA**: Debe usarse escenario adverso oficial de EBA stress test.
+4. ⚠️ **Sin cap**: PD estresada no puede superar 100%.
+
+**Código corregido:**
+```sql
+WITH escenario_adverso AS (
+    SELECT sector,
+           pib_shock, desempleo_shock, tipos_shock
+    FROM escenarios_eba
+    WHERE tipo = 'ADVERSO' AND año = 2024
+)
+SELECT c.cliente_id,
+       LEAST(1.0,
+           c.pd_base * EXP(
+               m.beta_pib * e.pib_shock +
+               m.beta_desempleo * e.desempleo_shock +
+               m.beta_tipos * e.tipos_shock
+           )
+       ) as pd_stress
+FROM cartera c
+JOIN modelos_satelite m ON c.segmento = m.segmento
+JOIN escenario_adverso e ON c.sector = e.sector;
+```"
+12,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa esta validación de poder discriminatorio:
+```sql
+SELECT 
+    (SELECT COUNT(*) FROM pares WHERE score_default > score_no_default) /
+    (SELECT COUNT(*) FROM pares) as gini
+FROM dual;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Fórmula Gini incorrecta**: Gini = 2*AUC - 1, no ratio de pares concordantes.
+2. ❌ **Sin empates**: Debe considerar pares empatados (0.5 de crédito).
+3. ❌ **Sin intervalo confianza**: EBA requiere bootstrap o DeLong para IC.
+4. ⚠️ **Umbral mínimo**: Gini > 0.40 generalmente aceptable, < 0.30 problemático.
+
+**Código corregido:**
+```sql
+WITH pares_ordenados AS (
+    SELECT 
+        SUM(CASE 
+            WHEN d.score > nd.score THEN 1.0
+            WHEN d.score = nd.score THEN 0.5
+            ELSE 0.0
+        END) as concordantes,
+        COUNT(*) as total_pares
+    FROM defaults d
+    CROSS JOIN no_defaults nd
+),
+auc_calc AS (
+    SELECT concordantes / NULLIF(total_pares, 0) as auc
+    FROM pares_ordenados
+)
+SELECT 
+    auc,
+    2 * auc - 1 as gini,
+    CASE 
+        WHEN 2*auc-1 >= 0.50 THEN 'EXCELENTE'
+        WHEN 2*auc-1 >= 0.40 THEN 'BUENO'
+        WHEN 2*auc-1 >= 0.30 THEN 'ACEPTABLE'
+        ELSE 'INSUFICIENTE'
+    END as clasificacion
+FROM auc_calc;
+```"
+13,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este cálculo de capital por riesgo de crédito:
+```sql
+SELECT SUM(rwa * 0.08) as capital_requerido
+FROM exposiciones_irb;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ⚠️ **Solo Pilar 1**: El 8% es mínimo regulatorio, falta buffer de conservación (2.5%), contracíclico y G-SIB/O-SII.
+2. ❌ **Sin Pilar 2**: Falta P2R (Pillar 2 Requirement) específico del supervisor.
+3. ❌ **Sin output floor**: Basel III final (CRR3) introduce floor del 72.5% vs método estándar.
+4. ⚠️ **Sin MREL/TLAC**: Entidades sistémicas tienen requerimientos adicionales.
+
+**Código corregido:**
+```sql
+WITH rwa_total AS (SELECT SUM(rwa) as rwa FROM exposiciones_irb),
+     floor_calc AS (
+         SELECT SUM(rwa_estandar) * 0.725 as rwa_floor 
+         FROM exposiciones_estandar
+     ),
+     buffers AS (
+         SELECT 0.025 as conservacion, 0.01 as contraciclico, 0.02 as gsib
+     )
+SELECT 
+    GREATEST(r.rwa, f.rwa_floor) as rwa_aplicable,
+    GREATEST(r.rwa, f.rwa_floor) * (0.08 + b.conservacion + b.contraciclico + b.gsib) as capital_total,
+    GREATEST(r.rwa, f.rwa_floor) * 0.08 as pilar1,
+    GREATEST(r.rwa, f.rwa_floor) * p2r.ratio as pilar2
+FROM rwa_total r, floor_calc f, buffers b
+JOIN pilar2_requerimientos p2r ON 1=1;
+```"
+14,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este cálculo de pérdida esperada:
+```sql
+SELECT SUM(ead * pd * lgd) as expected_loss
+FROM cartera;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ✅ **Fórmula correcta**: EL = EAD × PD × LGD es la fórmula estándar.
+2. ⚠️ **Sin comparación con provisiones**: CRR Art. 159 compara EL con provisiones para ajuste de capital.
+3. ⚠️ **Sin desglose**: Debe separarse por categoría de exposición y estado (performing/non-performing).
+4. ⚠️ **Consistencia parámetros**: Verificar que PD y LGD sean consistentes (TTC vs PIT).
+
+**Código mejorado:**
+```sql
+SELECT 
+    segmento,
+    estado,
+    SUM(ead * pd * lgd) as expected_loss,
+    SUM(provision_ifrs9) as provisiones,
+    SUM(ead * pd * lgd) - SUM(provision_ifrs9) as shortfall,
+    CASE 
+        WHEN SUM(ead * pd * lgd) > SUM(provision_ifrs9) 
+        THEN 'DEDUCIR_CET1'  -- Art. 159(1)
+        ELSE 'AÑADIR_T2'     -- Art. 159(2), máx 0.6% RWA
+    END as tratamiento_capital
+FROM cartera
+GROUP BY segmento, estado;
+```"
+15,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este SQL de cure rate:
+```sql
+SELECT COUNT(CASE WHEN curado = 1 THEN 1 END) / COUNT(*) as cure_rate
+FROM defaults_historicos;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Sin período de observación**: EBA requiere período mínimo de cura (típicamente 12 meses sin reincidencia).
+2. ❌ **Sin probation period**: Debe verificarse que cliente permanece sano tras cura (mínimo 3 meses).
+3. ❌ **Redefault no considerado**: Debe medir tasa de re-default post-cura.
+4. ⚠️ **Impacto en LGD**: Cure rate afecta LGD workout vs LGD cure.
+
+**Código corregido:**
+```sql
+WITH curas AS (
+    SELECT d.default_id,
+           d.fecha_default,
+           c.fecha_cura,
+           DATEDIFF(month, c.fecha_cura, GETDATE()) as meses_desde_cura,
+           CASE WHEN rd.redefault_id IS NOT NULL THEN 1 ELSE 0 END as redefault
+    FROM defaults_historicos d
+    LEFT JOIN curas_registradas c ON d.default_id = c.default_id
+    LEFT JOIN redefaults rd ON c.cura_id = rd.cura_origen_id
+)
+SELECT 
+    COUNT(CASE WHEN fecha_cura IS NOT NULL AND meses_desde_cura >= 12 THEN 1 END) 
+        * 1.0 / NULLIF(COUNT(*), 0) as cure_rate_estable,
+    AVG(CASE WHEN redefault = 1 THEN 1.0 ELSE 0.0 END) as tasa_redefault,
+    1 - AVG(CASE WHEN redefault = 1 THEN 1.0 ELSE 0.0 END) as cure_rate_neto
+FROM curas
+WHERE fecha_default <= DATEADD(year, -2, GETDATE());  -- Cohortes maduras
+```"
+16,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este SQL de concentración sectorial:
+```sql
+SELECT sector, SUM(exposicion) as exposicion_total
+FROM cartera
+GROUP BY sector
+ORDER BY exposicion_total DESC;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ⚠️ **Sin límites de concentración**: CRR Art. 395 limita grandes exposiciones al 25% del capital.
+2. ❌ **Sin HHI**: Debe calcularse índice Herfindahl-Hirschman para medir concentración.
+3. ❌ **Falta correlación intra-sector**: Pilar 2 requiere add-on por concentración.
+4. ⚠️ **Sin connected parties**: Grupos conectados deben agregarse.
+
+**Código mejorado:**
+```sql
+WITH exposiciones AS (
+    SELECT sector, SUM(exposicion) as exp_sector
+    FROM cartera
+    GROUP BY sector
+),
+totales AS (
+    SELECT SUM(exp_sector) as exp_total FROM exposiciones
+),
+capital AS (
+    SELECT cet1 FROM ratios_capital WHERE fecha = (SELECT MAX(fecha) FROM ratios_capital)
+)
+SELECT 
+    e.sector,
+    e.exp_sector,
+    e.exp_sector * 100.0 / t.exp_total as pct_cartera,
+    e.exp_sector / c.cet1 as pct_capital,
+    CASE WHEN e.exp_sector / c.cet1 > 0.25 THEN 'EXCESO_LIMITE' ELSE 'OK' END as limite_25pct,
+    POWER(e.exp_sector / t.exp_total, 2) as hhi_componente
+FROM exposiciones e, totales t, capital c
+ORDER BY e.exp_sector DESC;
+
+-- HHI total
+SELECT SUM(POWER(exp_sector / (SELECT SUM(exp_sector) FROM exposiciones), 2)) as hhi_total
+FROM exposiciones;
+```"
+17,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este cálculo de margen de conservadurismo:
+```sql
+SELECT pd_estimada * 1.10 as pd_con_margen
+FROM modelos_pd;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Margen arbitrario**: 10% no está justificado por análisis de incertidumbre.
+2. ❌ **Sin componentes MoC**: EBA/GL/2017/16 párrafo 122-124 requiere MoC por: (A) datos, (B) métodos, (C) modelo.
+3. ❌ **Sin proporcionalidad**: MoC debe ser mayor donde hay más incertidumbre.
+4. ⚠️ **Documentación**: Debe justificarse cuantitativamente.
+
+**Código corregido:**
+```sql
+WITH incertidumbres AS (
+    SELECT modelo_id,
+           pd_estimada,
+           -- Componente A: Calidad de datos
+           CASE 
+               WHEN n_observaciones < 100 THEN 0.05
+               WHEN n_observaciones < 500 THEN 0.03
+               ELSE 0.01
+           END as moc_datos,
+           -- Componente B: Metodología
+           CASE 
+               WHEN metodo = 'EXPERT' THEN 0.05
+               WHEN metodo = 'STATISTICAL' THEN 0.02
+               ELSE 0.03
+           END as moc_metodo,
+           -- Componente C: Error de estimación
+           error_estandar / NULLIF(pd_estimada, 0) as moc_estimacion
+    FROM modelos_pd
+)
+SELECT modelo_id,
+       pd_estimada,
+       pd_estimada * (1 + moc_datos + moc_metodo + COALESCE(moc_estimacion, 0.02)) as pd_con_moc,
+       moc_datos + moc_metodo + COALESCE(moc_estimacion, 0.02) as moc_total_pct
+FROM incertidumbres;
+```"
+18,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este SQL de cálculo de exposiciones off-balance:
+```sql
+SELECT contrato_id, limite - dispuesto as off_balance
+FROM lineas_credito;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ✅ **Cálculo base correcto**: Off-balance = Límite - Dispuesto.
+2. ❌ **Sin CCF para EAD**: CRR Art. 166 requiere aplicar factor de conversión.
+3. ❌ **Sin distinción por tipo**: CCF varía según compromiso (revocable/irrevocable).
+4. ⚠️ **Compromisos revocables**: Antes tenían CCF=0%, ahora 10% bajo Basel III final.
+
+**Código corregido:**
+```sql
+SELECT 
+    c.contrato_id,
+    c.limite - c.dispuesto as off_balance,
+    CASE c.tipo_compromiso
+        WHEN 'IRREVOCABLE' THEN 
+            CASE c.producto
+                WHEN 'LINEA_LIQUIDEZ' THEN 1.00  -- 100%
+                WHEN 'COMERCIO_EXTERIOR' THEN 0.50
+                ELSE ccf.ccf_estimado
+            END
+        WHEN 'REVOCABLE_INCONDICIONAL' THEN 0.10  -- Basel III final
+        ELSE 0.40  -- Otros
+    END as ccf,
+    c.dispuesto + (c.limite - c.dispuesto) * ccf as ead_total
+FROM lineas_credito c
+LEFT JOIN ccf_modelos ccf ON c.segmento = ccf.segmento;
+```"
+19,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Analiza este SQL de vintage analysis:
+```sql
+SELECT fecha_originacion, COUNT(*) as num_creditos
+FROM cartera
+GROUP BY fecha_originacion;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ❌ **Sin tasas de default**: Vintage analysis requiere medir default rates por cohorte.
+2. ❌ **Sin maduración**: Debe mostrar evolución temporal de cada vintage.
+3. ❌ **Sin normalización**: Tasas deben ser acumuladas y/o marginales.
+4. ⚠️ **Granularidad**: Típicamente por trimestre o año de originación.
+
+**Código corregido:**
+```sql
+WITH vintage_data AS (
+    SELECT 
+        DATE_TRUNC('quarter', fecha_originacion) as vintage,
+        DATEDIFF(month, fecha_originacion, COALESCE(fecha_default, GETDATE())) as mob,
+        CASE WHEN default_flag = 1 THEN 1 ELSE 0 END as default_ind,
+        1 as credito
+    FROM cartera
+)
+SELECT 
+    vintage,
+    mob as months_on_books,
+    COUNT(*) as creditos_originados,
+    SUM(default_ind) as defaults_acumulados,
+    SUM(default_ind) * 100.0 / COUNT(*) as tasa_default_acumulada,
+    SUM(default_ind) - LAG(SUM(default_ind)) OVER (PARTITION BY vintage ORDER BY mob) 
+        as defaults_marginales
+FROM vintage_data
+WHERE mob BETWEEN 0 AND 36  -- Primeros 3 años
+GROUP BY vintage, mob
+ORDER BY vintage, mob;
+```"
+20,"Eres un experto en riesgo de crédito que revisa código SQL para verificar su conformidad con las metodologías de estimación de parámetros IRB (PD, LGD, EAD) según las directrices EBA/GL/2017/16 y normativa de Banco de España.","Revisa este SQL de migración entre stages IFRS9:
+```sql
+SELECT old_stage, new_stage, COUNT(*) as migraciones
+FROM stage_changes
+GROUP BY old_stage, new_stage;
+```","**ANÁLISIS DE CONFORMIDAD METODOLÓGICA**
+
+**Hallazgos:**
+1. ⚠️ **Sin importe**: Debe ponderar por exposición, no solo contar operaciones.
+2. ❌ **Sin drivers de migración**: IFRS 9 B5.5.17 requiere analizar causas del SICR.
+3. ❌ **Sin temporal**: Debe segmentarse por período para detectar tendencias.
+4. ⚠️ **Sin impacto P&L**: Migración Stage 1→2 aumenta provisiones significativamente.
+
+**Código corregido:**
+```sql
+WITH migraciones AS (
+    SELECT 
+        sc.periodo,
+        sc.old_stage,
+        sc.new_stage,
+        sc.operacion_id,
+        c.ead,
+        c.provision_old,
+        c.provision_new,
+        sc.driver_migracion  -- 30dpd, watch_list, sector_deterioro, etc.
+    FROM stage_changes sc
+    JOIN cartera c ON sc.operacion_id = c.operacion_id
+)
+SELECT 
+    periodo,
+    old_stage,
+    new_stage,
+    COUNT(*) as num_operaciones,
+    SUM(ead) as exposicion_migrada,
+    SUM(provision_new - provision_old) as impacto_provisiones,
+    driver_migracion,
+    COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY periodo, old_stage) as pct_migracion
+FROM migraciones
+GROUP BY periodo, old_stage, new_stage, driver_migracion
+ORDER BY periodo, old_stage, new_stage;
+```"

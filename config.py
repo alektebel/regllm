@@ -246,6 +246,33 @@ TELEGRAM = {
 # ============================================================================
 # Logging Configuration
 # ============================================================================
+# ============================================================================
+# GRPO (Group Relative Policy Optimization) Configuration
+# ============================================================================
+GRPO = {
+    'group_size': 4,                    # Completions per prompt
+    'learning_rate': 1e-5,
+    'epochs': 1,
+    'batch_size': 2,
+    'gradient_accumulation_steps': 4,
+    'max_completion_length': 300,
+    'beta': 0.04,                       # KL penalty
+    'lora': {
+        'r': 16,                        # Smaller than SFT (64) for memory
+        'lora_alpha': 32,
+        'lora_dropout': 0.05,
+        'target_modules': ["q_proj", "k_proj", "v_proj", "o_proj"],
+    },
+    'reward_weights': {
+        'keyword': 0.5,
+        'source': 0.3,
+        'format': 0.2,
+    },
+}
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
 LOGGING = {
     'level': 'INFO',
     'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',

@@ -3,6 +3,7 @@ Pytest configuration and fixtures for RegLLM tests.
 """
 
 import sys
+import json
 from pathlib import Path
 
 # Add project root to path to allow direct imports
@@ -14,6 +15,61 @@ import pytest
 import tempfile
 import shutil
 
+
+# ============================================================================
+# LLM Judge Fixtures
+# ============================================================================
+
+@pytest.fixture(scope="session")
+def llm_judge():
+    """Session-scoped LLM judge fixture. Skips if no GPU available."""
+    from src.llm_judge import LLMJudge
+
+    judge = LLMJudge()
+    if not judge.available:
+        pytest.skip("GPU not available for LLM judge")
+    judge.load_model()
+    return judge
+
+
+@pytest.fixture(scope="session")
+def ground_truth_data():
+    """Load ground truth QA dataset."""
+    gt_path = project_root / "data" / "test_ground_truth.json"
+    if not gt_path.exists():
+        pytest.skip(f"Ground truth file not found: {gt_path}")
+
+    with open(gt_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    return data["entries"]
+
+
+@pytest.fixture(scope="session")
+def financial_qa(ground_truth_data):
+    """Financial QA entries from ground truth."""
+    return [e for e in ground_truth_data if e["category"] == "financial"]
+
+
+@pytest.fixture(scope="session")
+def regulatory_qa(ground_truth_data):
+    """Regulatory QA entries from ground truth."""
+    return [e for e in ground_truth_data if e["category"] == "regulatory"]
+
+
+@pytest.fixture(scope="session")
+def rag_test_client():
+    """Async httpx test client for the FastAPI app."""
+    import httpx
+    from api.main import app
+
+    with httpx.Client(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        yield client
+
+
+# ============================================================================
+# Existing Fixtures
+# ============================================================================
 
 @pytest.fixture
 def sample_methodology_content():

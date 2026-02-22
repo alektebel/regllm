@@ -25,6 +25,8 @@ venv/
 ENV/
 env/
 .venv
+*.env/
+regllm.env/
 
 # IDE
 .vscode/
@@ -36,13 +38,19 @@ env/
 
 # Data and models (large files)
 data/raw/*.json
+data/raw/**/*.pdf
 data/processed/*.json
+data/processed/**/*.json
+!data/banks_urls.json
 models/finetuned/
+models/qwen*/
 *.bin
 *.pth
 *.pt
 *.ckpt
 *.safetensors
+wandb/
+runs/
 
 # Logs and plots
 logs/*.png
@@ -67,3 +75,9 @@ tmp/
 # OS
 Thumbs.db
 .DS_Store
+
+# ChromaDB binary index files (regeneratable)
+vector_db/chroma_db/*/
+
+# pynvml binary (installed separately)
+pynvml

@@ -1,396 +1,675 @@
-# Spanish Banking Regulation LLM (RegLLM)
+# RegLLM — Regulatory LLM for Banking & Credit Risk
 
-A finetuned language model for Spanish banking regulation compliance, specialized in credit risk parameters and regulatory requirements. Now with **RAG (Retrieval-Augmented Generation)** for more accurate, source-grounded responses.
+A complete pipeline for fine-tuning open-source LLMs on banking regulation and credit risk documents. Includes automatic QA pair generation from PDFs, supervised fine-tuning, RLHF (GRPO/DPO), a RAG system, and a production-ready REST API.
 
-## Overview
+---
 
-This project finetunes a lightweight 7B parameter model on Spanish banking regulation documents to provide accurate, source-cited responses to compliance questions. It uses a RAG system with ChromaDB for semantic search and hybrid retrieval.
+## Table of Contents
 
-**Key Features:**
-- Trained on official documents from Bank of Spain, ECB, BOE, CNMV, and Basel Committee
-- Specialized in credit risk parameters (PD, LGD, EAD, IRB methods)
-- **RAG System** with ChromaDB for accurate source retrieval
-- **Hybrid Search** combining semantic embeddings with BM25 keywords
-- **Response Verification** with citation checking and confidence scoring
-- **Enhanced Scraper** with LinkedIn and JavaScript-heavy site support
-- Always cites sources and admits uncertainty when appropriate
-- REST API (FastAPI) for integration
-- Interactive web and CLI interfaces
+1. [What it does](#what-it-does)
+2. [Architecture](#architecture)
+3. [Quick Start](#quick-start)
+4. [Installation](#installation)
+5. [Data Pipeline](#data-pipeline)
+6. [QA Pair Generation from Documents](#qa-pair-generation-from-documents)
+7. [Fine-tuning](#fine-tuning)
+8. [Reinforcement Learning (GRPO)](#reinforcement-learning-grpo)
+9. [REST API](#rest-api)
+10. [Configuration](#configuration)
+11. [Project Structure](#project-structure)
+12. [Hardware Requirements](#hardware-requirements)
+13. [Troubleshooting](#troubleshooting)
+
+---
+
+## What it does
+
+RegLLM trains language models to answer questions about:
+
+- **Banking regulation**: EBA Guidelines, CRR/CRD, Basel accords
+- **Credit risk methodology**: PD/LGD/EAD estimation, IRB, IFRS 9, stress testing
+- **Spanish bank financials**: Santander, BBVA, CaixaBank, Sabadell, Kutxabank (2022–2023)
+- **SQL methodology review**: validates credit risk SQL code against regulatory standards
+
+Key capabilities:
+
+| Feature | Description |
+|---|---|
+| **QA Generator** | Automatically creates training pairs from any regulation PDF/text |
+| **RAG** | Hybrid semantic + BM25 search over your document corpus |
+| **Fine-tuning** | SFT with LoRA on Qwen, Phi, Gemma, or any HF model |
+| **RLHF** | GRPO/DPO with domain-specific reward functions |
+| **Citation tracking** | Hierarchical regulation → article → paragraph → point |
+| **Verification** | LLM judge scoring hallucinations and missing facts |
+| **REST API** | FastAPI server with PostgreSQL logging |
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         INPUT LAYER                             │
+│   PDFs / Text / URLs  →  QA Generator  →  JSONL training data  │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────────────┐
+│                      TRAINING PIPELINE                          │
+│                                                                 │
+│  SFT (LoRA)  →  GRPO (RLHF)  →  DPO  →  Merged model          │
+│                                                                 │
+│  Reward functions: keyword overlap · source matching · format   │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────────────┐
+│                       INFERENCE LAYER                           │
+│                                                                 │
+│  RAG (ChromaDB + BM25)  →  LLM  →  Verification  →  Citations  │
+│                                                                 │
+│  FastAPI  ·  Gradio UI  ·  CLI  ·  Python SDK                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Core modules
+
+| Module | Path | Purpose |
+|---|---|---|
+| **QA Generator** | `scripts/generate_qa_from_docs.py` | Generates training QA pairs from documents |
+| **RAG System** | `src/rag_system.py` | ChromaDB + BM25 retrieval |
+| **Verification** | `src/verification.py` | Hallucination detection, confidence scoring |
+| **Citation Tree** | `src/citation_tree.py` | Hierarchical regulation citation tracker |
+| **LLM Judge** | `src/llm_judge.py` | Evaluates response quality vs. ground truth |
+| **GRPO Trainer** | `src/rlhf/grpo_trainer.py` | Reinforcement learning from rewards |
+| **DPO Trainer** | `src/rlhf/dpo_trainer.py` | Learning from preference pairs |
+| **API** | `api/main.py` | FastAPI REST server |
+| **DB** | `src/db.py` | Async PostgreSQL query logging |
+
+---
+
+## Quick Start
+
+```bash
+# 1 — Install
+git clone <repo> && cd regllm
+pip install -r requirements.txt
+
+# 2 — Generate QA pairs (GPU, Qwen2.5-7B)
+python scripts/generate_qa_from_docs.py --docs-dir data/raw
+
+# 2b — No GPU? Use Ollama  (run once: ollama pull llama3.2)
+python scripts/generate_qa_from_docs.py --docs-dir data/raw --backend ollama --model llama3.2
+
+# 3 — Fine-tune on all current datasets
+python scripts/train_combined.py
+
+# 4 — Chat with the trained model
+python scripts/use_banking_model.py --mode interactive \
+  --model-path models/finetuned/run_20260220_191334/final_model
+
+# 5 — Or run the REST API
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+---
+
+## Full Workflow (Step by Step)
+
+### Step 1 — Generate QA pairs in Spanish from regulation documents
+
+The generator uses **RAG + hybrid search** (ChromaDB + BM25) to find related passages already indexed, and the **Regulation Citation Tree (RCT)** to resolve exact citation paths (e.g. `CRR > Article 92 > Paragraph 1`). Both are injected into the prompt so answers contain precise regulatory references.
+
+```bash
+# With GPU — default Qwen2.5-7B-Instruct, 3 pairs per chunk, Spanish output
+python scripts/generate_qa_from_docs.py --docs-dir data/raw
+
+# Lighter model (less VRAM)
+python scripts/generate_qa_from_docs.py \
+  --docs-dir data/raw \
+  --model Qwen/Qwen2.5-3B-Instruct
+
+# Without GPU — Ollama backend (install Ollama from https://ollama.ai first)
+ollama pull llama3.2
+python scripts/generate_qa_from_docs.py \
+  --docs-dir data/raw \
+  --backend ollama \
+  --model llama3.2
+
+# More pairs per chunk, limit to 5 documents for a quick test
+python scripts/generate_qa_from_docs.py \
+  --docs-dir data/raw \
+  --pairs-per-chunk 5 \
+  --max-docs 5
+
+# Output always goes to:
+#   data/finetuning/generated_qa.jsonl
+```
+
+On first run the script indexes all documents into ChromaDB, then generates QA pairs with RAG-enriched prompts. Progress streams token by token in the terminal. Each extracted pair is printed in formatted Spanish before being saved.
+
+---
+
+### Step 2 — Train the model on all current datasets
+
+`train_combined.py` automatically loads **all four JSONL files** from `data/finetuning/`:
+
+| File | Examples |
+|---|---|
+| `banking_qa_dataset.jsonl` | 82 |
+| `banking_annual_accounts_extra.jsonl` | 12 |
+| `sql_methodology_comparison_dataset.jsonl` | 20 |
+| `generated_qa.jsonl` | your generated pairs |
+
+```bash
+# Full training run  (Qwen2.5-7B, 5 epochs, batch 2, LoRA r=32)
+python scripts/train_combined.py
+
+# The model is saved to:
+#   models/finetuned/run_<timestamp>/final_model/
+```
+
+Training settings (hardcoded in the script, edit to change):
+- Model: `Qwen/Qwen2.5-7B-Instruct`
+- Epochs: 5, batch size: 2, gradient accumulation: 8 (effective batch: 16)
+- Learning rate: 1e-4, LoRA rank: 32, alpha: 64
+- Banking data repeated 3× to emphasise factual memorisation
+- Saves best checkpoint by eval loss
+
+---
+
+### Step 3 — Run inference
+
+#### Interactive chat (terminal)
+
+```bash
+python scripts/use_banking_model.py \
+  --mode interactive \
+  --model-path models/finetuned/run_20260220_191334/final_model
+```
+
+#### Single question
+
+```bash
+python scripts/use_banking_model.py \
+  --mode single \
+  --model-path models/finetuned/run_20260220_191334/final_model \
+  --question "¿Cuál fue el beneficio neto de BBVA en 2023?"
+```
+
+#### REST API (FastAPI + Swagger UI)
+
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+# Swagger UI → http://localhost:8000/docs
+
+# Ask a question
+curl -X POST http://localhost:8000/consultar \
+  -H "Content-Type: application/json" \
+  -d '{"pregunta": "¿Qué es el ratio CET1?"}'
+
+# Search documents
+curl -X POST http://localhost:8000/buscar \
+  -H "Content-Type: application/json" \
+  -d '{"query": "requisitos de capital Basilea III", "n_results": 5}'
+```
+
+---
+
+## Installation
+
+### Requirements
+
+- Python 3.10+
+- CUDA 11.8+ (for local GPU inference/training) — or Ollama for CPU-only use
+
+```bash
+# Core dependencies
+pip install -r requirements.txt
+
+# Banking data extras (PDF extraction)
+pip install -r requirements-banking.txt
+
+# System package for PDF processing
+sudo apt-get install poppler-utils
+
+# Copy and edit environment variables
+cp .env.example .env
+```
+
+### Environment variables (`.env`)
+
+```env
+# PostgreSQL (optional — API works without it)
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=regllm
+DB_USER=postgres
+DB_PASSWORD=yourpassword
+
+# API
+API_HOST=0.0.0.0
+API_PORT=8000
+
+# Override model at runtime
+MODEL_NAME=Qwen/Qwen2.5-7B-Instruct
+```
+
+---
+
+## Data Pipeline
+
+### 1. Use the ready-made datasets
+
+The repo includes three datasets in `data/finetuning/`:
+
+| File | Examples | Domain |
+|---|---|---|
+| `banking_qa_dataset.jsonl` | 82 | Spanish bank financials 2022–2023 |
+| `sql_methodology_comparison_dataset.jsonl` | 20 | Credit risk SQL vs. EBA guidelines |
+| `banking_annual_accounts_extra.jsonl` | 12 | Additional accounting Q&A |
+
+### 2. Generate banking synthetic data
+
+```bash
+python scripts/generate_example_data.py
+# → data/finetuning/banking_qa_dataset.jsonl
+# → data/processed/{bank}/{bank}_{year}.json
+```
+
+### 3. Download real financial reports (PDFs)
+
+```bash
+python scripts/download_financial_reports.py
+# → data/raw/{bank}/  (PDFs)
+# → data/processed/{bank}/  (extracted metrics)
+```
+
+### 4. Scrape regulation documents
+
+Add URLs to `regurl.txt` then:
+
+```bash
+# Via API (must have server running)
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://www.eba.europa.eu/..."]}'
+```
+
+### 5. Inspect and validate datasets
+
+```bash
+python scripts/dataset_utils.py validate   # Check JSONL structure
+python scripts/dataset_utils.py analyze    # Question type distribution
+python scripts/dataset_utils.py stats      # Token counts, lengths
+python scripts/dataset_utils.py samples    # Print random examples
+```
+
+### 6. Export to CSV
+
+```bash
+python scripts/export_datasets.py
+# → data/exports/banking_qa.csv
+# → data/exports/sql_methodology_comparison.csv
+```
+
+---
+
+## QA Pair Generation from Documents
+
+**`scripts/generate_qa_from_docs.py`** reads regulation documents (PDFs, TXT, JSON, Markdown) and uses a local open-source LLM to produce question–answer pairs ready for fine-tuning.
+
+### Basic usage
+
+```bash
+# From a folder of documents (GPU, Qwen2.5-7B)
+python scripts/generate_qa_from_docs.py \
+  --docs-dir data/raw \
+  --output data/finetuning/generated_qa.jsonl
+
+# From a single PDF
+python scripts/generate_qa_from_docs.py \
+  --docs-dir path/to/single_doc \
+  --output data/finetuning/generated_qa.jsonl
+
+# Lighter model for less VRAM
+python scripts/generate_qa_from_docs.py \
+  --docs-dir data/raw \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --output data/finetuning/generated_qa.jsonl
+```
+
+### Using Ollama (no GPU required)
+
+```bash
+# Install Ollama from https://ollama.ai, then:
+ollama pull llama3.2          # ~2 GB, fast
+# or
+ollama pull qwen2.5:7b        # higher quality
+
+python scripts/generate_qa_from_docs.py \
+  --docs-dir data/raw \
+  --backend ollama \
+  --model llama3.2 \
+  --output data/finetuning/generated_qa.jsonl
+```
+
+### All options
+
+| Option | Default | Description |
+|---|---|---|
+| `--docs-dir` | `data/raw` | Directory with PDFs / TXTs / JSONs |
+| `--output` | `data/finetuning/generated_qa.jsonl` | Output JSONL path |
+| `--backend` | `transformers` | `transformers` or `ollama` |
+| `--model` | `Qwen/Qwen2.5-7B-Instruct` | HuggingFace model ID or Ollama model name |
+| `--pairs-per-chunk` | `3` | QA pairs to generate per text chunk |
+| `--chunk-size` | `800` | Words per chunk |
+| `--max-docs` | unlimited | Limit number of documents processed |
+| `--lang` | `es` | `es` (Spanish) or `en` (English) |
+| `--no-quantize` | off | Disable 4-bit quantization (requires more VRAM) |
+| `--ollama-url` | `http://localhost:11434` | Ollama server URL |
+
+### Supported document formats
+
+| Extension | How it's read |
+|---|---|
+| `.pdf` | PyPDF2 (+ pdfplumber fallback) |
+| `.txt` | Plain text |
+| `.md` | Markdown as plain text |
+| `.json` | Extracts `text`, `content`, or `body` fields |
+| `.jsonl` | Each line treated as a document |
+
+### Output format
+
+Each line in the output JSONL is ready for SFT:
+
+```json
+{
+  "messages": [
+    {"role": "system", "content": "Eres un experto en regulación bancaria..."},
+    {"role": "user",   "content": "¿Qué establece el artículo 92 del CRR sobre los requisitos de capital?"},
+    {"role": "assistant", "content": "El artículo 92 del CRR establece que las entidades deberán mantener..."}
+  ],
+  "metadata": {
+    "source_file": "crr_regulation.pdf",
+    "chunk_index": 4,
+    "generated_at": "2026-02-20T10:30:00"
+  }
+}
+```
+
+---
+
+## Fine-tuning
+
+### Supervised Fine-Tuning (SFT)
+
+```bash
+# Quick overfitting test on a small subset (~2 min)
+python scripts/train_combined.py --small-subset
+
+# Full training with defaults (Qwen2.5-7B, 3 epochs)
+python scripts/train_combined.py
+
+# Custom run
+python scripts/train_combined.py \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --epochs 3 \
+  --batch-size 2 \
+  --lr 2e-4 \
+  --output models/my_run
+```
+
+The script automatically combines all JSONL files found in `data/finetuning/`.
+
+### End-to-end pipeline
+
+```bash
+# Downloads data → generates QA → trains → evaluates in one command
+python scripts/run_full_pipeline.py
+```
+
+### Inference with a trained model
+
+```bash
+# Interactive chat
+python scripts/use_banking_model.py --mode interactive --model-path models/finetuned/run_1
+
+# Single question
+python scripts/use_banking_model.py \
+  --mode single \
+  --model-path models/finetuned/run_1 \
+  --question "¿Cuál fue el beneficio neto de BBVA en 2023?"
+
+# Batch from file
+python scripts/use_banking_model.py \
+  --mode batch \
+  --model-path models/finetuned/run_1 \
+  --input questions.txt
+```
+
+### LLaMA-Factory (recommended for larger runs)
+
+```bash
+pip install llamafactory
+llamafactory-cli train examples/llamafactory_config.yaml
+```
+
+---
+
+## Reinforcement Learning (GRPO)
+
+GRPO (Group Relative Policy Optimization) improves the model using deterministic rewards.
+
+### Reward functions (`src/rlhf/grpo_rewards.py`)
+
+| Reward | Weight | Measures |
+|---|---|---|
+| Keyword overlap | 0.5 | Key facts from ground truth in response |
+| Source matching | 0.3 | Correct regulation references cited |
+| Format quality | 0.2 | Response length, language, structure |
+
+```bash
+# Run GRPO training
+python scripts/run_grpo.py
+# → models/grpo/final_model/
+```
+
+### DPO (preference pairs)
+
+```bash
+# Collect preference data into data/preferences/feedback.jsonl first, then:
+python -c "from src.rlhf.dpo_trainer import train_dpo; train_dpo()"
+```
+
+---
+
+## REST API
+
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+# Swagger UI: http://localhost:8000/docs
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `GET` | `/stats` | System statistics |
+| `POST` | `/consultar` | Ask a regulatory question |
+| `POST` | `/buscar` | Search documents by query |
+| `POST` | `/documentos/agregar` | Add a single document |
+| `POST` | `/documentos/cargar-json` | Load a JSON file of documents |
+| `POST` | `/scrape` | Scrape URL(s) and index content |
+| `GET` | `/logs` | Query interaction logs |
+
+### Examples
+
+```bash
+# Ask a question
+curl -X POST http://localhost:8000/consultar \
+  -H "Content-Type: application/json" \
+  -d '{"pregunta": "¿Qué es el ratio de capital CET1?"}'
+
+# Search documents
+curl -X POST http://localhost:8000/buscar \
+  -H "Content-Type: application/json" \
+  -d '{"query": "requisitos de capital Basilea III", "n_results": 5}'
+
+# Add a document
+curl -X POST http://localhost:8000/documentos/agregar \
+  -H "Content-Type: application/json" \
+  -d '{"texto": "...", "fuente": "EBA/GL/2017/16", "tipo": "guideline"}'
+```
+
+### Enable PostgreSQL logging (optional)
+
+```bash
+createdb regllm
+python -c "from src.db import create_tables; import asyncio; asyncio.run(create_tables())"
+# The API will now log every query to the query_logs table
+```
+
+---
+
+## Configuration
+
+All settings live in `config.py`. Key sections:
+
+```python
+# Model
+MODEL_CONFIG = {
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "use_4bit": True,      # halves VRAM
+    "lora_r": 64,
+    "lora_alpha": 128,
+}
+
+# Training
+TRAINING_CONFIG = {
+    "num_epochs": 3,
+    "batch_size": 2,
+    "learning_rate": 2e-4,
+    "gradient_accumulation_steps": 4,
+}
+
+# RAG
+RAG_CONFIG = {
+    "embedding_model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "n_results": 5,
+}
+
+# GRPO rewards
+GRPO_CONFIG = {
+    "group_size": 4,
+    "learning_rate": 1e-5,
+    "reward_weights": {"keyword": 0.5, "source": 0.3, "format": 0.2},
+}
+```
+
+---
 
 ## Project Structure
 
 ```
 regllm/
-├── api/                  # FastAPI REST API
-│   └── main.py          # API endpoints
+├── api/
+│   └── main.py                    # FastAPI REST server
 ├── data/
-│   ├── raw/             # Scraped regulation documents
-│   ├── processed/       # Cleaned and formatted data
-│   ├── train/           # Training set
-│   └── val/             # Validation set
+│   ├── raw/                       # Downloaded PDFs and scraped text
+│   ├── processed/                 # Structured bank data per institution/year
+│   ├── finetuning/                # Training JSONL datasets
+│   │   ├── banking_qa_dataset.jsonl
+│   │   ├── sql_methodology_comparison_dataset.jsonl
+│   │   └── generated_qa.jsonl     # Output of QA generator
+│   ├── exports/                   # CSV exports for inspection
+│   └── preferences/               # DPO preference pairs
+├── models/
+│   ├── finetuned/                 # SFT checkpoints
+│   └── grpo/                      # GRPO-trained models
+├── scripts/
+│   ├── generate_qa_from_docs.py   # QA pair generator from documents
+│   ├── generate_example_data.py   # Synthetic banking data
+│   ├── download_financial_reports.py
+│   ├── train_combined.py          # Main SFT training script
+│   ├── run_grpo.py                # GRPO training
+│   ├── run_full_pipeline.py       # End-to-end orchestration
+│   ├── use_banking_model.py       # Inference CLI
+│   ├── dataset_utils.py           # Validate/inspect datasets
+│   ├── export_datasets.py         # Export to CSV
+│   └── setup_banking.sh           # Initial setup
 ├── src/
-│   ├── scraper/         # Web scraping tools (incl. LinkedIn)
-│   ├── preprocessing/   # Data cleaning pipeline
-│   ├── training/        # Model training scripts
-│   ├── ui/              # User interfaces
-│   ├── rag_system.py    # RAG with ChromaDB
-│   └── verification.py  # Response verification
-├── vector_db/           # ChromaDB vector database
-├── models/              # Finetuned models
-├── logs/                # Training logs and plots
-├── cli.py               # Interactive CLI
-├── app_gradio.py        # Enhanced Gradio Web UI
-├── regurl.txt           # URLs for regulation sources
-└── requirements.txt     # Python dependencies
+│   ├── rag_system.py              # RAG with ChromaDB + BM25
+│   ├── verification.py            # Hallucination detection
+│   ├── citation_tree.py           # Regulation citation hierarchy
+│   ├── llm_judge.py               # Automated evaluation
+│   ├── db.py                      # Async PostgreSQL layer
+│   ├── scraper.py                 # Web scraping
+│   └── rlhf/
+│       ├── grpo_trainer.py        # GRPO training loop
+│       ├── grpo_rewards.py        # Reward functions
+│       └── dpo_trainer.py         # DPO training
+├── tests/                         # pytest test suite
+├── examples/                      # Config examples (LLaMA-Factory, Axolotl)
+├── config.py                      # Central configuration
+├── app_gradio.py                  # Gradio web UI
+├── cli.py                         # Command-line interface
+├── requirements.txt               # Core dependencies
+└── requirements-banking.txt       # Banking data extras
 ```
 
-## Installation
+---
 
-### 1. Clone and Setup
+## Hardware Requirements
+
+| Model | Inference VRAM (4-bit) | Training VRAM (LoRA 4-bit) |
+|---|---|---|
+| Qwen2.5-7B | ~6 GB | ~12 GB |
+| Qwen2.5-3B | ~3 GB | ~8 GB |
+| Phi-3-Mini (3.8B) | ~3 GB | ~8 GB |
+| Gemma-2B | ~2 GB | ~6 GB |
+| Qwen-1.8B | ~2 GB | ~5 GB |
+
+**No GPU?** Use `--backend ollama` for QA generation and API inference (CPU, ~1–5 tok/s).
+
+---
+
+## Tests
 
 ```bash
-cd regllm
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pytest                          # Run all tests
+pytest -m "not requires_gpu"   # Skip GPU tests
+pytest tests/test_citation_tree.py
+pytest tests/test_llm_judge.py
 ```
 
-### 2. Authenticate with Hugging Face (if needed)
-
-Some models require accepting license agreements on Hugging Face:
-
-```bash
-pip install huggingface_hub
-huggingface-cli login
-```
-
-Visit the model page (e.g., https://huggingface.co/microsoft/phi-2) and accept the license if prompted.
-
-## Usage
-
-### Step 1: Scrape Regulation Documents
-
-Collect banking regulation documents from official sources:
-
-```bash
-python src/scraper/regulation_scraper.py
-```
-
-This will:
-- Read URLs from `regurl.txt`
-- Scrape HTML pages and PDFs
-- Extract regulatory text
-- Save to `data/raw/regulation_data_*.json`
-
-**Note:** Scraping may take time. Be respectful of rate limits.
-
-### Step 2: Preprocess Data
-
-Clean and prepare data for training:
-
-```bash
-python src/preprocessing/data_processor.py
-```
-
-This creates:
-- `data/processed/train_data.json` - Full training set
-- `data/processed/val_data.json` - Validation set
-- `data/processed/train_data_small.json` - Small subset for overfitting test
-
-### Step 2.5: Manage and Clean Dataset (Optional)
-
-Review, edit, and improve your training data using the dataset management tools:
-
-#### Web UI (Interactive)
-
-```bash
-./launch_dataset_manager.sh
-# or
-python dataset_manager_ui.py
-```
-
-Access at http://localhost:7861
-
-Features:
-- Browse and search all samples
-- Add new Q&A pairs manually
-- Edit existing samples
-- Delete low-quality samples
-- View statistics and distribution
-- Automatic backups before changes
-
-#### CLI (Programmatic)
-
-```bash
-# View statistics
-python dataset_manager_cli.py stats
-
-# Search for samples
-python dataset_manager_cli.py search "PD" --field answer
-
-# Add new sample
-python dataset_manager_cli.py add \
-  --question "¿Qué es el PD floor?" \
-  --answer "El PD floor es..." \
-  --source "EBA"
-
-# Validate dataset
-python dataset_manager_cli.py validate
-```
-
-**Use Cases:**
-- Manual quality control and editing
-- LLM-assisted dataset cleaning
-- Batch processing with scripts
-- Automated validation
-
-See [DATASET_MANAGEMENT.md](DATASET_MANAGEMENT.md) for complete guide.
-
-### Step 3: Test Model Setup
-
-Verify the base model loads correctly:
-
-```bash
-python src/training/model_setup.py
-```
-
-Available models:
-- `phi-2` (2.7B params, recommended)
-- `phi-3-mini` (3.8B params)
-- `stablelm-3b` (3B params)
-- `gemma-2b` (2B params)
-- `qwen-1.8b` (1.8B params)
-
-### Step 4: Overfit on Small Subset
-
-First, verify the training pipeline works by overfitting on a small subset:
-
-```bash
-python src/training/train.py \
-    --model phi-2 \
-    --small-subset \
-    --epochs 10 \
-    --batch-size 2 \
-    --lr 3e-4
-```
-
-**Expected behavior:** Training loss should decrease significantly, showing the model can learn from the data.
-
-### Step 5: Train on Full Dataset
-
-Once overfitting succeeds, train on the full dataset:
-
-```bash
-python src/training/train.py \
-    --model phi-2 \
-    --epochs 3 \
-    --batch-size 4 \
-    --lr 2e-4
-```
-
-**Training parameters:**
-- Uses LoRA (Low-Rank Adaptation) for efficient finetuning
-- 4-bit quantization to reduce memory usage
-- Gradient accumulation for larger effective batch sizes
-- Automatic GPU utilization if available
-
-**Monitoring:**
-- Training progress logged to console
-- Loss plots saved to `logs/training_plot_*.png`
-- Model checkpoints saved to `models/finetuned/run_*/`
-
-### Step 6: Launch the UI
-
-#### Enhanced Gradio Interface (Recommended)
-
-```bash
-python app_gradio.py --port 7860
-```
-
-Then open http://localhost:7860 in your browser.
-
-Features:
-- Query regulatory documents with RAG
-- View source citations and confidence scores
-- Manage documents and view statistics
-- Hybrid search (semantic + keywords)
-
-To create a public link:
-```bash
-python app_gradio.py --share
-```
-
-#### Interactive CLI
-
-```bash
-python cli.py --interactive
-```
-
-Or for a single query:
-```bash
-python cli.py "What is the minimum CET1 ratio?"
-```
-
-#### REST API (FastAPI)
-
-```bash
-python -m api.main --host 0.0.0.0 --port 8000
-```
-
-Then access the API:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-Example API call:
-```bash
-curl -X POST "http://localhost:8000/consultar" \
-  -H "Content-Type: application/json" \
-  -d '{"pregunta": "Que es el capital CET1?", "n_fuentes": 5}'
-```
-
-#### Legacy UI (Original)
-
-```bash
-python src/ui/chat_interface.py \
-    --model-path models/finetuned/run_XXXXXX/final_model \
-    --interface web \
-    --port 7861
-```
-
-### Step 7: Scrape LinkedIn and Other Sites (Optional)
-
-Use the enhanced scraper for JavaScript-heavy sites:
-
-```python
-from src.scraper import EnhancedScraper
-
-scraper = EnhancedScraper()
-
-# Scrape LinkedIn articles
-urls = [
-    "https://www.linkedin.com/pulse/banking-regulation-article...",
-]
-
-results = scraper.scrape_multiple(urls)
-scraper.save_results(results)
-```
-
-Or via the API:
-```bash
-curl -X POST "http://localhost:8000/scrape" \
-  -H "Content-Type: application/json" \
-  -d '{"urls": ["https://linkedin.com/..."], "include_linkedin": true}'
-```
-
-## Example Questions
-
-Spanish:
-- ¿Qué es la probabilidad de default (PD)?
-- ¿Qué regulación se aplica al cálculo de capital para riesgo de crédito?
-- Explica el método IRB para carteras retail
-- ¿Cuáles son los requisitos para el cálculo de LGD en carteras corporativas?
-- ¿Qué dice el Banco de España sobre provisiones IFRS 9?
-
-English:
-- What regulation applies to credit risk capital calculation?
-- Explain the IRB method for retail portfolios
-- What are the requirements for calculating LGD?
-
-## Training Tips
-
-### GPU Acceleration
-
-Training is much faster with a GPU. If you don't have one:
-- Use Google Colab (free GPU): [colab.research.google.com](https://colab.research.google.com)
-- Use cloud providers (AWS, GCP, Azure)
-- Rent GPU time from vast.ai or similar services
-
-### Memory Optimization
-
-If you encounter out-of-memory errors:
-- Reduce batch size: `--batch-size 2` or `--batch-size 1`
-- Increase gradient accumulation: Add `gradient_accumulation_steps=8` in train.py
-- Use a smaller model: `--model qwen-1.8b`
-- Reduce max sequence length in `RegulationDataset.__init__()`
-
-### Improving Model Quality
-
-1. **More Data**: Scrape additional regulatory sources
-2. **Better QA Pairs**: Manually create high-quality examples
-3. **Longer Training**: Increase epochs (but watch for overfitting)
-4. **Hyperparameter Tuning**: Experiment with learning rate, LoRA rank, etc.
-5. **Data Augmentation**: Create variations of existing questions
-
-## Model Behavior
-
-The model is trained to:
-- ✅ Always cite sources (Bank of Spain, ECB, etc.)
-- ✅ Admit uncertainty when it doesn't have information
-- ✅ Provide specific regulatory references
-- ✅ Focus on credit risk parameters and Spanish regulations
-- ❌ Never invent information
-- ❌ Never provide answers without source attribution
+---
 
 ## Troubleshooting
 
-### Scraper Issues
-- **403/404 Errors**: Some URLs may be outdated. Update `regurl.txt`
-- **Rate Limiting**: Increase delay in `RegulationScraper.__init__()` (self.delay)
-- **PDF Extraction Fails**: Install poppler-utils: `apt-get install poppler-utils`
+**CUDA out of memory during training**
+- Reduce `--batch-size` to 1
+- Use a smaller model (`Qwen/Qwen2.5-3B-Instruct`)
+- Make sure `use_4bit: True` in `config.py`
 
-### Training Issues
-- **Model download fails**: Accept license on Hugging Face and authenticate
-- **CUDA out of memory**: Reduce batch size or use CPU (slower)
-- **No training progress**: Check data files exist in `data/processed/`
+**PDF text extraction empty**
+- Install `poppler-utils`: `sudo apt-get install poppler-utils`
+- The script falls back to `pdfplumber` automatically
 
-### UI Issues
-- **Model not loading**: Check model path is correct
-- **Slow responses**: Normal on CPU; use GPU for faster inference
-- **Port already in use**: Change port with `--port 8080`
+**Ollama connection refused**
+- Start Ollama: `ollama serve`
+- Check the URL with `--ollama-url http://localhost:11434`
 
-## Evaluation
+**Model download fails**
+- Authenticate: `huggingface-cli login`
+- Accept the model license on the HuggingFace website
 
-To evaluate model performance:
+**Port already in use**
+- Change port: `uvicorn api.main:app --port 8080`
 
-1. **Validation Loss**: Check `logs/training_plot_*.png`
-   - Should decrease over epochs
-   - Gap between train/val indicates overfitting
-
-2. **Manual Testing**: Ask domain-specific questions
-   - Does it cite sources?
-   - Are answers accurate?
-   - Does it admit uncertainty appropriately?
-
-3. **Compare Before/After**: Test base model vs finetuned model
-
-## Citation
-
-If you use this project, please cite:
-```
-Spanish Banking Regulation LLM (RegLLM)
-https://github.com/yourusername/regllm
-```
-
-## License
-
-This project is for educational and research purposes. Ensure compliance with:
-- Model licenses (Phi-2, etc.)
-- Data usage terms from regulatory sources
-- Applicable banking and data protection regulations
+---
 
 ## Disclaimer
 
-This model is a tool for research and educational purposes. It should NOT be used as the sole basis for regulatory compliance decisions. Always consult official regulatory documents and qualified compliance professionals.
-
-## Contributing
-
-Contributions welcome! Areas for improvement:
-- Additional data sources
-- Better QA pair generation
-- Model optimization
-- Evaluation metrics
-- Multi-language support
-
-## Contact
-
-For questions or issues, please open a GitHub issue.
+RegLLM is for research and educational purposes. Do not use it as the sole basis for regulatory compliance decisions. Always consult official documents and qualified compliance professionals.

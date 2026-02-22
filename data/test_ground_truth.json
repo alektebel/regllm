@@ -1,0 +1,456 @@
+{
+  "version": "1.0",
+  "description": "Ground truth dataset for RegLLM end-to-end quality tests",
+  "entries": [
+    {
+      "id": "fin_001",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de Banco Santander en 2023?",
+      "respuesta_esperada": "En 2023, Banco Santander obtuvo un beneficio neto de 11.076 millones EUR. El banco contaba con un activo total de 1.720.000 millones EUR y mantuvo un ratio de capital del 12.8%.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}],
+      "datos_clave": ["11.076", "millones EUR", "1.720.000", "12.8%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_002",
+      "category": "financial",
+      "pregunta": "¿Cuánto ganó Banco Santander en 2023?",
+      "respuesta_esperada": "Banco Santander obtuvo un beneficio neto de 11.076 millones EUR en 2023.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}],
+      "datos_clave": ["11.076", "millones EUR", "beneficio neto"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_003",
+      "category": "financial",
+      "pregunta": "¿Cuál es el tamaño del balance de Banco Santander en 2023?",
+      "respuesta_esperada": "El activo total de Banco Santander en 2023 ascendió a 1.720.000 millones EUR.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}],
+      "datos_clave": ["1.720.000", "millones EUR", "activo total"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_004",
+      "category": "financial",
+      "pregunta": "¿Cómo está la solvencia de Banco Santander en 2023?",
+      "respuesta_esperada": "El ratio de capital (CET1) de Banco Santander en 2023 fue del 12.8%, lo que refleja una sólida posición de solvencia.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}],
+      "datos_clave": ["12.8%", "CET1", "solvencia"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_005",
+      "category": "financial",
+      "pregunta": "¿Qué rentabilidad tuvo Banco Santander sobre sus recursos propios en 2023?",
+      "respuesta_esperada": "El ROE (rentabilidad sobre recursos propios) de Banco Santander en 2023 fue del 14.8%.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}],
+      "datos_clave": ["14.8%", "ROE"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_006",
+      "category": "financial",
+      "pregunta": "¿Cuál fue la tasa de morosidad de Banco Santander en 2023?",
+      "respuesta_esperada": "La tasa de morosidad de Banco Santander en 2023 se situó en el 3.14%.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}],
+      "datos_clave": ["3.14%", "morosidad"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_007",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de CaixaBank en 2023?",
+      "respuesta_esperada": "En 2023, CaixaBank obtuvo un beneficio neto de 5.787 millones EUR. El banco contaba con un activo total de 696.414 millones EUR y mantuvo un ratio de capital del 13.1%.",
+      "fuentes_esperadas": [{"documento": "CaixaBank", "articulo": null}],
+      "datos_clave": ["5.787", "millones EUR", "696.414", "13.1%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_008",
+      "category": "financial",
+      "pregunta": "¿Cuánto ganó CaixaBank en 2023?",
+      "respuesta_esperada": "CaixaBank obtuvo un beneficio neto de 5.787 millones EUR en 2023.",
+      "fuentes_esperadas": [{"documento": "CaixaBank", "articulo": null}],
+      "datos_clave": ["5.787", "millones EUR", "beneficio neto"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_009",
+      "category": "financial",
+      "pregunta": "¿Cuál fue la tasa de morosidad de CaixaBank en 2023?",
+      "respuesta_esperada": "La tasa de morosidad de CaixaBank en 2023 se situó en el 2.81%.",
+      "fuentes_esperadas": [{"documento": "CaixaBank", "articulo": null}],
+      "datos_clave": ["2.81%", "morosidad"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_010",
+      "category": "financial",
+      "pregunta": "¿Qué rentabilidad tuvo CaixaBank sobre sus recursos propios en 2023?",
+      "respuesta_esperada": "El ROE (rentabilidad sobre recursos propios) de CaixaBank en 2023 fue del 12.5%.",
+      "fuentes_esperadas": [{"documento": "CaixaBank", "articulo": null}],
+      "datos_clave": ["12.5%", "ROE"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_011",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de BBVA en 2023?",
+      "respuesta_esperada": "En 2023, BBVA obtuvo un beneficio neto de 8.019 millones EUR. El banco contaba con un activo total de 744.200 millones EUR y mantuvo un ratio de capital del 13.4%.",
+      "fuentes_esperadas": [{"documento": "BBVA", "articulo": null}],
+      "datos_clave": ["8.019", "millones EUR", "744.200", "13.4%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_012",
+      "category": "financial",
+      "pregunta": "¿Cuánto ganó BBVA en 2023?",
+      "respuesta_esperada": "BBVA obtuvo un beneficio neto de 8.019 millones EUR en 2023.",
+      "fuentes_esperadas": [{"documento": "BBVA", "articulo": null}],
+      "datos_clave": ["8.019", "millones EUR", "beneficio neto"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_013",
+      "category": "financial",
+      "pregunta": "¿Qué rentabilidad tuvo BBVA sobre sus recursos propios en 2023?",
+      "respuesta_esperada": "El ROE (rentabilidad sobre recursos propios) de BBVA en 2023 fue del 15.2%.",
+      "fuentes_esperadas": [{"documento": "BBVA", "articulo": null}],
+      "datos_clave": ["15.2%", "ROE"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_014",
+      "category": "financial",
+      "pregunta": "¿Cuál fue la tasa de morosidad de BBVA en 2023?",
+      "respuesta_esperada": "La tasa de morosidad de BBVA en 2023 se situó en el 3.45%.",
+      "fuentes_esperadas": [{"documento": "BBVA", "articulo": null}],
+      "datos_clave": ["3.45%", "morosidad"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_015",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de Banco Sabadell en 2023?",
+      "respuesta_esperada": "En 2023, Banco Sabadell obtuvo un beneficio neto de 1.320 millones EUR. El banco contaba con un activo total de 265.128 millones EUR y mantuvo un ratio de capital del 13.8%.",
+      "fuentes_esperadas": [{"documento": "Banco Sabadell", "articulo": null}],
+      "datos_clave": ["1.320", "millones EUR", "265.128", "13.8%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_016",
+      "category": "financial",
+      "pregunta": "¿Cuánto ganó Banco Sabadell en 2023?",
+      "respuesta_esperada": "Banco Sabadell obtuvo un beneficio neto de 1.320 millones EUR en 2023.",
+      "fuentes_esperadas": [{"documento": "Banco Sabadell", "articulo": null}],
+      "datos_clave": ["1.320", "millones EUR", "beneficio neto"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_017",
+      "category": "financial",
+      "pregunta": "¿Cuál fue la tasa de morosidad de Banco Sabadell en 2023?",
+      "respuesta_esperada": "La tasa de morosidad de Banco Sabadell en 2023 se situó en el 3.89%.",
+      "fuentes_esperadas": [{"documento": "Banco Sabadell", "articulo": null}],
+      "datos_clave": ["3.89%", "morosidad"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_018",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de Kutxabank en 2023?",
+      "respuesta_esperada": "En 2023, Kutxabank obtuvo un beneficio neto de 557 millones EUR. El banco contaba con un activo total de 66.238 millones EUR y mantuvo un ratio de capital del 17.2%.",
+      "fuentes_esperadas": [{"documento": "Kutxabank", "articulo": null}],
+      "datos_clave": ["557", "millones EUR", "66.238", "17.2%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_019",
+      "category": "financial",
+      "pregunta": "¿Cuánto ganó Kutxabank en 2023?",
+      "respuesta_esperada": "Kutxabank obtuvo un beneficio neto de 557 millones EUR en 2023.",
+      "fuentes_esperadas": [{"documento": "Kutxabank", "articulo": null}],
+      "datos_clave": ["557", "millones EUR", "beneficio neto"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_020",
+      "category": "financial",
+      "pregunta": "¿Cuál fue la tasa de morosidad de Kutxabank en 2023?",
+      "respuesta_esperada": "La tasa de morosidad de Kutxabank en 2023 se situó en el 2.35%.",
+      "fuentes_esperadas": [{"documento": "Kutxabank", "articulo": null}],
+      "datos_clave": ["2.35%", "morosidad"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_021",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de Banco Santander en 2022?",
+      "respuesta_esperada": "En 2022, Banco Santander obtuvo un beneficio neto de 9.605 millones EUR. El banco contaba con un activo total de 1.661.486 millones EUR y mantuvo un ratio de capital del 12.2%.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}],
+      "datos_clave": ["9.605", "millones EUR", "1.661.486", "12.2%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_022",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de CaixaBank en 2022?",
+      "respuesta_esperada": "En 2022, CaixaBank obtuvo un beneficio neto de 4.812 millones EUR. El banco contaba con un activo total de 683.596 millones EUR y mantuvo un ratio de capital del 12.8%.",
+      "fuentes_esperadas": [{"documento": "CaixaBank", "articulo": null}],
+      "datos_clave": ["4.812", "millones EUR", "683.596", "12.8%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_023",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de BBVA en 2022?",
+      "respuesta_esperada": "En 2022, BBVA obtuvo un beneficio neto de 6.452 millones EUR. El banco contaba con un activo total de 714.628 millones EUR y mantuvo un ratio de capital del 13.0%.",
+      "fuentes_esperadas": [{"documento": "BBVA", "articulo": null}],
+      "datos_clave": ["6.452", "millones EUR", "714.628", "13.0%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_024",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de Banco Sabadell en 2022?",
+      "respuesta_esperada": "En 2022, Banco Sabadell obtuvo un beneficio neto de 818 millones EUR. El banco contaba con un activo total de 258.746 millones EUR y mantuvo un ratio de capital del 13.2%.",
+      "fuentes_esperadas": [{"documento": "Banco Sabadell", "articulo": null}],
+      "datos_clave": ["818", "millones EUR", "258.746", "13.2%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_025",
+      "category": "financial",
+      "pregunta": "¿Cuáles fueron los resultados de Kutxabank en 2022?",
+      "respuesta_esperada": "En 2022, Kutxabank obtuvo un beneficio neto de 475 millones EUR. El banco contaba con un activo total de 64.125 millones EUR y mantuvo un ratio de capital del 16.8%.",
+      "fuentes_esperadas": [{"documento": "Kutxabank", "articulo": null}],
+      "datos_clave": ["475", "millones EUR", "64.125", "16.8%"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_026",
+      "category": "financial",
+      "pregunta": "Compara los beneficios de Banco Santander y CaixaBank en 2023",
+      "respuesta_esperada": "En 2023, Banco Santander obtuvo un beneficio neto de 11.076 millones EUR, mientras que CaixaBank alcanzó 5.787 millones EUR.",
+      "fuentes_esperadas": [{"documento": "Banco Santander", "articulo": null}, {"documento": "CaixaBank", "articulo": null}],
+      "datos_clave": ["11.076", "5.787", "millones EUR"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_027",
+      "category": "financial",
+      "pregunta": "¿Cómo está la solvencia de CaixaBank en 2023?",
+      "respuesta_esperada": "El ratio de capital (CET1) de CaixaBank en 2023 fue del 13.1%, lo que refleja una sólida posición de solvencia.",
+      "fuentes_esperadas": [{"documento": "CaixaBank", "articulo": null}],
+      "datos_clave": ["13.1%", "CET1", "solvencia"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_028",
+      "category": "financial",
+      "pregunta": "¿Cómo está la solvencia de BBVA en 2023?",
+      "respuesta_esperada": "El ratio de capital (CET1) de BBVA en 2023 fue del 13.4%, lo que refleja una sólida posición de solvencia.",
+      "fuentes_esperadas": [{"documento": "BBVA", "articulo": null}],
+      "datos_clave": ["13.4%", "CET1", "solvencia"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_029",
+      "category": "financial",
+      "pregunta": "¿Cómo está la solvencia de Kutxabank en 2023?",
+      "respuesta_esperada": "El ratio de capital (CET1) de Kutxabank en 2023 fue del 17.2%, lo que refleja una sólida posición de solvencia.",
+      "fuentes_esperadas": [{"documento": "Kutxabank", "articulo": null}],
+      "datos_clave": ["17.2%", "CET1", "solvencia"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "fin_030",
+      "category": "financial",
+      "pregunta": "¿Qué rentabilidad tuvo Banco Sabadell sobre sus recursos propios en 2023?",
+      "respuesta_esperada": "El ROE (rentabilidad sobre recursos propios) de Banco Sabadell en 2023 fue del 8.5%.",
+      "fuentes_esperadas": [{"documento": "Banco Sabadell", "articulo": null}],
+      "datos_clave": ["8.5%", "ROE"],
+      "umbral_confianza": 0.7
+    },
+    {
+      "id": "reg_001",
+      "category": "regulatory",
+      "pregunta": "¿Cuál es el objetivo principal de las directrices EBA/GL/2017/16 sobre estimación de PD y LGD?",
+      "respuesta_esperada": "Las directrices EBA/GL/2017/16 tienen como objetivo principal reducir la variabilidad injustificada de los parámetros de riesgo y los requisitos de fondos propios en el marco del método IRB.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["variabilidad injustificada", "parámetros de riesgo", "método IRB", "fondos propios"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_002",
+      "category": "regulatory",
+      "pregunta": "¿Desde cuándo son aplicables las directrices EBA/GL/2017/16?",
+      "respuesta_esperada": "Las directrices EBA/GL/2017/16 son aplicables desde el 1 de enero de 2021.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["1 de enero de 2021", "aplicables"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_003",
+      "category": "regulatory",
+      "pregunta": "¿Qué se entiende por sistema de calificación según estas directrices?",
+      "respuesta_esperada": "Un sistema de calificación comprende todos los métodos, procesos, controles, sistemas de recogida de datos y de tecnología de la información que sustentan la evaluación del riesgo de crédito, la asignación de exposiciones a grados de calificación y la cuantificación de estimaciones de impago y pérdida.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["métodos", "procesos", "controles", "riesgo de crédito", "grados de calificación"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_004",
+      "category": "regulatory",
+      "pregunta": "¿Qué requisito establece la directriz sobre la representatividad de los datos utilizados en la estimación de PD y LGD?",
+      "respuesta_esperada": "Las entidades deben garantizar que los datos reflejen adecuadamente las características del conjunto de exposiciones y deudores a los que se aplicarán las estimaciones.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["representatividad", "datos", "exposiciones", "deudores"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_005",
+      "category": "regulatory",
+      "pregunta": "¿Qué es la probabilidad de impago (PD) en el contexto del método IRB?",
+      "respuesta_esperada": "La probabilidad de impago (PD) representa la probabilidad de que un deudor incumpla sus obligaciones crediticias dentro de un horizonte temporal de un año.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["probabilidad", "impago", "un año", "deudor", "obligaciones crediticias"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_006",
+      "category": "regulatory",
+      "pregunta": "¿Qué diferencia existe entre PD through-the-cycle (TTC) y point-in-time (PIT)?",
+      "respuesta_esperada": "La PD through-the-cycle (TTC) representa una estimación promedio del riesgo de impago a lo largo de un ciclo económico completo, mientras que la PD point-in-time (PIT) refleja el riesgo de impago en un momento específico, considerando las condiciones macroeconómicas actuales.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["through-the-cycle", "point-in-time", "ciclo económico", "TTC", "PIT"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_007",
+      "category": "regulatory",
+      "pregunta": "¿Qué requisito de datos mínimo se establece para la estimación de PD?",
+      "respuesta_esperada": "Las entidades deben utilizar datos de al menos cinco años para la estimación de PD.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["cinco años", "datos", "estimación", "PD"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_008",
+      "category": "regulatory",
+      "pregunta": "¿Qué es el margin of conservatism (MoC) en la estimación de PD y cuándo debe aplicarse?",
+      "respuesta_esperada": "El margin of conservatism (margen de conservadurismo) es un ajuste al alza que se aplica a las estimaciones de PD para reflejar la incertidumbre inherente en el proceso de estimación.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["margin of conservatism", "MoC", "ajuste al alza", "incertidumbre"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_009",
+      "category": "regulatory",
+      "pregunta": "¿Qué se entiende por pérdida en caso de impago (LGD) en el contexto IRB?",
+      "respuesta_esperada": "La pérdida en caso de impago (LGD) representa la magnitud de la pérdida económica que la entidad espera sufrir en caso de que un deudor incumpla, expresada como porcentaje de la exposición en el momento del impago.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["pérdida", "impago", "LGD", "porcentaje", "exposición"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_010",
+      "category": "regulatory",
+      "pregunta": "¿Qué es una LGD downturn y cuándo debe aplicarse?",
+      "respuesta_esperada": "La LGD downturn es una estimación de la pérdida en caso de impago que refleja condiciones económicas adversas, donde tanto las tasas de impago como las pérdidas dado el impago tienden a ser más altas simultáneamente.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["LGD downturn", "condiciones económicas adversas", "tasas de impago"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_011",
+      "category": "regulatory",
+      "pregunta": "¿Qué es el Expected Loss Best Estimate (ELBE) para exposiciones en impago?",
+      "respuesta_esperada": "El Expected Loss Best Estimate (ELBE) es la mejor estimación de la pérdida esperada para una exposición que se encuentra en situación de impago. Se calcula como el producto de la exposición en el momento del impago (EAD) por la LGD in-default.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["ELBE", "pérdida esperada", "EAD", "LGD in-default"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_012",
+      "category": "regulatory",
+      "pregunta": "¿Cómo se calcula la EAD (Exposure at Default) y qué componentes incluye?",
+      "respuesta_esperada": "La EAD representa el importe de exposición esperado en el momento del impago. Para productos con saldo fijo, es el principal pendiente más intereses devengados. Para productos con saldo variable, debe estimarse considerando el saldo dispuesto actual y el factor de conversión de crédito (CCF).",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["EAD", "exposición", "impago", "CCF", "saldo"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_013",
+      "category": "regulatory",
+      "pregunta": "¿Qué es el factor de conversión de crédito (CCF) y cómo debe estimarse?",
+      "respuesta_esperada": "El factor de conversión de crédito (CCF) es el porcentaje del importe no dispuesto de una línea de crédito que se espera esté dispuesto en el momento del impago.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["CCF", "factor de conversión", "importe no dispuesto", "línea de crédito"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_014",
+      "category": "regulatory",
+      "pregunta": "¿Qué papel juega el backtesting en la validación de modelos IRB?",
+      "respuesta_esperada": "El backtesting es un elemento fundamental de la validación que compara tasas de impago observadas vs PD estimadas, pérdidas realizadas vs LGD estimadas, y saldos al impago vs EAD estimadas.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["backtesting", "validación", "tasas de impago", "PD estimadas"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_015",
+      "category": "regulatory",
+      "pregunta": "¿Con qué frecuencia deben revisarse los modelos de estimación de parámetros de riesgo?",
+      "respuesta_esperada": "Los modelos de estimación de parámetros de riesgo deben revisarse al menos anualmente.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["anualmente", "revisión", "modelos", "parámetros de riesgo"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_016",
+      "category": "regulatory",
+      "pregunta": "¿Qué papel juega el juicio experto en la estimación de parámetros de riesgo?",
+      "respuesta_esperada": "El juicio experto puede ser necesario cuando los datos históricos son insuficientes o no representativos, pero debe aplicarse de manera estructurada y controlada, documentado y justificado.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["juicio experto", "datos históricos", "documentado", "controlada"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_017",
+      "category": "regulatory",
+      "pregunta": "¿Qué tratamiento deben recibir las exposiciones con bajo número de impagos (low default portfolios)?",
+      "respuesta_esperada": "Las carteras con bajo número de impagos requieren extender el período de observación, considerar datos externos, aplicar técnicas bayesianas, y aplicar márgenes de conservadurismo más amplios.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["low default portfolios", "período de observación", "datos externos", "conservadurismo"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_018",
+      "category": "regulatory",
+      "pregunta": "¿Qué requisitos existen para la documentación de modelos de riesgo de crédito según estas directrices?",
+      "respuesta_esperada": "La documentación debe incluir descripción de la metodología, datos utilizados, proceso de segmentación y calibración, resultados de validación, limitaciones conocidas, y políticas de governance.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["documentación", "metodología", "validación", "segmentación", "calibración"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_019",
+      "category": "regulatory",
+      "pregunta": "¿Cómo deben valorarse las garantías reales en la estimación de LGD?",
+      "respuesta_esperada": "Las garantías reales deben valorarse considerando el valor de mercado en el momento de la ejecución, los costes de ejecución, el tiempo esperado hasta la realización, y la volatilidad del valor a lo largo del tiempo.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["garantías reales", "valor de mercado", "ejecución", "costes", "haircuts"],
+      "umbral_confianza": 0.6
+    },
+    {
+      "id": "reg_020",
+      "category": "regulatory",
+      "pregunta": "¿Qué papel juegan las pruebas de estrés en la validación de modelos IRB?",
+      "respuesta_esperada": "Las pruebas de estrés son un componente integral de la validación que evalúa cómo se comportarían los parámetros bajo escenarios adversos pero plausibles.",
+      "fuentes_esperadas": [{"documento": "EBA/GL/2017/16", "articulo": null}],
+      "datos_clave": ["pruebas de estrés", "stress testing", "validación", "escenarios adversos"],
+      "umbral_confianza": 0.6
+    }
+  ]
+}
