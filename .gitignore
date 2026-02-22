@@ -77,7 +77,8 @@ Thumbs.db
 .DS_Store
 
 # ChromaDB binary index files (regeneratable)
-vector_db/chroma_db/*/
+vector_db/chroma_db/
+vector_db/
 
 # pynvml binary (installed separately)
 pynvml
