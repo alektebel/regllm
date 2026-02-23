@@ -3,6 +3,7 @@ Configuration file for RegLLM project.
 Adjust these parameters to customize the training and inference.
 """
 
+import os
 from pathlib import Path
 
 # ============================================================================
@@ -222,7 +223,7 @@ ENHANCED_SCRAPING = {
 # ============================================================================
 TELEGRAM = {
     # Bot token from @BotFather (REQUIRED - replace with your token)
-    'bot_token': '***REDACTED_BOT_TOKEN***',
+    'bot_token': os.getenv('TELEGRAM_BOT_TOKEN', ''),
 
     # Allowed user IDs (leave empty to allow all users, or add your Telegram user ID for security)
     # Get your user ID by messaging @userinfobot on Telegram
