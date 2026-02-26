@@ -42,13 +42,16 @@ data/raw/**/*.pdf
 data/processed/*.json
 data/processed/**/*.json
 !data/banks_urls.json
-models/finetuned/
+# Ignore all finetuned runs except the latest final_model (tracked via LFS)
+models/finetuned/run_20260117_002605/
+models/finetuned/run_20260118_220204/
+models/finetuned/run_20260215_195521/
+models/finetuned/run_20260220_191334/
+models/finetuned/run_20260222_224503/checkpoint-*/
 models/qwen*/
-*.bin
 *.pth
 *.pt
 *.ckpt
-*.safetensors
 wandb/
 runs/
 
