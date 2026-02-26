@@ -21,7 +21,7 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 # ============================================================================
 SCRAPING = {
     # URL file with regulation sources
-    'url_file': 'regurl.txt',
+    'url_file': 'data/regurl.txt',
 
     # Delay between requests (seconds) - be respectful!
     'request_delay': 2,

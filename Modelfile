@@ -1,0 +1,27 @@
+# Modelfile for regllm — Qwen2.5-7B fine-tuned on Spanish banking regulation
+#
+# This file is auto-rewritten by scripts/build_ollama_model.sh with the
+# absolute path to the Q4_K_M GGUF.  Edit this placeholder only if you
+# have already built the GGUF manually.
+#
+# Build: ./scripts/build_ollama_model.sh
+# Use:   ollama create regllm -f Modelfile
+
+FROM ./models/gguf/regllm-q4_k_m.gguf
+
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+{{ .Response }}<|im_end|>"""
+
+SYSTEM """Eres un experto asistente en regulación bancaria y riesgo de crédito.
+Responde siempre en español. Sé preciso, cita las fuentes proporcionadas y nunca inventes
+artículos o normativas. Si no sabes la respuesta, dilo claramente.
+Cuando cites regulación, usa el formato: [FUENTE: nombre_del_documento, fragmento]."""
+
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER stop <|im_end|>
+PARAMETER num_ctx 4096

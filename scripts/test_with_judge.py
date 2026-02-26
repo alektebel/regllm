@@ -41,7 +41,7 @@ def find_latest_checkpoint() -> Path | None:
         if run.is_dir() and run.name.startswith("run_")
         for ckpt in run.iterdir()
         if ckpt.is_dir()
-        and ckpt.name.startswith("checkpoint-")
+        and (ckpt.name.startswith("checkpoint-") or ckpt.name == "final_model")
         and (ckpt / "adapter_model.safetensors").exists()
     ]
     if not checkpoints:
@@ -177,6 +177,7 @@ def load_model_and_tokenizer(checkpoint_path: str):
         bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_quant_type="nf4",
+        llm_int8_enable_fp32_cpu_offload=True,
     )
     base = AutoModelForCausalLM.from_pretrained(
         BASE_MODEL,
@@ -401,7 +402,7 @@ def main():
 
     # ── Resolve checkpoint ──
     if args.checkpoint:
-        ckpt_path = Path(args.checkpoint)
+        ckpt_path = Path(args.checkpoint).resolve()
     else:
         ckpt_path = find_latest_checkpoint()
         if ckpt_path is None:

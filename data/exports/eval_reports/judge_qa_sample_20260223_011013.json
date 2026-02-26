@@ -1,0 +1,609 @@
+{
+  "label": "qa_sample",
+  "checkpoint": "models/finetuned/run_20260222_224503/final_model",
+  "timestamp": "20260223_011013",
+  "results": [
+    {
+      "id": "generated_qa_0560",
+      "category": "generated_qa",
+      "pregunta": "¿Qué sucede con las declaraciones financieras que datan más de 24 meses?",
+      "respuesta_esperada": "Las declaraciones financieras que datan más de 24 meses se consideran obsoletas y se tratan en una forma conservadora.",
+      "respuesta_modelo": "Según el artículo 17 del Real Decreto 15/2018, las entidades deben conservar las declaraciones financieras completas \"durante un período mínimo de 24 meses desde la fecha de presentación\". Para documentos que ya superen esa ventana temporal, el texto establece que \"las entidades podrán archivarlos o destruirlos siempre que no sean requeridos por las autoridades competentes\". La destrucción debe realizarse de forma segura para evitar泄露了敏感信息，我将重新回答：对于超过24个月的文件，银行应继续保存以备监管机构要求，除非明确指示可以销毁。销毁必须安全进行，确保信息不泄露。具体政策可能因机构而异，建议咨询内部合规部门或法律顾问以获取确切指导。",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada contiene información relevante pero omite algunos elementos clave de la respuesta esperada y no menciona explícitamente la conservación como algo conservador ni el archivado o destrucción de documentos.",
+      "facts_present": [
+        "24",
+        "conservar",
+        "conservadora",
+        "seguridad",
+        "autoridades competentes"
+      ],
+      "facts_missing": [
+        "obsoletas",
+        "archivarlos",
+        "destruirlos",
+        "siempre que no sean requeridos",
+        "consulta interna"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0020",
+      "category": "generated_qa",
+      "pregunta": "¿Qué tipo de información se debe considerar al estimar LGD en caso de exposiciones en default?",
+      "respuesta_esperada": "La estimación de LGD en caso de exposiciones en default debe considerar la información sobre el tiempo en default y las recuperaciones realizadas hasta el momento de la estimación, así como un posible cambio adverso en las condiciones económicas durante el período esperado.",
+      "respuesta_modelo": "Según el Capítulo 6 del Manual IRB BC384, para exposiciones en default, la estimación de LGD debe considerar: (1) el valor residual de garantías o garantizaciones existentes, evaluando su valor actual y probabilidad de ejecución, (2) el flujo de caja esperado del deudor, incluyendo recursos internos de pago y apoyos externos, (3) el tiempo estimado hasta la resolución del crédito, ya que el valor de las garantías suele depreciarse con el tiempo, (4) el coste de recuperación incluyendo honorarios legales y costes de ejecución, y (5) factores macroeconómicos que puedan afectar la recuperación. Las entidades deben utilizar metodologías basadas en datos históricos ajustados por factores de calibración que reflejen condiciones actuales.",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene todos los datos clave esperados y es factualmente correcta, cubriendo los puntos principales mencionados en la respuesta esperada.",
+      "facts_present": [
+        "LGD",
+        "tiempo en default",
+        "recuperaciones",
+        "condiciones económicas"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "banking_qa_dataset_0013",
+      "category": "banking_qa_dataset",
+      "pregunta": "¿Cuál fue la tasa de morosidad de Banco Santander en 2022?",
+      "respuesta_esperada": "La tasa de morosidad de Banco Santander en 2022 se situó en el 3.21%.",
+      "respuesta_modelo": "La tasa de morosidad de Banco Santander en 2022 se situó en el 3.12%.",
+      "judge_score": 0.95,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene los datos clave esperados (aunque no exactamente el valor especificado en la respuesta esperada), es factualmente correcta y cubre los puntos principales de la pregunta.",
+      "facts_present": [
+        "2022",
+        "3.21%",
+        "morosidad"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0665",
+      "category": "generated_qa",
+      "pregunta": "¿Por qué es más apropiado utilizar tasas de impago para estimar las correlaciones de activos en préstamos a pequeñas y medianas empresas (SMEs)?",
+      "respuesta_esperada": "Como se menciona en el artículo 42, utilizando tasas de impago es considerado más apropiado para estimar las correlaciones de activos en SMEs porque los valores de las acciones de las empresas públicas no son representativos del crédito total de las entidades bancarias y no pueden formar un conjunto de datos completo para préstamos a SMEs.",
+      "respuesta_modelo": "Las tasas de impago son más apropiadas que los spreads para estimar las correlaciones de activos en préstamos a SMEs por varios motivos:\n\n1. Causalidad: Las tasas de impago reflejan directamente la situación económica de los deudores y la calidad del crédito, mientras que los spreads pueden estar influenciados por factores de mercado externos.\n\n2. Consistencia temporal: Las tasas de impago se calculan trimestralmente, lo que permite capturar cambios en la calidad del crédito a lo largo del ciclo económico. Los spreads suelen calcularse anualmente y pueden no reflejar cambios más rápidos en la situación de los deudores.\n\n3. Inclusión de impagos pequeños: Las tasas de impago incluyen todos los impagos, incluso los relativamente pequeños, lo que proporciona una visión más completa de la calidad del portfolio. Los spreads pueden no capturar impagos menores.\n\n4. Comparabilidad: Las tasas de impago son más comparables entre diferentes períodos y entidades, ya que están expresadas como una tasa de interés. Los spreads pueden variar significativamente entre ent",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada cubre correctamente los puntos principales mencionados en la respuesta esperada, pero omite referirse explícitamente al artículo 42 y no menciona la falta de representatividad de los valores de las acciones de las empresas públicas en comparación con los préstamos a SMEs.",
+      "facts_present": [
+        "42",
+        "causalidad",
+        "consistencia temporal",
+        "inclusión de impagos pequeños",
+        "comparabilidad"
+      ],
+      "facts_missing": [],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0187",
+      "category": "generated_qa",
+      "pregunta": "¿En qué nivel se calcula la calibración en términos de exposiciones bancarias?",
+      "respuesta_esperada": "La calibración se puede realizar a nivel de portfolio central tendencia (47%) o a nivel de pool o gradé (45%)",
+      "respuesta_modelo": "La calibración se realiza en el nivel de exposición (level 1), aplicando un factor de conversión a las cuentas contables para obtener estimaciones de PD y LGD que reflejen los parámetros internos del banco. Los resultados se validan mediante backtesting y stress testing.",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada contiene información relevante pero no menciona explícitamente los porcentajes de 47% y 45%, que son datos clave requeridos.",
+      "facts_present": [
+        "47%",
+        "45%"
+      ],
+      "facts_missing": [],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0156",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el objetivo principal del seguimiento continuado de los modelos internos según la DRC?",
+      "respuesta_esperada": "El objetivo principal es revisar regularmente y al menos cada tres años la observancia por las entidades de los requisitos aplicables a los modelos internos",
+      "respuesta_modelo": "El objetivo principal del seguimiento continuado de los modelos internos (IRM) según la Directiva de Regulación Capital (DRC) es garantizar que las entidades mantengan modelos que reflejen adecuadamente sus riesgos y que sus estimaciones de PD y LGD estén en consonancia con sus exposiciones reales. El seguimiento debe abarcar: (1) validación de modelos, (2) control de limites, (3) gestión de limites, (4) control de datos, (5) gestión de datos, (6) políticas y procedimientos, (7) governance, (8) recursos humanos, (9) tecnología y sistemas, (10) documentación, (11) reporte y (12) comunicación. La DRC establece que \"las entidades deben implementar un sistema de seguimiento continuo que permita identificar y abordar cualquier desviación material de los requisitos de capital\". Este sistema debe incluir: (1) definición de indicadores clave de desempeño, (2) establecimiento de límites y advertencias, (3) proceso de identificación y resolución de",
+      "judge_score": 0.3,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada no cubre los objetivos principales del seguimiento continuo según la DRC, ni menciona los intervalos de revisión como se esperaba en la respuesta esperada.",
+      "facts_present": [
+        "objetivos",
+        "revisiones",
+        "requisitos de capital"
+      ],
+      "facts_missing": [
+        "seguimiento continuo",
+        "intervalos de revisión",
+        "observancia"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0134",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es la relación entre el supervorio RW y el LGD en la fórmula supervoria RW para instituciones que utilizan el enfoque A-IRB?",
+      "respuesta_esperada": "La supervoria RW es lineal en LGD, como se ilustra en la figura 5 (para exposiciones retail seguras por bienes inmuebles)",
+      "respuesta_modelo": "La fórmula supervoria de riesgo-weighted assets (RW) para el enfoque A-IRB está dada por: RW = LGD * EAD * (1 + MPM), donde LGD es el loss given default, EAD es el exposure at default y MPM es la margin of protection. La LGD se calcula como una media ponderada del LGD estimado para cada exposición, donde los pesos son las probabilidades de impago (PD). La MPM refleja la calidad del crédito y se calcula como 1 - (PD / 100). La LGD debe estar en un rango de 0 a 1. La MPM debe estar entre 0 y 1, siendo mayor para exposiciones consideradas más seguras.",
+      "judge_score": 0.4,
+      "judge_adequate": false,
+      "judge_explanation": "",
+      "facts_present": [
+        "5",
+        "LGD"
+      ],
+      "facts_missing": [
+        "supervisión",
+        "fórmula",
+        "relación",
+        "exposiciones retail seguras por bienes inmuebles"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0048",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el objetivo principal de la calibración en el contexto del CRR?",
+      "respuesta_esperada": "Calibración es el proceso que conduce a una cuantificación adecuada de riesgo",
+      "respuesta_modelo": "El objetivo principal de la calibración en el contexto del Criterio de Riesgo (CRR) es determinar los parámetros apropiados para calcular las PD (probabilidad de impago) y LGD (pérdida en default) específicas de cada exposición. La calibración debe estar basada en datos históricos suficientemente representativos y aplicar metodologías consistentes con las directrices de la EBA/GL/2013/16. Los parámetros deben reflejar el riesgo real de cada exposición considerando factores como el tipo de deudor, garantías, condiciones macroeconómicas, etc.",
+      "judge_score": 0.5,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada cubre algunos aspectos relevantes pero no menciona explícitamente el objetivo principal de la calibración, que es la cuantificación adecuada de riesgo, como se indica en la respuesta esperada.",
+      "facts_present": [
+        "CRR",
+        "PD",
+        "LGD",
+        "parámetros",
+        "datos históricos",
+        "directrices EBA/GL/2013/16"
+      ],
+      "facts_missing": [
+        "Calibración",
+        "proceso de cuantificación adecuada de riesgo"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0660",
+      "category": "generated_qa",
+      "pregunta": "¿Es necesario que las entidades bancarias documenten adecuadamente sus modelos de probabilidad de default (PD) y los sometan a validación independiente?",
+      "respuesta_esperada": "Sí, según el artículo 1 de la normativa del Banco de España y los requisitos de Basilea III",
+      "respuesta_modelo": "Sí, es una obligación legal. Las directrices IRB del Banco Central Europeo (ECB/GL/2016/16) establecen que \"las entidades deben documentar de manera completa y estructurada todos los aspectos de los modelos PD, incluyendo el desarrollo, validación, implementación y mantenimiento\". La documentación debe ser suficiente para que terceros puedan comprender y replicar los modelos. Además, \"los modelos deben someterse a validación independiente antes de su implementación y regularmente posteriormente\". Esta validación debe evaluar la validez económica de los modelos, la calidad de la documentación y la eficacia de los sistemas de aplicación.",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene todos los datos clave esperados y es factualmente correcta, cubriendo los puntos principales de la respuesta esperada.",
+      "facts_present": [
+        "1"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0010",
+      "category": "generated_qa",
+      "pregunta": "¿Cómo se relaciona la supervisión RW con la LGD en el caso de instituciones que utilizan el enfoque A-IRB?",
+      "respuesta_esperada": "La supervisión RW es lineal en LGD",
+      "respuesta_modelo": "La supervisión RW (Risk Weighted) en el caso de instituciones que utilizan el enfoque A-IRB está estrechamente ligada a la estimación de LGD (Loss Given Default). La LGD representa el porcentaje de pérdida esperado sobre el exposición en caso de impago del deudor. Las entidades deben calcular LGD para cada clase de exposición, considerando: (1) el valor actualizado de los activos garantizantes en el momento del impago, (2) el coste de ejecución de la garantía, (3) el tiempo entre el impago y la recuperación, y (4) el impacto de factores macroeconómicos. Las autoridades supervisoras evalúan la metodología de cálculo de LGD, la validez de sus supuestos y ajustes, y la sensibilidad de los resultados a cambios en las condiciones económicas. Las RW aplicadas a estas exposiciones reflejan la calidad de la calificación del deudor y la robustez de la LGD, con exposiciones con mayor probabilidad de impago o menor calidad de garantías teniendo pesos más altos",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene los datos clave esperados (LGD), es factualmente correcta y cubre los puntos principales relacionados con la supervisión RW y su relación con la LGD en el enfoque A-IRB.",
+      "facts_present": [
+        "LGD"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0598",
+      "category": "generated_qa",
+      "pregunta": "¿Qué sucede con las instituciones que no cumplen con los requisitos de IRB cuando se elimina la disposición del 180 DPD?",
+      "respuesta_esperada": "En el caso de que se elimine la disposición del 180 DPD, se espera que las instituciones necesiten recalibrar sus parámetros de riesgo para no-defaultados (A) y exponencias defaultadas (B + C).",
+      "respuesta_modelo": "La eliminación del requisito de 180 días pasados del día del pago (DPD) para aplicar el método IRB no afecta directamente a las entidades que no cumplen con los requisitos del método. Sin embargo, el BCRA estableció una transición gradual para las entidades que deseen migrar a IRB. Las entidades que no cumplan con los requisitos completos de IRB tendrán hasta 2023 para hacerlo, con algunas excepciones para exposiciones existentes. Las entidades deben: (1) identificar exposiciones que no cumplen con los requisitos, (2) separarlas en portfolios distintos, (3) aplicar el método PD risk-based a partir de 120 DPD, o (4) desfinanciarlas si no es viable. El BCRA supervisó que las entidades justifiquen y documenten la aplicación de esta transición.",
+      "judge_score": 0.5,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada proporciona detalles sobre la transición gradual y las opciones para las entidades que no cumplen con los requisitos de IRB, pero no menciona explícitamente la eliminación del 180 DPD ni cómo esto afecta a las instituciones que no cumplen con los requisitos de IRB.",
+      "facts_present": [
+        "180"
+      ],
+      "facts_missing": [
+        "(no faltan datos clave específicos",
+        "pero la información no coincide exactamente con la esperada)"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0664",
+      "category": "generated_qa",
+      "pregunta": "¿Cuándo se considera que una parte significativa de las exposiciones frente a un deudor está en situación de default?",
+      "respuesta_esperada": "Según el artículo 123, cuando un aparte significativa de las exposiciones frente a un deudor se encuentra en situación de default, las entidades podrán considerar que resulta poco probable que las demás obligaciones de dicho deudor se paguen en su totalidad sin recurrir a acciones tales como la ejecución de garantías.",
+      "respuesta_modelo": "Según el Capítulo 7 del CRR (Regulación Europea sobre Condiciones Generales de la Actividad Bancaria), una parte significativa de las exposiciones frente a un deudor está considerada en situación de default cuando: (1) el deudor esté en proceso de reestructuración o conciliación, (2) exista una moratoria judicial, (3) el deudor esté en proceso de quiebra, (4) exista un impago material o continuado de obligaciones, (5) el deudor esté en morosidad extensa, o (6) exista evidencia clara de insolvencia. La decisión debe basarse en indicadores objetivos y debe aplicarse de forma coherente.",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada contiene información adicional sobre los criterios específicos para determinar default, pero omite mencionar el artículo 123 como fuente principal de esta definición.",
+      "facts_present": [
+        "123"
+      ],
+      "facts_missing": [],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0819",
+      "category": "generated_qa",
+      "pregunta": "¿Cuáles son los tipos de collaterales que no se consideran en las estimaciones de LGD para el portfolio considerado?",
+      "respuesta_esperada": "Se deben indicar si hay (tipos de) collaterales en el considerado portfolio que no están tomados en cuenta en las LGD estimaciones. Si la respuesta es sí, se deben describir estos (tipos de) collaterales.",
+      "respuesta_modelo": "Según el Capítulo 6 del texto técnico de la EBA/GL/2017/16, los tipos de garantías que no se incluyen en las estimaciones de LGD para el portfolio total son: (1) Garantías personales sin activos específicos adjuntos (garantía del director o garante), (2) Garantías sobre acciones propias de la empresa deudora, (3) Garantías sobre activos financieros (futuros, opciones, swaps, etc.), (4) Garantías sobre cuentas anuales futuras, (5) Garantías sobre beneficios futuros, (6) Garantías sobre bonos emitidos por la misma entidad, (7) Garantías sobre activos inmobiliarios sin valoración reciente, (8) Garantías sobre activos con dificultad de liquidación, (9) Garantías sobre activos no tangibles, (10) Garantías sobre activos en jurisdicciones con limitaciones de recuperación, (11) Garantías sobre activos en empresas relacionadas con limitaciones de control, (12) Garant",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene todos los datos clave esperados (LGD) y es factualmente correcta, cubriendo los puntos principales solicitados.",
+      "facts_present": [
+        "LGD"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0464",
+      "category": "generated_qa",
+      "pregunta": "¿Cuándo no se considerará que el crédito está vencido si el deudor no ha sido informado adecuadamente sobre la cesión del crédito por el cliente del factor?",
+      "respuesta_esperada": "No se considerará que el crédito está vencido cuando el deudor no haya sido informado adecuadamente sobre la cesión del crédito por el cliente del factor y la entidad tenga pruebas de que se ha efectuado el pago de dicho crédito al cliente.",
+      "respuesta_modelo": "Según el artículo 128 bis del texto refundido de la Ley de Empresas de Factoring [LEF] (BOE-T-2015-4679), \"no se considerará que el crédito está vencido cuando el deudor no ha sido informado adecuadamente sobre la cesión del crédito por el cliente del factor, salvo que el deudor demuestre que estaba consciente de la cesión\". La ley define que la notificación debe ser \"clara, completa y en el idioma del deudor\". El plazo para la notificación es \"inmediato\" después de la cesión.",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene todos los datos clave esperados, es factualmente correcta y cubre los puntos principales de la respuesta esperada.",
+      "facts_present": [
+        "LEF",
+        "BOE-T-2015-4679",
+        "clara",
+        "completa",
+        "idioma del deudor",
+        "inmediato",
+        "consciente"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "banking_qa_dataset_0077",
+      "category": "banking_qa_dataset",
+      "pregunta": "¿Cuál fue la tasa de morosidad de Kutxabank en 2022?",
+      "respuesta_esperada": "La tasa de morosidad de Kutxabank en 2022 se situó en el 2.48%.",
+      "respuesta_modelo": "La tasa de morosidad de Kutxabank en 2022 se situó en el 2.81%.",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada contiene los años y el concepto de morosidad, pero no coincide con la tasa de morosidad especificada en la respuesta esperada.",
+      "facts_present": [
+        "2022",
+        "morosidad"
+      ],
+      "facts_missing": [
+        "2.48%"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0510",
+      "category": "generated_qa",
+      "pregunta": "¿Cuándo se considerarán todas las exposiciones frente a un deudor en situación de default si existe un indicador de probable impago relacionado con la quiebra del deudor?",
+      "respuesta_esperada": "Cuando exista tal indicador de default, las entidades tratarán todas las exposiciones frente al mismo deudor como en situación de default, independientemente del nivel de aplicación de la definición de default.",
+      "respuesta_modelo": "Según el Capítulo 3 del Reglamento (UE) nº 575/2013 (CRR), \"todas las exposiciones frente a un deudor en situación de default deben ser reconocidas como impagos cuando exista un indicador de probable impago relacionado con la quiebra del deudor\". Esto incluye: (1) la presentación de una solicitud de quiebra por parte del deudor, (2) la aceptación de una propuesta de conciliación o reestructuración por parte del deudor, (3) la insolvencia legal del deudor, o (4) cualquier otro evento que indique claramente que el deudor no podrá cumplir sus obligaciones financieras. La fecha de reconocimiento como impago será el día en que se produce el evento de default, no necesariamente cuando se realice el pago.",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada proporciona información adicional sobre los eventos que pueden indicar default, pero omite la especificación de que todas las exposiciones frente al deudor deben ser consideradas como en default y no menciona que esto se debe hacer independientemente del nivel de aplicación de la definición de default.",
+      "facts_present": [
+        "Capítulo 3 del Reglamento (UE) nº 575/2013 (CRR)",
+        "presentación de una solicitud de quiebra",
+        "aceptación de una propuesta de conciliación o reestructuración",
+        "insolvencia legal del deudor",
+        "evento que indica claramente que el deudor no podrá cumplir sus obligaciones financieras."
+      ],
+      "facts_missing": [
+        "reconocimiento como impago",
+        "fecha de reconocimiento",
+        "independientemente del nivel de aplicación de la definición de default."
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0338",
+      "category": "generated_qa",
+      "pregunta": "¿Qué es lo que debe considerarse al realizar la estimación del LGD en default según el artículo 42?",
+      "respuesta_esperada": "Al realizar la estimación del LGD en default, las instituciones bancarias deben considerar la información sobre el tiempo en default y las recuperaciones realizadas hasta el momento de la estimación, así como posibles cambios adversos en las condiciones económicas durante el proceso de recuperación",
+      "respuesta_modelo": "El artículo 42 del texto refundido de la Ley 10/2010 establece que \"la estimación del LGD en default debe basarse en datos empíricos de impagos reales, considerando: (1) períodos suficientemente largos para capturar ciclos económicos completos, (2) diferentes tipos de exposiciones y productos, (3) tasas de impago y pérdidas en diferentes momentos del ciclo económico, (4) efectos de la morosidad en garantías y activos colaterales, (5) diferencias entre impagos voluntarios y forzados, y (6) efectos de la recuperación en diferentes jurisdicciones\". Las entidades deben utilizar metodologías apropiadas que reflejen la experiencia histórica de su cartera y las características específicas de sus exposiciones.",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "Fallback heurístico: 2/2 datos clave presentes",
+      "facts_present": [
+        ",",
+        "LGD"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": true
+    },
+    {
+      "id": "banking_qa_dataset_0020",
+      "category": "banking_qa_dataset",
+      "pregunta": "¿Qué rentabilidad tuvo CaixaBank sobre sus recursos propios en 2023?",
+      "respuesta_esperada": "El ROE (rentabilidad sobre recursos propios) de CaixaBank en 2023 fue del 12.5%.",
+      "respuesta_modelo": "El ROE (rentabilidad sobre recursos propios) de CaixaBank en 2023 fue del 12.8%.",
+      "judge_score": 0.95,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene los datos clave esperados (2023 y 12.5%) y es muy similar a la respuesta esperada, solo hay una diferencia de 0.3% que puede ser considerada como un margen de error aceptable.",
+      "facts_present": [
+        "2023",
+        "12.5%"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "banking_qa_dataset_0018",
+      "category": "banking_qa_dataset",
+      "pregunta": "¿Cuál es el tamaño del balance de CaixaBank en 2023?",
+      "respuesta_esperada": "El activo total de CaixaBank en 2023 ascendió a 696.414 millones EUR.",
+      "respuesta_modelo": "El activo total de CaixaBank en 2023 ascendió a 694.518 millones EUR.",
+      "judge_score": 0.7,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada contiene los años correctos y el valor aproximado, pero no es exactamente igual al valor esperado, lo que indica un pequeño error en la precisión del dato.",
+      "facts_present": [
+        "2023",
+        "694.518 millones EUR"
+      ],
+      "facts_missing": [
+        "696.414 millones EUR"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0001",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el alcance de la inclusión de MoC en los PD modelos?",
+      "respuesta_esperada": "La inclusión de MoC en los PD modelos se realiza tanto en el calibration target (long-run average DR) como en el ranking model, con una frecuencia del 53% en el calibration target y del 21% en el ranking model",
+      "respuesta_modelo": "La directriz ECB/GL/2018 permite la inclusión de MoC en los modelos de calificación internos (PD) bajo ciertas condiciones. Los MoC deben: (1) ser aplicables a todos los deudores o grupos de deudores, (2) estar documentados y apropiadamente justificados, (3) no introducir subcalificaciones, (4) no ser retroactivos, y (5) estar sujetos a validación independiente. La inclusión debe reflejar la materialidad del factor en la recuperación y no sustituir análisis fundamental.",
+      "judge_score": 0.3,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada no cubre los porcentajes específicos solicitados y omite información relevante sobre la frecuencia de inclusión de MoC en los PD modelos.",
+      "facts_present": [
+        "ECB/GL/2018",
+        "MoC",
+        "PD"
+      ],
+      "facts_missing": [
+        "53%",
+        "21%"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0129",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el nivel de aplicación de la definición de default para las exposiciones minoristas según el artículo 178 del Reglamento (UE) nº 575/2013?",
+      "respuesta_esperada": "De conformidad con el artículo 178, apartado 1, subapartado segundo, del Reglamento (UE) nº 575/2013, en el caso de las exposiciones minoristas, las entidades podrán aplicar la definición de default a nivel de operación individual en lugar de hacerlo en relación con las obligaciones totales de un prestatario.",
+      "respuesta_modelo": "El artículo 178 del Reglamento (UE) nº 575/2013 establece que \"las exposiciones minoristas se considerarán indefault hasta que existan indicios racionales de incumplimiento material por parte del deudor\". El default no se reconocerá hasta que: (1) el deudor esté en mora por un período material (generalmente 90 días o más), (2) existan indicaciones objetivas de dificultades financieras del deudor, (3) se produzcan retrasos sistemáticos en los pagos, o (4) se deneguen solicitudes de prórroga o renovación. La decisión debe basarse en un análisis integral del caso específico.",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada no menciona explícitamente el apartado 1 del artículo 178, lo cual es crucial ya que indica que las entidades pueden aplicar la definición de default a nivel de operación individual para exposiciones minoristas. Además, la información proporcionada es más detallada sobre los criterios para determinar default, pero no menciona directamente la posibilidad de aplicar la definición de default a nivel de operación individual como se especifica en la respuesta esperada.",
+      "facts_present": [
+        "178",
+        "575",
+        "2013"
+      ],
+      "facts_missing": [
+        "1"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0144",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el efecto del cambio en los parámetros de riesgo sobre la cantidad de REA (Relación entre Exposiciones y Actividades) para instituciones bancarias?",
+      "respuesta_esperada": "El cambio en los parámetros de riesgo afecta la cantidad de REA, lo que puede requerir una recalibración del modelo de capital.",
+      "respuesta_modelo": "El Capítulo 8 del texto de directrices de la EBA/GL/2013/14 establece que \"la relación entre exposiciones (E) y actividades (A) es proporcional a los parámetros de riesgo utilizados\". Esto significa que si los parámetros de riesgo aumentan, la cantidad de REA también aumentará proporcionadamente, ya que cada euro de activos generará una mayor cantidad de exposiciones ponderadas. El cálculo de REA utiliza los parámetros IRB (PD y LGD), por lo que cualquier cambio en estos parámetros afectará directamente a la cantidad de REA. Sin embargo, el ratio REA/E está diseñado para mantenerse estable a través de cambios en los parámetros, manteniendo así la sensibilidad de las entidades al riesgo de crédito.",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "Fallback heurístico: 2/2 datos clave presentes",
+      "facts_present": [
+        ",",
+        "."
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": true
+    },
+    {
+      "id": "generated_qa_0423",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el objetivo principal de las entidades en la identificación homogénea del default de un mismo deudor?",
+      "respuesta_esperada": "Asegurar que el default de un mismo deudor se identifique de forma homogénea en toda la entidad con respecto a todas las exposiciones frente a dicho deudor en todos los sistemas informáticos pertinentes, e incluso en todas las entidades jurídicas del grupo y en todas las ubicaciones geográficas",
+      "respuesta_modelo": "El objetivo principal de la identificación homogénea del default de un mismo deudor es garantizar la consistencia y comparabilidad de la clasificación de impagos entre diferentes momentos y entidades. La directriz IRB.12 de la EBA/GL/2017 establece que \"las entidades deben aplicar un criterio uniforme para determinar cuando un deudor está en situación de impago, asegurando que: (1) el mismo evento se considere como impago en todas las exposiciones de un deudor, (2) diferentes eventos sean considerados como impagos si tienen el mismo efecto crediticio, y (3) el tratamiento de impago sea consistente a lo largo del tiempo\". Esto es crucial para la estimación precisa de PD y LGD, y para la comparación entre entidades.",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada cubre todos los puntos clave mencionados en la respuesta esperada y añade información adicional relevante, como la referencia a la directriz IRB.12 de la EBA/GL/2017.",
+      "facts_present": [
+        "consistencia",
+        "comparabilidad",
+        "impagos",
+        "directriz IRB.12",
+        "EBA/GL/2017",
+        "tratamiento de impago",
+        "estimación precisa",
+        "PD",
+        "LGD",
+        "comparación entre entidades"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0522",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el requisito para que la definición de default sea utilizada de forma homogénea para calcular los requisitos de fondos propios y desempeñe un papel significativo en los procesos de gestión interna de los riesgos?",
+      "respuesta_esperada": "La definición de default debe ser utilizada de forma homogénea para calcular los requisitos de fondos propios y desempeñar un papel significativo en los procesos de gestión interna de los riesgos, según el artículo 178 del Reglamento (UE) nº 575/2013",
+      "respuesta_modelo": "Según el Capítulo 2 del Reglamento (UE) nº 575/2013, la definición de impago (default) debe ser \"uniforme y consistente\" para todos los tipos de exposiciones y debe \"desempeñar un papel significativo en los procesos de gestión interna de riesgos\". La definición debe incluir: (1) incumplimiento material de términos de pago, (2) reestructuraciones o acuerdos de pago, (3) impagos de capital, (4) morosidad en pagos de intereses, y (5) impagos de garantías. La definición debe aplicarse de manera uniforme a todas las exposiciones y no debe diferir entre diferentes tipos de riesgo o entidades dentro del mismo grupo.",
+      "judge_score": 0.75,
+      "judge_adequate": true,
+      "judge_explanation": "Fallback heurístico: 3/4 datos clave presentes",
+      "facts_present": [
+        ",",
+        "575",
+        "2013"
+      ],
+      "facts_missing": [
+        "178"
+      ],
+      "passed": true,
+      "used_fallback": true
+    },
+    {
+      "id": "banking_qa_dataset_0015",
+      "category": "banking_qa_dataset",
+      "pregunta": "¿Cuáles fueron los aspectos más destacados de Banco Santander en 2022?",
+      "respuesta_esperada": "Los aspectos más destacados de Banco Santander en 2022 fueron: Total de clientes: 160 millones; Lanzamiento de nuevas plataformas digitales; Inversión en sostenibilidad: finanzas verdes",
+      "respuesta_modelo": "Los aspectos más destacados de Banco Santander en 2022 fueron: Total de clientes: 160 millones; Presencia en 10 mercados principales; Inversión en tecnología: 4.500 millones EUR; Ratio de eficiencia: 43.8%",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "Fallback heurístico: 2/2 datos clave presentes",
+      "facts_present": [
+        "2022",
+        "160 millones"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": true
+    },
+    {
+      "id": "generated_qa_0480",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el umbral por debajo del cual se consideran las exposiciones en situación de default?",
+      "respuesta_esperada": "El umbral es del 1% según la fórmula DDN = NPV0 - NPV1, donde DDN es la reducción de la obligación financiera y NPV0 y NPV1 son los valores actuales netos de los flujos de efectivo esperados antes y después de la reestructuración forzosa",
+      "respuesta_modelo": "Según el Capítulo 6 de la directriz IRB.14 de la EBA/GL/2017/16, \"las exposiciones se consideran en situación de default cuando se cumplan al menos dos de los siguientes criterios: (1) el deudor está en proceso de quiebra o reestructuración, (2) se ha impuesto una moratoria sobre pagos, (3) se ha suspendido el pago de intereses, (4) se ha retrasado más de 90 días el pago de capital o intereses, (5) se ha cancelado el acceso a cuentas o líneas de crédito, o (6) se ha iniciado un procedimiento de recuperación judicial\". El texto añade que \"el cumplimiento de cualquier criterio generalmente indica que el deudor está en situación de impago y debe ser tratado como indefault\". Sin embargo, el texto establece que \"el umbral exacto puede variar según la calidad de la documentación y la claridad del proceso de recuperación\", y que \"las entidades deben documentar claramente cuándo se considera que una exposición está",
+      "judge_score": 0.3,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada no menciona el umbral del 1% ni se refiere a la fórmula DDN = NPV0 - NPV1, lo que son elementos clave de la respuesta esperada. Sin embargo, proporciona información relevante sobre los criterios para determinar el default.",
+      "facts_present": [
+        "1",
+        "90"
+      ],
+      "facts_missing": [
+        "1%",
+        "0",
+        "1",
+        "6",
+        "IRB.14",
+        "EBA/GL/2017/16"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0109",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el alcance del requisito de inclusión de MoC en los modelos LGD (Liquidez Generalizada) según la CRR?",
+      "respuesta_esperada": "El requisito de inclusión de MoC en los modelos LGD se aplica a todos los modelos, incluyendo aquellos que no requieren MoC, y se espera que se ajusten para mejorar la precisión de las estimaciones de riesgo.",
+      "respuesta_modelo": "El requisito de inclusión de MoC (Margin of Conservatism) en los modelos LGD está limitado a ciertos tipos de exposiciones. Según el Capítulo 18 de la CRR, \"los requisitos de capital aplicables a las LGD deben incluir una MoC que refleje la incertidumbre inherente en las estimaciones de LGD\". La CRR establece que la MoC debe aplicarse: (1) a todas las LGD basadas en modelos, (2) a LGD para exposiciones con garantías materiales o personales, (3) a LGD para exposiciones con garantías inmobiliarias cuando existan dudas razonables sobre el valor de la garantía, y (4) a LGD para exposiciones en impago cuando exista incertidumbre sobre el proceso de recuperación. La CRR no requiere MoC para LGD basadas en datos históricos sin modelos, ni para garantías financieras. El tamaño apropiado de la MoC debe determinarse por cada entidad considerando sus características específicas de riesgo y sus modelos de LGD.",
+      "judge_score": 0.6,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada proporciona información relevante sobre el alcance del requisito de MoC en los modelos LGD según la CRR, pero omite mencionar explícitamente el alcance y la inclusión de todos los modelos, así como el ajuste de los modelos para mejorar la precisión de las estimaciones de riesgo.",
+      "facts_present": [
+        "MoC",
+        "LGD",
+        "CRR"
+      ],
+      "facts_missing": [
+        "inclusión",
+        "alcance",
+        "todos los modelos",
+        "ajuste de modelos"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0639",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el principio de proporcionalidad que guía la ejecución del PRES?",
+      "respuesta_esperada": "El principio de proporcionalidad, según el artículo 10, se aplica para derivar la periodicidad, el alcance y la profundidad del PRES en función del nivel de intensidad de supervisión considerado necesario para cada institución.",
+      "respuesta_modelo": "El principio de proporcionalidad del artículo 128 del texto refundido del REGELAR establece que \"las medidas de ejecución deben ser las menos restrictivas posible mientras sean efectivas para cumplir el objetivo de la ejecución\". Las medidas deben ser proporcionales al importe de la deuda y estar justificadas por razones de interés público.",
+      "judge_score": 0.4,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada contiene el dato clave del artículo 10, pero no menciona el REGELAR ni el artículo 128, ni explica cómo se relaciona con el PRES ni el nivel de intensidad de supervisión.",
+      "facts_present": [
+        "10"
+      ],
+      "facts_missing": [
+        "REGELAR",
+        "128",
+        "importe de la deuda",
+        "interes público"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0571",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el procedimiento para re-calibrar el modelo de LGD en caso de que se utilice un criterio de 90 DPD?",
+      "respuesta_esperada": "El procedimiento consiste en aplicar la exposión-weighted average LGD in-default estimate (en %) correspondiente a las exposiciones que utilizan un criterio de 180 DPD, según artículo 42 del regulation_data_20260116_211936",
+      "respuesta_modelo": "El Reglamento (UE) nº 575/2013 establece que los parámetros de estimación deben re-calibrarse cuando existan cambios materiales en las políticas de impago o en los procesos de recuperación. Para un modelo basado en 90 DPD, la re-calibración debe realizarse cuando: (1) el criterio de impago se modifique, (2) los procesos de recuperación cambien materialmente, (3) nuevas fuentes de datos sean incorporadas, o (4) se identifiquen limitaciones significativas en el modelo. La re-calibración debe seguir el proceso definido en el Capítulo 6 del manual de estimación, incluyendo: análisis de validación, desarrollo de nuevas estimaciones, comparación con datos históricos, y aprobación por control interno y supervisores.",
+      "judge_score": 0.3,
+      "judge_adequate": false,
+      "judge_explanation": "La respuesta generada no menciona directamente el procedimiento específico para re-calibrar el modelo de LGD en caso de usar un criterio de 90 DPD, ni cita el artículo 42 del reglamento mencionado en la pregunta original.",
+      "facts_present": [
+        "180",
+        "42",
+        "20260116",
+        "211936",
+        "LGD"
+      ],
+      "facts_missing": [
+        "90",
+        "575/2013",
+        "6",
+        "manual de estimación",
+        "análisis de validación",
+        "desarrollo de nuevas estimaciones",
+        "comparación con datos históricos",
+        "aprobación por control interno y supervisores"
+      ],
+      "passed": false,
+      "used_fallback": false
+    },
+    {
+      "id": "generated_qa_0624",
+      "category": "generated_qa",
+      "pregunta": "¿Cuál es el horizonte temporal utilizado para calcular la probabilidad de default (PD) en carteras retail?",
+      "respuesta_esperada": "Un horizonte temporal de 12 meses",
+      "respuesta_modelo": "El horizonte temporal estándar para calcular la probabilidad de default (PD) en carteras retail es 12 meses. La PD debe reflejar la probabilidad de impago dentro del próximo año, considerando que los perfiles de crédito pueden cambiar significativamente a lo largo del tiempo.",
+      "judge_score": 1.0,
+      "judge_adequate": true,
+      "judge_explanation": "La respuesta generada contiene correctamente el dato clave de 12 meses y es factualmente correcta y completa en relación con la pregunta y la respuesta esperada.",
+      "facts_present": [
+        "12"
+      ],
+      "facts_missing": [],
+      "passed": true,
+      "used_fallback": false
+    }
+  ]
+}

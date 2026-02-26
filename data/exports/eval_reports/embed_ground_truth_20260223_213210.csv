@@ -1,0 +1,435 @@
+id,category,pregunta,respuesta_esperada,respuesta_ft,respuesta_base,ft_vs_ref,base_vs_ref,ft_vs_base,ft_gain
+fin_001,financial,¿Cuáles fueron los resultados de Banco Santander en 2023?,"En 2023, Banco Santander obtuvo un beneficio neto de 11.076 millones EUR. El banco contaba con un activo total de 1.720.000 millones EUR y mantuvo un ratio de capital del 12.8%.","En 2023, Banco Santander obtuvo un beneficio neto de 11.076 millones EUR. El banco contaba con un activo total de 1.680.000 millones EUR y mantuvo un ratio de capital del 12.4%.","Para proporcionar información precisa sobre los resultados financieros de Banco Santander en 2023, necesitaría acceder a los informes financieros oficiales publicados por la entidad. Sin embargo, puedo darte una idea general basada en patrones habituales y tendencias anteriores.
+
+Banco Santander es una de las entidades financieras más grandes de Europa y publica sus resultados financieros anuales y trimestrales. Estos informes suelen incluir:
+
+1. **Beneficio Neto**: Este es uno de los indicadores clave que refleja la rentabilidad de la entidad durante el año.
+
+2. **Activos y Pasivos**: Se detallan los balances totales de activos y pasivos, lo que puede indicar cómo se ha gestionado el balance de la entidad.
+
+3. **Resultado Operativo**: Refleja la capacidad de la entidad para generar ingresos a través de sus actividades principales.
+
+4. **Capital y Ratios de Capitalización**: Indican la solvencia y la salud financiera de la entidad.
+
+5. **Inversiones y Proyectos**: Se pueden mencionar inversiones significativas o proyectos estratégicos que la entidad ha emprendido.
+
+",0.9914,0.6517,0.6597,0.3397
+fin_002,financial,¿Cuánto ganó Banco Santander en 2023?,Banco Santander obtuvo un beneficio neto de 11.076 millones EUR en 2023.,Banco Santander obtuvo un beneficio neto de 11.076 millones EUR en 2023.,"Para proporcionar una respuesta precisa sobre los beneficios de Banco Santander en 2023, necesitaría acceder a sus informes financieros oficiales. Sin embargo, generalmente, esta información se publica en los informes anuales o trimestrales del banco.
+
+Para fines de referencia, puedo indicar que Banco Santander suele publicar sus resultados financieros trimestrales y anuales. Estos informes se presentan según las directrices de la Comisión Nacional del Mercado de Valores (CNMV) y la normativa de la Unión Europea, como la Directiva sobre Información de Empresas Listadas (Directiva Solvencia II para las entidades de capital riesgo).
+
+Por ejemplo, en su informe anual de 2022, Banco Santander informó un beneficio neto de 6.179 millones de euros. Para obtener la cifra exacta para 2023, te recomendaría consultar el informe financiero más reciente del banco o visitar su sitio web corporativo donde generalmente se publican estos datos.
+
+Si necesitas la información más actualizada, te sugiero revisar los informes financieros más rec",1.0,0.5685,0.5685,0.4315
+fin_003,financial,¿Cuál es el tamaño del balance de Banco Santander en 2023?,El activo total de Banco Santander en 2023 ascendió a 1.720.000 millones EUR.,El activo total de Banco Santander en 2023 ascendió a 1.680.000 millones EUR.,"Para proporcionar información precisa sobre el tamaño del balance de Banco Santander en 2023, necesitaría que me proporcionaran los datos financieros más recientes disponibles. Sin embargo, puedo ofrecerte una estimación basada en los datos más recientes disponibles públicamente.
+
+Según los informes financieros de Banco Santander, para el año 2022, el activo total (que representa el tamaño del balance) fue de aproximadamente 715.846 millones de euros. Este valor incluye tanto los activos de la entidad como los pasivos.
+
+Es importante tener en cuenta que estos números son para el año anterior y pueden variar significativamente en 2023 debido a factores como las operaciones comerciales, las adquisiciones, las disposiciones y otros eventos financieros.
+
+Para obtener la información más actualizada y precisa, te recomiendo consultar directamente los informes financieros oficiales de Banco Santander o su sitio web corporativo, donde se publican regularmente los estados financieros actualizados.",0.9617,0.6203,0.6704,0.3414
+fin_004,financial,¿Cómo está la solvencia de Banco Santander en 2023?,"El ratio de capital (CET1) de Banco Santander en 2023 fue del 12.8%, lo que refleja una sólida posición de solvencia.","El ratio de capital (CET1) de Banco Santander en 2023 fue del 13.2%, lo que refleja una sólida posición de solvencia.","Para proporcionar una respuesta precisa sobre la solvencia actual de Banco Santander en 2023, necesitaría acceso a los informes financieros más recientes del banco. Sin embargo, puedo ofrecerte información general basada en datos recientes y normativas relevantes.
+
+Banco Santander es uno de los principales bancos de España y Europa, y su solvencia se mide a través de varios indicadores clave, entre ellos:
+
+1. **Capitalización**: La capitalización de un banco refleja su capacidad para absorber pérdidas. Según la normativa de la Unión Europea (Basel III), los bancos deben mantener ciertos niveles de capital para ser considerados solventes. En 2022, Banco Santander informó que su ratio de capital Tier 1 era del 17,8%, superior al requisito mínimo del 10% exigido por la normativa europea.
+
+2. **Ratio de Capitalización**: Este ratio mide el capital del banco en relación con sus activos. En 2022, Banco Santander reportó un ratio de capitalización del 19,5%, lo que indica una solvencia robusta.
+
+3.",0.9761,0.6916,0.6808,0.2846
+fin_005,financial,¿Qué rentabilidad tuvo Banco Santander sobre sus recursos propios en 2023?,El ROE (rentabilidad sobre recursos propios) de Banco Santander en 2023 fue del 14.8%.,El ROE (rentabilidad sobre recursos propios) de Banco Santander en 2023 fue del 14.8%.,"Para proporcionar una respuesta precisa sobre la rentabilidad de los recursos propios de Banco Santander en 2023, necesitaría acceder a los informes financieros oficiales del banco para ese año. Sin embargo, puedo indicarte cómo se calcula esta métrica y qué informes son relevantes.
+
+La rentabilidad sobre los recursos propios (Return on Equity, ROE) se calcula dividiendo la ganancia neta por el capital propio promedio durante el período. La fórmula es:
+
+\[ \text{ROE} = \frac{\text{Ganancia Neta}}{\text{Capital Propio Promedio}} \]
+
+El Capital Propio Promedio se calcula como la media entre el capital propio al inicio y al final del período.
+
+Para obtener estos datos específicos, te recomendaría consultar el Informe Anual de Banco Santander, que generalmente se publica en el segundo semestre del año siguiente. En este informe se presentan los resultados financieros detallados, incluyendo la ganancia neta y el capital propio.
+
+Además, puedes revisar el Informe de Gestión, donde se discuten las estrategias y el desem",1.0,0.7062,0.7062,0.2938
+fin_006,financial,¿Cuál fue la tasa de morosidad de Banco Santander en 2023?,La tasa de morosidad de Banco Santander en 2023 se situó en el 3.14%.,La tasa de morosidad de Banco Santander en 2023 se situó en el 3.12%.,"Para proporcionar la tasa de morosidad específica de Banco Santander en 2023, necesitaría acceder a los informes financieros oficiales del banco para ese año. Sin embargo, no tengo acceso inmediato a esos datos.
+
+Según las últimas cifras disponibles públicamente, la tasa de morosidad de Banco Santander al final de 2022 fue del 1,85% para su cartera de préstamos al consumo y del 1,79% para su cartera de préstamos hipotecarios. Estas cifras se refieren a datos publicados por el banco y no son exactamente la tasa de morosidad para todo el año 2023.
+
+Es importante tener en cuenta que la tasa de morosidad puede variar trimestralmente y depende de diversos factores económicos y financieros. Para obtener la tasa precisa de 2023, se recomendaría consultar los informes financieros anuales de Banco Santander o sus comunicados de prensa más recientes.
+
+Además, es relevante mencionar que la tasa de morosidad está regulada por la normativa europe",0.9937,0.6796,0.6606,0.3141
+fin_007,financial,¿Cuáles fueron los resultados de CaixaBank en 2023?,"En 2023, CaixaBank obtuvo un beneficio neto de 5.787 millones EUR. El banco contaba con un activo total de 696.414 millones EUR y mantuvo un ratio de capital del 13.1%.","En 2023, CaixaBank obtuvo un beneficio neto de 4.812 millones EUR. El banco contaba con un activo total de 694.596 millones EUR y mantuvo un ratio de capital del 13.2%.","Para proporcionar información precisa sobre los resultados financieros de CaixaBank en 2023, necesitaría que me proporcionaran una fecha más cercana a la actualidad, ya que los informes financieros específicos suelen ser publicados durante el primer trimestre del año siguiente al que se refieren. Sin embargo, puedo darte una idea general basada en los patrones habituales y las tendencias recientes.
+
+En años anteriores, CaixaBank ha reportado resultados financieros que incluyen:
+
+1. **Beneficios Netos**: Los beneficios netos han variado dependiendo de la situación económica y financiera global, así como de las condiciones específicas del mercado español. En 2022, por ejemplo, el beneficio neto fue de aproximadamente 1.475 millones de euros.
+
+2. **Resultado Operativo**: Este es otro indicador clave que ha fluctuado según las condiciones económicas. En 2022, el resultado operativo fue de unos 2.689 millones de euros.
+
+3. **Patrimonio Bruto**: Este también ha variado, pero generalmente se mantiene estable o crece a medida que el banco genera",0.9576,0.5605,0.5679,0.3971
+fin_008,financial,¿Cuánto ganó CaixaBank en 2023?,CaixaBank obtuvo un beneficio neto de 5.787 millones EUR en 2023.,CaixaBank obtuvo un beneficio neto de 4.812 millones EUR en 2023.,"Para proporcionar una respuesta precisa sobre los beneficios de CaixaBank en 2023, necesitaría acceder a sus informes financieros oficiales. Sin embargo, generalmente, las empresas como CaixaBank publican sus resultados financieros anuales junto con su informe de responsabilidad social corporativa (IRSC) o en su informe anual.
+
+Para obtener información actualizada y precisa, te recomiendo consultar directamente el informe financiero de CaixaBank correspondiente al año 2023, que se puede encontrar en su sitio web oficial o en la página web del Mercado de Valores de España (CNMV). En estos informes se detallan los ingresos, los costes, los beneficios netos y otros aspectos financieros relevantes.
+
+Además, es importante tener en cuenta que los beneficios de una entidad bancaria pueden variar significativamente dependiendo de diversos factores económicos y regulatorios, por lo que un análisis comparativo con años anteriores puede ser útil para entender las tendencias.",0.8992,0.6204,0.6123,0.2787
+fin_009,financial,¿Cuál fue la tasa de morosidad de CaixaBank en 2023?,La tasa de morosidad de CaixaBank en 2023 se situó en el 2.81%.,La tasa de morosidad de CaixaBank en 2023 se situó en el 3.15%.,"Para proporcionar una respuesta precisa sobre la tasa de morosidad de CaixaBank en 2023, necesitaría acceder a los informes financieros oficiales del año 2023 de CaixaBank. Sin embargo, no tengo acceso en tiempo real a datos financieros específicos de empresas.
+
+Sin embargo, puedo indicarte que la tasa de morosidad es un indicador financiero importante que se reporta regularmente por las entidades financieras en sus estados financieros anuales y trimestrales. En general, esta información se incluye en el apartado de ""Activos no comerciales"" o ""Provisiones para morosidad"" en los estados financieros.
+
+Para obtener la tasa exacta de morosidad de CaixaBank en 2023, te recomendaría consultar:
+
+1. El informe anual de CaixaBank correspondiente al año 2023.
+2. Los informes financieros intermedios publicados durante 2023 (si existen).
+3. La página web oficial de CaixaBank, donde a menudo se publican estos datos.
+
+Además, es importante tener en cuenta que la tasa de",0.7384,0.5996,0.6287,0.1389
+fin_010,financial,¿Qué rentabilidad tuvo CaixaBank sobre sus recursos propios en 2023?,El ROE (rentabilidad sobre recursos propios) de CaixaBank en 2023 fue del 12.5%.,El ROE (rentabilidad sobre recursos propios) de CaixaBank en 2023 fue del 12.8%.,"Para proporcionar una respuesta precisa sobre la rentabilidad de CaixaBank sobre sus recursos propios en 2023, necesitaría acceder a los informes financieros oficiales del año 2023 de CaixaBank. Sin embargo, puedo ofrecerte una explicación general basada en la información disponible hasta la fecha más reciente.
+
+La rentabilidad sobre los recursos propios (Return on Equity, ROE) es un indicador financiero que mide la capacidad de una entidad para generar ganancias utilizando el capital de los accionistas. Se calcula dividiendo la ganancia neta por el capital propio.
+
+Para obtener el ROE exacto de CaixaBank en 2023, te recomendaría consultar:
+
+1. El Informe Anual de CaixaBank: Este documento contiene los resultados financieros detallados y las métricas clave.
+2. Los Informes Intermedios: Si el informe anual aún no está disponible, puedes revisar los informes intermedios publicados durante el año.
+3. Presentaciones de Inversores: A menudo, las presentaciones de inversores contienen datos financieros actualizados.
+
+Sin acceso directo a estos documentos",0.9866,0.6607,0.6613,0.3258
+fin_011,financial,¿Cuáles fueron los resultados de BBVA en 2023?,"En 2023, BBVA obtuvo un beneficio neto de 8.019 millones EUR. El banco contaba con un activo total de 744.200 millones EUR y mantuvo un ratio de capital del 13.4%.","En 2023, BBVA obtuvo un beneficio neto de 8.019 millones EUR. El banco contaba con un activo total de 744.200 millones EUR y mantuvo un ratio de capital del 13.0%.","Para proporcionar información precisa sobre los resultados financieros de BBVA en 2023, necesitaría acceder a sus informes financieros oficiales. Sin embargo, BBVA suele publicar sus resultados financieros anuales en el primer trimestre del año siguiente al que se refieren. Por lo general, estos informes incluyen datos sobre ingresos, beneficios netos, ratios financieros, y otros indicadores clave.
+
+Para obtener datos específicos, te recomiendo visitar el sitio web oficial de BBVA o buscar en bases de datos financieras como Bloomberg, Reuters, o en plataformas especializadas en información financiera. También puedes consultar las declaraciones de resultados presentadas ante la Comisión Nacional del Mercado de Valores (CNMV) de España.
+
+Si BBVA ha hecho algún comunicado de prensa destacando aspectos importantes de sus resultados, también podrías encontrar esa información en noticias financieras relevantes.",0.9964,0.6345,0.6347,0.3618
+fin_012,financial,¿Cuánto ganó BBVA en 2023?,BBVA obtuvo un beneficio neto de 8.019 millones EUR en 2023.,BBVA obtuvo un beneficio neto de 8.019 millones EUR en 2023.,"Para proporcionar una respuesta precisa sobre los beneficios de BBVA en 2023, necesitaría acceder a sus estados financieros oficiales o informes publicados. Sin embargo, BBVA suele publicar sus resultados financieros anuales y trimestrales en su sitio web corporativo y en la Comisión Nacional del Mercado de Valores (CNMV) de España.
+
+Para obtener la información más actualizada y precisa, te recomiendo visitar el sitio web oficial de BBVA o la página de la CNMV donde se publican los informes financieros oficiales. Estos informes incluyen detalles sobre las ganancias netas del año, entre otros aspectos financieros relevantes.
+
+Si necesitas información específica sobre el rendimiento financiero de BBVA en 2023, te sugeriría revisar sus últimas comunicaciones financieras disponibles públicamente.",1.0,0.6529,0.6529,0.3471
+fin_013,financial,¿Qué rentabilidad tuvo BBVA sobre sus recursos propios en 2023?,El ROE (rentabilidad sobre recursos propios) de BBVA en 2023 fue del 15.2%.,El ROE (rentabilidad sobre recursos propios) de BBVA en 2023 fue del 15.2%.,"Para proporcionar una respuesta precisa sobre la rentabilidad de BBVA sobre sus recursos propios en 2023, necesitaría acceder a los informes financieros oficiales del año 2023 de BBVA. Sin embargo, no tengo acceso inmediato a esos datos.
+
+Sin embargo, puedo indicarte cómo se calcula típicamente esta rentabilidad y qué factores pueden influir en ella:
+
+1. **Rentabilidad sobre Recursos Propios (ROE)**: Se calcula dividiendo la ganancia neta por el promedio de capital propio durante el año. La fórmula es:
+   \[
+   \text{ROE} = \frac{\text{Ganancia Neta}}{\text{Capital Propio Promedio}}
+   \]
+
+2. **Factores que influyen**: La rentabilidad sobre recursos propios puede verse afectada por diversos factores, incluyendo:
+   - El rendimiento de las inversiones.
+   - La gestión de riesgos crediticios.
+   - La eficiencia operativa.
+   - Las condiciones económicas generales.
+   - La política de dividendos.
+
+Para obtener la rentabilidad exacta de BBVA sobre sus recursos prop",1.0,0.7449,0.7449,0.2551
+fin_014,financial,¿Cuál fue la tasa de morosidad de BBVA en 2023?,La tasa de morosidad de BBVA en 2023 se situó en el 3.45%.,La tasa de morosidad de BBVA en 2023 se situó en el 4.12%.,"Para proporcionar la tasa de morosidad exacta de BBVA en 2023, necesitaría acceder a los informes financieros oficiales más recientes de la entidad. Sin embargo, BBVA publica regularmente sus resultados financieros y ratios de morosidad en sus informes anuales y trimestrales.
+
+Por ejemplo, según el Informe Anual de BBVA correspondiente al año 2022, la tasa de morosidad del crédito al consumo se situó en el 1,4% al cierre de 2022. Esto es una tendencia que ha seguido en años anteriores, aunque los valores pueden variar cada año dependiendo de diversos factores económicos.
+
+Es importante tener en cuenta que la tasa de morosidad puede variar entre diferentes segmentos de negocio de BBVA, como el crédito al consumo, el préstamo hipotecario, o el crédito corporativo. Para obtener la tasa específica de 2023, te recomendaría consultar directamente los informes financieros más recientes de BBVA o su sitio web oficial donde generalmente publican esta información.
+
+Además, es relevante mencionar que",0.9093,0.6642,0.7126,0.2451
+fin_015,financial,¿Cuáles fueron los resultados de Banco Sabadell en 2023?,"En 2023, Banco Sabadell obtuvo un beneficio neto de 1.320 millones EUR. El banco contaba con un activo total de 265.128 millones EUR y mantuvo un ratio de capital del 13.8%.","En 2023, Banco Sabadell obtuvo un beneficio neto de 617 millones EUR. El banco contaba con un activo total de 158.496 millones EUR y mantuvo un ratio de capital del 13.2%.","Para proporcionar información precisa sobre los resultados financieros de Banco Sabadell en 2023, necesitaría que me proporcionaran una fecha más cercana a la actualidad, ya que los informes financieros específicos suelen publicarse con cierto retraso y pueden variar dependiendo de si estamos hablando del primer trimestre, segundo trimestre, tercer trimestre o cuarto trimestre de 2023.
+
+Sin embargo, puedo darte una idea general basada en los patrones habituales y las tendencias recientes:
+
+1. **Beneficios Netos**: Los beneficios netos de Banco Sabadell suelen ser un indicador clave. En años anteriores, estos han fluctuado dependiendo de factores como la rentabilidad de la cartera de crédito, los costes operativos y las condiciones económicas generales.
+
+2. **Rendimiento de la Cartera de Crédito**: La evolución de la morosidad y la provisión para posibles pérdidas es crucial. En 2022, la entidad registró una tasa de morosidad moderada, pero se espera que siga siendo un factor importante para evaluar los resultados.
+
+3",0.9181,0.5753,0.5863,0.3428
+fin_016,financial,¿Cuánto ganó Banco Sabadell en 2023?,Banco Sabadell obtuvo un beneficio neto de 1.320 millones EUR en 2023.,Banco Sabadell obtuvo un beneficio neto de 815 millones EUR en 2023.,"Para proporcionar la información más precisa sobre los ingresos de Banco Sabadell en 2023, necesitaría acceder a sus estados financieros oficiales o informes publicados. Sin embargo, generalmente, esta información se puede encontrar en los informes anuales o trimestrales del banco, que son publicados según la normativa de transparencia financiera.
+
+Según la normativa del Banco de España y la Comisión Nacional del Mercado de Valores (CNMV), las empresas listadas en bolsa deben publicar sus resultados financieros trimestrales y anuales. Estos informes incluyen la información sobre los ingresos netos, entre otros datos financieros.
+
+Para obtener la información exacta, te recomendaría visitar el sitio web oficial de Banco Sabadell o buscar en la página web del CNMV donde se publican los informes financieros de las empresas españolas.",0.78,0.4753,0.494,0.3047
+fin_017,financial,¿Cuál fue la tasa de morosidad de Banco Sabadell en 2023?,La tasa de morosidad de Banco Sabadell en 2023 se situó en el 3.89%.,La tasa de morosidad de Banco Sabadell en 2023 se situó en el 4.12%.,"Para proporcionar la tasa de morosidad específica de Banco Sabadell en 2023, necesitaría acceder a los informes financieros más recientes del banco. Sin embargo, puedo ofrecerte una información general sobre cómo se calcula la tasa de morosidad y dónde puedes encontrar estos datos.
+
+La tasa de morosidad se calcula dividiendo el monto total de préstamos y créditos que están en mora (es decir, no han sido pagados dentro del plazo acordado) entre el total de préstamos y créditos totales. Esta tasa se expresa generalmente como un porcentaje.
+
+Los datos más recientes sobre la tasa de morosidad de Banco Sabadell para 2023 se pueden encontrar en su Informe Anual o en sus Informes Intermedios, que son publicados regularmente según la normativa de transparencia bancaria. Estos informes financieros son accesibles en la página web oficial de Banco Sabadell o en la plataforma de la Comisión Nacional del Mercado de Valores (CNMV) si se trata de información relevante para la transparencia del mercado.
+
+Además, es importante",0.8558,0.6346,0.6872,0.2212
+fin_018,financial,¿Cuáles fueron los resultados de Kutxabank en 2023?,"En 2023, Kutxabank obtuvo un beneficio neto de 557 millones EUR. El banco contaba con un activo total de 66.238 millones EUR y mantuvo un ratio de capital del 17.2%.","En 2023, Kutxabank obtuvo un beneficio neto de 457 millones EUR. El banco contaba con un activo total de 64.125 millones EUR y mantuvo un ratio de capital del 17.2%.","Para proporcionar información precisa sobre los resultados financieros de Kutxabank en 2023, necesitaría acceder a los informes financieros oficiales publicados por la entidad. Sin embargo, generalmente, las entidades financieras como Kutxabank (ahora conocida como Caja Rural de Álava) publican sus resultados anuales junto con su informe de responsabilidad corporativa.
+
+Según la normativa del Banco de España y la Comisión Nacional del Mercado de Valores (CNMV), las entidades bancarias deben presentar sus estados financieros anuales y sus informes de responsabilidad corporativa antes del 30 de abril del año siguiente al ejercicio fiscal.
+
+Si deseas información específica sobre los resultados de 2023, te recomendaría que revises los siguientes documentos:
+
+1. **Informe de Resultados Anual**: Este documento se publica generalmente en el primer trimestre del año siguiente al ejercicio fiscal y contiene información detallada sobre los ingresos, gastos, beneficios, etc.
+   
+2. **Informe de Responsabilidad Corporativa**: Este informe proporciona una visión más amplia sobre la gestión de la entidad, incluyendo aspectos como",0.9638,0.6218,0.6062,0.3419
+fin_019,financial,¿Cuánto ganó Kutxabank en 2023?,Kutxabank obtuvo un beneficio neto de 557 millones EUR en 2023.,Kutxabank obtuvo un beneficio neto de 475 millones EUR en 2023.,"Para proporcionar la información sobre los ingresos de Kutxabank en 2023, necesitaría acceder a sus estados financieros oficiales o informes publicados. Sin embargo, hasta la fecha, no dispongo de datos específicos sobre los resultados financieros de Kutxabank para el año 2023.
+
+Kutxabank, que ahora se conoce como Caja Rural de Castilla y León, es una entidad financiera española. Los resultados financieros detallados de las entidades bancarias suelen ser publicados en informes anuales o trimestrales, que se presentan generalmente entre marzo y junio del año siguiente al que se refieren.
+
+Para obtener esta información de manera precisa y actualizada, te recomendaría visitar el sitio web oficial de Caja Rural de Castilla y León o buscar en bases de datos financieras especializadas. También puedes encontrar esta información en las secciones financieras de los principales periódicos o en plataformas de análisis financieras.",0.9456,0.5508,0.5249,0.3948
+fin_020,financial,¿Cuál fue la tasa de morosidad de Kutxabank en 2023?,La tasa de morosidad de Kutxabank en 2023 se situó en el 2.35%.,La tasa de morosidad de Kutxabank en 2023 se situó en el 2.81%.,"Para proporcionar una respuesta precisa sobre la tasa de morosidad de Kutxabank en 2023, necesitaría acceder a los informes financieros oficiales más recientes o a las declaraciones del CEO o CFO de la entidad. Sin embargo, no tengo acceso inmediato a esos datos específicos.
+
+Sin embargo, puedo proporcionarte información general sobre cómo se calcula la tasa de morosidad y dónde puedes encontrar esta información:
+
+1. **Definición**: La tasa de morosidad se refiere al porcentaje de préstamos que no han sido pagados según lo estipulado en el contrato. Se calcula dividiendo el monto total de los préstamos en mora entre el monto total de los préstamos.
+
+2. **Fuente de Información**: La tasa de morosidad de las entidades financieras como Kutxabank es generalmente publicada en sus informes financieros anuales, en sus presentaciones trimestrales ante la Comisión Nacional del Mercado de Valores (CNMV) o en sus comunicados de prensa. También puede estar disponible en su sitio web corporativo.
+
+3. **Normativa**: En España, las",0.9151,0.6493,0.6136,0.2658
+fin_021,financial,¿Cuáles fueron los resultados de Banco Santander en 2022?,"En 2022, Banco Santander obtuvo un beneficio neto de 9.605 millones EUR. El banco contaba con un activo total de 1.661.486 millones EUR y mantuvo un ratio de capital del 12.2%.","En 2022, Banco Santander obtuvo un beneficio neto de 9.605 millones EUR. El banco contaba con un activo total de 1.640.000 millones EUR y mantuvo un ratio de capital del 12.8%.","Para proporcionar información precisa sobre los resultados financieros de Banco Santander en 2022, necesitaría consultar sus informes financieros oficiales. Sin embargo, puedo ofrecerte una visión general basada en las tendencias habituales y los anuncios públicos que suelen hacerse.
+
+Banco Santander es uno de los principales bancos de España y Europa, y generalmente publica sus resultados anuales al inicio del segundo trimestre del año siguiente. Por lo tanto, se espera que haya publicado sus resultados financieros para 2022 a principios de 2023.
+
+Los aspectos clave que suelen ser destacados en estos informes incluyen:
+
+1. **Beneficio Neto**: Este es uno de los indicadores más importantes que refleja la rentabilidad del banco durante el año. En 2021, el beneficio neto de Banco Santander fue de aproximadamente 6.470 millones de euros.
+
+2. **Ingresos**: Los ingresos totales del banco son otro indicador crucial. En 2021, los ingresos brutos de Banco Santander ascendieron a unos 58.900 millones de euros",0.9889,0.619,0.6129,0.3699
+fin_022,financial,¿Cuáles fueron los resultados de CaixaBank en 2022?,"En 2022, CaixaBank obtuvo un beneficio neto de 4.812 millones EUR. El banco contaba con un activo total de 683.596 millones EUR y mantuvo un ratio de capital del 12.8%.","En 2022, CaixaBank obtuvo un beneficio neto de 4.812 millones EUR. El banco contaba con un activo total de 694.596 millones EUR y mantuvo un ratio de capital del 13.2%.","Para proporcionar información precisa sobre los resultados financieros de CaixaBank en 2022, necesitaría consultar los informes oficiales publicados por la entidad. Sin embargo, puedo ofrecerte una descripción general basada en los informes financieros recientes y las declaraciones del CEO.
+
+En general, CaixaBank ha presentado resultados positivos en los últimos años, aunque los detalles específicos variarán dependiendo del período exacto al que te refieres. Por ejemplo, en su informe anual de 2021, CaixaBank reportó un beneficio neto de 1.974 millones de euros, lo que supuso un aumento del 35% respecto al año anterior.
+
+Es importante notar que estos resultados pueden haberse visto afectados por factores económicos globales y regionales, incluyendo la recuperación post-COVID-19 y las condiciones del mercado financiero.
+
+Para obtener los resultados financieros exactos de CaixaBank para 2022, te recomendaría consultar su informe anual o el informe de resultados del primer trimestre de 2023, ya que es común que las entidades financieras pub",0.9951,0.6962,0.6953,0.2989
+fin_023,financial,¿Cuáles fueron los resultados de BBVA en 2022?,"En 2022, BBVA obtuvo un beneficio neto de 6.452 millones EUR. El banco contaba con un activo total de 714.628 millones EUR y mantuvo un ratio de capital del 13.0%.","En 2022, BBVA obtuvo un beneficio neto de 8.016 millones EUR. El banco contaba con un activo total de 744.200 millones EUR y mantuvo un ratio de capital del 13.0%.","Para proporcionar información precisa sobre los resultados financieros de BBVA en 2022, necesitaría consultar sus informes financieros oficiales. Sin embargo, generalmente se incluyen en su Informe Anual y en los Informes Intermedios que publica la entidad.
+
+BBVA suele reportar sus resultados financieros anuales al final del primer trimestre del año siguiente. Por lo tanto, los resultados completos para 2022 se habrían presentado en el Informe Anual correspondiente, que probablemente se publicó en el segundo trimestre de 2023.
+
+Para obtener datos específicos como las ganancias netas, ingresos totales, ratio de endeudamiento, etc., te recomiendo visitar el sitio web oficial de BBVA o buscar en la página de la Comisión Nacional del Mercado de Valores (CNMV) en España, donde se publican los informes financieros de las empresas cotizadas.
+
+Además, BBVA es una entidad que opera bajo la normativa europea y española, por lo que también puedes encontrar información relevante en la Directiva del Banco Central Europeo y en la normativa del Banco de España.",0.964,0.6219,0.6166,0.3421
+fin_024,financial,¿Cuáles fueron los resultados de Banco Sabadell en 2022?,"En 2022, Banco Sabadell obtuvo un beneficio neto de 818 millones EUR. El banco contaba con un activo total de 258.746 millones EUR y mantuvo un ratio de capital del 13.2%.","En 2022, Banco Sabadell obtuvo un beneficio neto de 518 millones EUR. El banco contaba con un activo total de 167.496 millones EUR y mantuvo un ratio de capital del 13.2%.","Para proporcionar información precisa sobre los resultados financieros de Banco Sabadell en 2022, necesitaría acceder a sus informes financieros oficiales. Sin embargo, puedo indicarte qué información generalmente se incluye en estos informes y cómo se presentan.
+
+Banco Sabadell publica anualmente su Informe Anual y las Notas a las Financiaciones, que contienen información detallada sobre sus resultados financieros. En estos informes se incluyen:
+
+1. **Beneficio Neto**: Indica el resultado final del banco tras todas las operaciones durante el año.
+
+2. **Ingresos**: Incluyen ingresos por intereses, comisiones y otros ingresos.
+
+3. **Costes y Gastos**: Incluyen costes operativos, gastos de impuestos, entre otros.
+
+4. **Patrimonio Neta**: Muestra el valor residual de los activos menos los pasivos.
+
+5. **Ratio de Capital**: Indica la solvencia del banco, que es crucial para su supervivencia y continuidad.
+
+6. **Rendimiento sobre Patrimonio Propio (ROPA)**: Mide la eficiencia",0.9702,0.6237,0.6086,0.3464
+fin_025,financial,¿Cuáles fueron los resultados de Kutxabank en 2022?,"En 2022, Kutxabank obtuvo un beneficio neto de 475 millones EUR. El banco contaba con un activo total de 64.125 millones EUR y mantuvo un ratio de capital del 16.8%.","En 2022, Kutxabank obtuvo un beneficio neto de 385 millones EUR. El banco contaba con un activo total de 64.117 millones EUR y mantuvo un ratio de capital del 17.2%.","Para proporcionar información precisa sobre los resultados financieros de Kutxabank en 2022, necesitaría acceder a sus informes financieros oficiales. Sin embargo, puedo ofrecerte una descripción general basada en la información disponible hasta el último informe publicado.
+
+Kutxabank, que es parte del grupo Banco Popular (ahora conocido como Banco Sabadell tras su fusión), publicó sus resultados financieros anuales para 2022. Según el informe, los resultados de Kutxabank en 2022 reflejaron una mejora significativa en comparación con años anteriores, aunque se mantuvo bajo la supervisión regulatoria debido a su historia financiera anterior.
+
+Los principales puntos incluyen:
+
+1. **Beneficio Neto**: El beneficio neto de Kutxabank para 2022 aumentó significativamente en comparación con el año anterior, reflejando una mejor gestión de riesgos y una mayor eficiencia operativa.
+
+2. **Patrimonio Bruto**: El patrimonio bruto del banco también experimentó un crecimiento, lo que indica una fortaleza financiera mejorada.
+
+3. **Rend",0.9763,0.6209,0.6216,0.3554
+fin_026,financial,Compara los beneficios de Banco Santander y CaixaBank en 2023,"En 2023, Banco Santander obtuvo un beneficio neto de 11.076 millones EUR, mientras que CaixaBank alcanzó 5.787 millones EUR.","En 2023, Banco Santander obtuvo un beneficio neto de 9.605 millones EUR, mientras que CaixaBank alcanzó 4.812 millones EUR. Santander es significativamente más grande en términos de beneficios, pero CaixaBank está experimentando una recuperación después de sus dificultades financieras.","Para comparar los beneficios de Banco Santander y CaixaBank en 2023, es importante analizar varios aspectos financieros y regulatorios. Sin embargo, es crucial tener en cuenta que estos datos pueden variar dependiendo del momento específico del año y de las decisiones estratégicas tomadas por cada entidad. Aquí te presento una comparación basada en información general y tendencias recientes:
+
+### Beneficios Financieros
+
+1. **Rentabilidad (ROE y ROA)**
+   - **Banco Santander**: En 2022, el ROE (Return on Equity) de Banco Santander fue del 15,4%, mientras que el ROA (Return on Assets) fue del 1,1%. Estos indicadores son importantes para evaluar la eficiencia de la gestión financiera.
+   - **CaixaBank**: En 2022, el ROE de CaixaBank fue del 16,7%, y el ROA fue del 1,2%. Esto indica que CaixaBank tuvo una rentabilidad ligeramente superior a Santander.
+
+2. **Dividendos**
+   - **Banco Santander**: En 2",0.9138,0.6567,0.7231,0.2571
+fin_027,financial,¿Cómo está la solvencia de CaixaBank en 2023?,"El ratio de capital (CET1) de CaixaBank en 2023 fue del 13.1%, lo que refleja una sólida posición de solvencia.","El ratio de capital (CET1) de CaixaBank en 2023 fue del 13.8%, lo que refleja una sólida posición de solvencia.","Para proporcionar una respuesta precisa sobre la solvencia actual de CaixaBank en 2023, necesitaría acceso a los informes financieros más recientes del banco. Sin embargo, puedo ofrecerte una visión general basada en la información disponible hasta finales de 2022 y la normativa vigente.
+
+CaixaBank es un banco de gran tamaño en España que cumple con las directrices de solvencia establecidas por la Autoridad Bancaria Europea (ABE) y la Comisión Nacional del Mercado de Valores (CNMV) en España. En términos generales, los bancos deben cumplir con varios ratios de solvencia para garantizar su estabilidad financiera:
+
+1. **Capital Neto**: Debe estar por encima de ciertos umbrales definidos por la ABE. En 2022, CaixaBank presentó un ratio de capital neto del 15,7%, lo que supera significativamente los requisitos mínimos propios (MREL) y los requisitos de capital de la Unión Europea.
+
+2. **Ratio de Capital Propio (CET1)**: Este ratio debe ser superior",0.9794,0.6395,0.6585,0.3399
+fin_028,financial,¿Cómo está la solvencia de BBVA en 2023?,"El ratio de capital (CET1) de BBVA en 2023 fue del 13.4%, lo que refleja una sólida posición de solvencia.","El ratio de capital (CET1) de BBVA en 2023 fue del 13.2%, lo que refleja una sólida posición de solvencia.","Para proporcionar una respuesta precisa sobre la solvencia actual de BBVA (Banco Bilbao Vizcaya Argentaria) en 2023, necesitaría acceso a los informes financieros más recientes del banco. Sin embargo, puedo ofrecerte información general basada en datos recientes y normativas relevantes.
+
+BBVA mantiene un sistema de supervisión riguroso por parte de la Autoridad Española del Mercado de Valores y la Banca (AEMBV), que es el organismo encargado de supervisar las entidades financieras españolas. Según las directrices de la Unión Europea y la normativa de Solvencia II aplicable a las entidades bancarias, BBVA ha mantenido un nivel de solvencia adecuado.
+
+En términos generales, BBVA ha cumplido con los requisitos de capital mínimos establecidos por la normativa europea. Según la Directiva Capital Adequado (CRD IV) y la normativa de Solvencia II, las entidades bancarias deben mantener un ratio de capital propio (CET1) al menos del 8,5% del balance sheet.
+
+Para fechas más",0.966,0.6399,0.6172,0.3262
+fin_029,financial,¿Cómo está la solvencia de Kutxabank en 2023?,"El ratio de capital (CET1) de Kutxabank en 2023 fue del 17.2%, lo que refleja una sólida posición de solvencia.","El ratio de capital (CET1) de Kutxabank en 2023 fue del 17.4%, lo que refleja una sólida posición de solvencia. Este ratio está altamente por encima de los requisitos regulatorios mínimos y demuestra la fortaleza financiera de la entidad.","Para proporcionar una respuesta precisa sobre la solvencia actual de Kutxabank (ahora conocida como Caja Rural de Castilla y León), necesitaría acceso a los informes financieros más recientes y a las declaraciones del banco. Sin embargo, puedo ofrecerte una visión general basada en la información disponible hasta finales de 2022 y en la normativa vigente.
+
+### Solvencia Financiera (Basada en Información Disponible Hasta Finales de 2022)
+
+1. **Capital Propio**:
+   - Según los informes financieros, la capitalización de Caja Rural de Castilla y León se mantiene estable y adecuada para su actividad. En diciembre de 2022, el ratio de capital propio (CAR) se situó en un nivel considerado sólido por la normativa europea.
+   - El CAR (Capital Adequado Regulatorio) es un indicador clave que refleja la capacidad del banco para cubrir pérdidas imprevistas. Para 2022, el CAR de Caja Rural de Castilla y León superó los requisitos mínimos establecidos por la",0.9158,0.6385,0.6713,0.2773
+fin_030,financial,¿Qué rentabilidad tuvo Banco Sabadell sobre sus recursos propios en 2023?,El ROE (rentabilidad sobre recursos propios) de Banco Sabadell en 2023 fue del 8.5%.,El ROE (rentabilidad sobre recursos propios) de Banco Sabadell en 2023 fue del 5.8%.,"Para proporcionar una respuesta precisa sobre la rentabilidad de los recursos propios de Banco Sabadell en 2023, necesitaría acceder a su informe financiero anual o trimestral correspondiente. Sin embargo, puedo indicarte cómo se calcula típicamente esta métrica y qué informes financieros se consultan para obtener esa información.
+
+La rentabilidad sobre los recursos propios (Return on Equity, ROE) se calcula dividiendo la ganancia neta por el capital propio promedio durante el período en cuestión. La fórmula es:
+
+\[ \text{ROE} = \frac{\text{Ganancia Neta}}{\text{Capital Propio Promedio}} \]
+
+El Capital Propio Promedio se calcula como la media entre el capital propio al inicio y al final del año.
+
+Para obtener estos datos específicos de Banco Sabadell en 2023, te recomendaría consultar:
+
+1. **Informe Anual de Banco Sabadell**: Este documento contiene los resultados financieros detallados, incluyendo la rentabilidad sobre los recursos propios.
+2. **Informes Intermedios**: Si no estás seguro de si el inform",0.9673,0.6387,0.6533,0.3286
+reg_001,regulatory,¿Cuál es el objetivo principal de las directrices EBA/GL/2017/16 sobre estimación de PD y LGD?,Las directrices EBA/GL/2017/16 tienen como objetivo principal reducir la variabilidad injustificada de los parámetros de riesgo y los requisitos de fondos propios en el marco del método IRB.,"El objetivo principal de las directrices EBA/GL/2017/16 es establecer directrices para la estimación de parámetros de riesgo internos (IRB) en relación con los requisitos de capital para exposiciones a personas físicas (PFG). Las directrices abordan: (1) metodologías apropiadas para la estimación de parámetros, (2) tratamiento de datos limitados o ausentes, (3) validación de modelos y estimaciones, (4) consideraciones especiales para PFG, incluyendo concentración de riesgo, y (5) requisitos de documentación. Las directrices se centran en PD y LGD, siendo aplicables tanto a nuevos desarrollos como a la revisión de modelos existentes.","Las Directrices EBA/GL/2017/16 sobre la estimación de la Probabilidad de Desembolso (PD) y la Pérdida de Garantía (LGD) tienen como objetivo principal proporcionar a los bancos europeos una guía clara y consistente para la estimación de estos dos elementos clave del riesgo crediticio.
+
+Estas directrices buscan asegurar que los bancos:
+
+1. **Estiman de manera adecuada**: Proporcionan métodos y criterios para la estimación de PD y LGD, garantizando que estas estimaciones sean precisas y consistentes.
+
+2. **Consisten en su aplicación**: Establecen un marco uniforme para que todas las entidades financieras apliquen de manera coherente estas estimaciones, lo que facilita la comparación entre instituciones y mejora la transparencia del sistema financiero.
+
+3. **Cumplan con la normativa**: Se alinean con las exigencias de la Directiva Capital de la Unión Europea (CRD IV/V), especialmente en lo que respecta a la definición y cálculo del Capital Propio.
+
+4. **Mejoren la calidad del capital",0.7439,0.5697,0.687,0.1742
+reg_002,regulatory,¿Desde cuándo son aplicables las directrices EBA/GL/2017/16?,Las directrices EBA/GL/2017/16 son aplicables desde el 1 de enero de 2021.,Las directrices EBA/GL/2017/16 sobre estimación de PD y LGD son aplicables desde el 1 de enero de 2020. Estas directrices reemplazan a las anteriores EBA/GL/2011/18.,"Las Directrices de la EBA (European Banking Authority) sobre la evaluación del riesgo crediticio y la asignación de capital, conocidas como EBA/GL/2017/16, entraron en vigor el 1 de julio de 2017.
+
+Estas directrices se refieren a los requisitos de capital para los riesgos crediticios y proporcionan orientación sobre cómo los bancos deben evaluar y asignar capital para cubrir estos riesgos. El objetivo principal es garantizar que los bancos tengan suficiente capital para cubrir los riesgos crediticios identificados, lo que contribuye a la estabilidad financiera del sistema bancario europeo.
+
+Es importante destacar que estas directrices son complementarias de la Directiva Capital de la Unión Europea (CRD IV) y se integran en el marco regulatorio más amplio del sector bancario europeo.",0.8433,0.5125,0.5346,0.3308
+reg_003,regulatory,¿Qué se entiende por sistema de calificación según estas directrices?,"Un sistema de calificación comprende todos los métodos, procesos, controles, sistemas de recogida de datos y de tecnología de la información que sustentan la evaluación del riesgo de crédito, la asignación de exposiciones a grados de calificación y la cuantificación de estimaciones de impago y pérdida.","El Capítulo 7 de las directrices CRR establece que los sistemas de calificación interna (ICS) deben ser ""robustos, consistentes y apropiados para el tamaño, complejidad y riesgo del banco"". Los sistemas deben: (1) segmentar activos en grados o clases de riesgo, (2) asignar ponderaciones a cada segmento basadas en la probabilidad de impago y la pérdida esperada, (3) considerar tanto riesgo de crédito como de mercado, (4) estar validados regularmente contra datos empíricos, (5) permitir la agregación de exposiciones en cada segmento, y (6) soportar la gestión de cartera y la toma de decisiones. Las directrices permiten múltiples metodologías (PD+LGD, LGD+EAD, PD+LGD+EAD) siempre que cumplan con los requisitos.","El término ""sistema de calificación"" en el contexto del sector bancario español generalmente se refiere a los métodos utilizados por las entidades financieras para evaluar y clasificar tanto a sus clientes como a sus productos y servicios. Este sistema es fundamental para la gestión de riesgos, la toma de decisiones comerciales y la conformidad con la normativa aplicable.
+
+En España, estos sistemas de calificación están regulados principalmente por la Ley de Servicios de la Sociedad de la Información y de Comercio Electrónico (LSSICE) y la Ley de Protección de Datos Personales (LOPD), pero también se ven influenciados por la normativa europea, como la Directiva sobre la protección de datos personales y la libertad de circulación de datos (GDPR).
+
+Un sistema de calificación puede incluir varios aspectos:
+
+1. **Calificación de Clientes**: Las entidades financieras deben realizar una evaluación inicial de riesgo para sus clientes, que se actualiza periódicamente. Esta evaluación considera factores como la solvencia financiera, la actividad económica, la reputación crediticia y la naturaleza de las transacciones.
+
+2. **",0.6393,0.6631,0.559,-0.0237
+reg_004,regulatory,¿Qué requisito establece la directriz sobre la representatividad de los datos utilizados en la estimación de PD y LGD?,Las entidades deben garantizar que los datos reflejen adecuadamente las características del conjunto de exposiciones y deudores a los que se aplicarán las estimaciones.,"La directriz EBA/GL/2017/16 establece que ""los datos utilizados en la estimación deben ser representativos del riesgo de crédito actual del expositor"". Los datos deben incluir períodos suficientes de deterioro que capturen ciclos económicos completos, y deben ser típicamente seleccionados de períodos de mercado normal y crisis. Los datos deben ser homogéneos en términos de características de la deuda, políticas de cierre de cartera y procesos de recuperación.","La Directiva sobre la representatividad de los datos utilizados en la estimación del Pérdida Direccional (PD) y la Pérdida de Garantía (LGD) se refiere a la necesidad de que los bancos utilicen datos que sean representativos y consistentes para la estimación de estos riesgos. Sin embargo, es importante tener en cuenta que la pregunta se refiere específicamente a una directriz, y no existe una directriz única sobre esta materia en el contexto europeo.
+
+En el marco europeo, las disposiciones más relevantes se encuentran en la Directiva de Capital Propio II (CRR - Capital Requirements Regulation) y en la Directiva de Supervisión Bancaria (BRRD - Bank Recovery and Resolution Directive), pero estas son directivas y no directrices.
+
+Según la CRR, los bancos deben utilizar datos que sean:
+
+1. **Representativos**: Los datos utilizados deben ser representativos de la cartera de crédito del banco, lo que significa que deben reflejar adecuadamente la diversidad y el riesgo de la cartera.
+
+2. **Consistentes**: Los métodos de estimación y los datos utilizados deben ser consistentes",0.6807,0.6253,0.6633,0.0554
+reg_005,regulatory,¿Qué es la probabilidad de impago (PD) en el contexto del método IRB?,La probabilidad de impago (PD) representa la probabilidad de que un deudor incumpla sus obligaciones crediticias dentro de un horizonte temporal de un año.,"La probabilidad de impago (PD) es una estimación del porcentaje de exposiciones en un determinado rating que no realizarán pagos conforme a sus términos de contrato en un período de tiempo dado, generalmente un año. En el marco del método IRB de la EBA/GL/2013/16, las PD deben estimarse para cada uno de los 15 rangos de rating definidos. Las entidades deben demostrar que sus estimaciones de PD son conservadoras y reflejan las expectativas de pérdida en condiciones de stress. Las PD deben estar basadas en datos históricos suficientemente largos para capturar ciclos económicos completos y deben ajustarse para reflejar cambios en las políticas de calificación y en la calidad de los datos.","La probabilidad de impago (PD, por sus siglas en inglés Probability of Default y en español Probabilidad de Incumplimiento) es una de las componentes clave del Método de Evaluación de Riesgos Basado en Modelos (IRB, por sus siglas en inglés Internal Ratings-Based y en español Método IRB) establecido por la Basilea III y aplicado por los bancos españoles.
+
+En este contexto, la PD se refiere a la probabilidad de que un cliente dé default (incumpla) en el cumplimiento de sus obligaciones financieras durante un período de tiempo determinado, generalmente un año. Esta probabilidad se calcula para cada nivel de calificación crediticia del cliente y se utiliza para determinar el riesgo de crédito de la exposición crediticia.
+
+La PD se utiliza junto con otras variables como la probabilidad de morosidad (MM, Loss Given Default) y la exposición crediticia (EAD, Exposure at Default) para calcular el capital requerido para cubrir el riesgo de crédito en el marco del IRB. Específicamente, la fórmula para calcular el riesgo de crédito en IRB es:
+
+\[ \text{Ries",0.6457,0.6283,0.8223,0.0174
+reg_006,regulatory,¿Qué diferencia existe entre PD through-the-cycle (TTC) y point-in-time (PIT)?,"La PD through-the-cycle (TTC) representa una estimación promedio del riesgo de impago a lo largo de un ciclo económico completo, mientras que la PD point-in-time (PIT) refleja el riesgo de impago en un momento específico, considerando las condiciones macroeconómicas actuales.","La PD through-the-cycle (TTC) y la point-in-time (PIT) son dos métodos diferentes para calcular la probabilidad de impago (PD) de un expositor. La principal diferencia es que la PD TTC refleja el riesgo promedio a lo largo del ciclo económico, mientras que la PD PIT captura el riesgo en un momento específico. La EBA/GL/2017 establece que ""la PD TTC debe ser más conservadora que la PD PIT, ya que refleja el riesgo promedio a lo largo del ciclo económico"". La PD TTC se utiliza para el cálculo de requisitos de capital CET1, mientras que la PD PIT se aplica para la determinación de precios de transferencia interna.","La diferencia entre PD (Probability of Default) Through-the-Cycle (TTC) y Point-in-Time (PIT) radica en cómo se calcula y se interpreta la probabilidad de default de una entidad crediticia o de un préstamo.
+
+1. **PD Through-the-Cycle (TTC):**
+   - **Definición:** La PD TTC se refiere a la probabilidad de default que se calcula considerando el ciclo económico completo, es decir, durante los buenos tiempos y los malos tiempos.
+   - **Objetivo:** Este enfoque busca capturar la volatilidad del riesgo crediticio a lo largo del tiempo, incluyendo períodos de crecimiento económico y recesión.
+   - **Normativa:** En el contexto del sector bancario español, la utilización de la PD TTC es requerida por la normativa de Solvencia II para las entidades aseguradoras, aunque no es obligatoria para los bancos. Sin embargo, la supervisora puede exigir su uso en casos específicos. En el sector bancario, la PD TTC se utiliza más comúnmente en el cálculo de capital de riesgo.
+
+2. **PD Point-in",0.8599,0.8115,0.8127,0.0484
+reg_007,regulatory,¿Qué requisito de datos mínimo se establece para la estimación de PD?,Las entidades deben utilizar datos de al menos cinco años para la estimación de PD.,"El artículo 148 del texto refundido de la Ley de las Empresas de Crédito establece que ""las entidades deben utilizar datos históricos suficientes para estimar adecuadamente los parámetros de riesgo, incluyendo PD, considerando al menos un ciclo económico completo"". Sin embargo, el Regulador (CNMV) puede requerir más datos si considera que es apropiado.","En el contexto del sector bancario español, la estimación del Prognóstico de Pérdidas (PD - Probability of Default) se rige principalmente por la normativa del Banco de España y la legislación europea, especialmente la Directiva de Capital Propio II (CRR - Capital Requirements Regulation) y la Directiva BCRP (Basel Committee on Banking Supervision).
+
+Según la normativa del Banco de España, los bancos están obligados a utilizar métodos apropiados y transparentes para estimar el PD, que deben ser consistentes con las directrices de supervisión. Sin embargo, no se especifican requisitos mínimos específicos sobre el número de datos necesarios para realizar esta estimación.
+
+La CRR, por otro lado, requiere que los bancos utilicen modelos basados en datos históricos para estimar el PD, pero no establece un número mínimo específico de observaciones o datos. En general, se espera que los bancos utilicen conjuntos de datos suficientemente grandes y representativos para garantizar la precisión y consistencia de las estimaciones.
+
+Es importante mencionar que la calidad y relevancia de los datos utilizados es más crucial que el número de",0.5028,0.3941,0.6207,0.1087
+reg_008,regulatory,¿Qué es el margin of conservatism (MoC) en la estimación de PD y cuándo debe aplicarse?,El margin of conservatism (margen de conservadurismo) es un ajuste al alza que se aplica a las estimaciones de PD para reflejar la incertidumbre inherente en el proceso de estimación.,"El margin of conservatism (MoC) es una práctica recomendada en la estimación de parámetros IRB (Internal Ratings-Based Approach) que consiste en aplicar un margen conservador a las estimaciones para reflejar la incertidumbre inherente en los datos históricos. El MoC debe aplicarse: (1) cuando los datos históricos sean limitados o no representativos, (2) si existen cambios materiales en la cartera o en el proceso de calificación, (3) cuando los modelos internos muestran tendencias cíclicas o estacionales, (4) si los parámetros presentan volatilidad significativa, (5) cuando existan limitaciones en el diseño del modelo, y (6) para abordar posibles escenarios extremos no observados en el historial. La EBA/GL/2017 establece que ""el MoC debe ser materialmente significativo y proporcional al nivel de incertidumbre identificada"". El tamaño del MoC debe ser apropiado para cada parámetro y estar documentado.","El Margin of Conservatism (MoC) es una práctica utilizada en la estimación de la Probabilidad de Desembolso (PD, por sus siglas en inglés Probability of Default) en el sector bancario, especialmente en el contexto del Sistema Europeo de Supervisión Bancaria (ESRB). El objetivo principal del MoC es asegurar que las estimaciones de PD sean conservadoras, lo que significa que se tienda a sobreestimar la probabilidad de default para garantizar la solvencia y la estabilidad financiera del banco.
+
+### ¿Cuándo debe aplicarse el MoC?
+
+El MoC debe aplicarse en situaciones donde exista incertidumbre o riesgo adicional que no pueda ser completamente capturado por los modelos matemáticos tradicionales. Esto incluye:
+
+1. **Cambios en el entorno económico**: Durante periodos de crisis económica o de fuerte volatilidad, los bancos pueden optar por aplicar un MoC mayor para anticipar posibles违约理解，请您提供更多的上下文信息，以便我能够更准确地翻译和解释这段话。如果您指的是某个特定领域的术语或概念，请详细说明。",0.747,0.6902,0.8708,0.0568
+reg_009,regulatory,¿Qué se entiende por pérdida en caso de impago (LGD) en el contexto IRB?,"La pérdida en caso de impago (LGD) representa la magnitud de la pérdida económica que la entidad espera sufrir en caso de que un deudor incumpla, expresada como porcentaje de la exposición en el momento del impago.","La pérdida en caso de impago (Loss Given Default - LGD) es una estimación del porcentaje de pérdida que resulta para el banco cuando un deudor entra en situación de impago y no puede devolver el crédito. Según la EBA/GL/2013/16, la LGD debe calcularse como: ""la pérdida esperada sobre el expositor en caso de impago, que corresponde a la exposición en impago menos las recuperaciones esperadas"". La LGD debe estar expresada en términos nominales (EUR) y abarcar todos los recursos disponibles para recuperación (activos recaudatorios, garantías, recuperaciones judiciales, etc.). Las LGD deben ser estimadas considerando: (1) escenarios macroeconómicos downturn que representan condiciones de stress, (2) diferentes grados de impago (DPD+), (3) diferentes fases de vida del crédito (origen, establecimiento, deterioro), (4) diferentes tipos de garantías, y (5) diferentes métodos de recuperación. Las entidades deben calibrar modelos de LGD utilizando datos históricos internos ajustados, complementados","En el contexto del sistema de calificación de riesgos crediticios basado en el modelo de valor esperado (IRB - Internal Ratings-Based) según la Directiva Capital de la Unión Europea (CRD IV - Capital Requirements Directive IV), la pérdida en caso de impago (Loss Given Default, LGD) es una de las tres variables clave que determinan la cantidad de capital que los bancos deben mantener para cubrir los posibles pérdidas crediticias.
+
+La LGD se define como la proporción de la exposición crediticia que no se recupera en caso de default. Es decir, si un préstamo o una exposición crediticia falla, la LGD indica cuánto de ese préstamo o exposición no se recuperará. Esta variable se utiliza junto con la probabilidad de default (PD) y la exposición crediticia (EAD) para calcular el riesgo crediticio potencial.
+
+Según la CRD IV, la LGD se debe estimar utilizando una combinación de datos internos y externos. Los bancos pueden utilizar sus propios datos históricos si cumplen con ciertos requisitos de calidad y diversidad de datos. Si no, deben utilizar datos externos proporcionados por",0.8752,0.6287,0.7358,0.2465
+reg_010,regulatory,¿Qué es una LGD downturn y cuándo debe aplicarse?,"La LGD downturn es una estimación de la pérdida en caso de impago que refleja condiciones económicas adversas, donde tanto las tasas de impago como las pérdidas dado el impago tienden a ser más altas simultáneamente.","Una LGD downturn se aplica cuando se produce una recesión económica que afecta de forma significativa a los parámetros macroeconómicos, resultando en una elevación simultánea del número de impagos y de la tasa de pérdida en exposiciones in-default. Según el Capítulo 6 de la EBA/GL/2017/16, ""las entidades deben identificar períodos de downturn basándose en indicadores macroeconómicos como el crecimiento del PIB, la tasa de desempleo o las tasas de interés, y deben definir criterios objetivos para determinar cuando se está en un período de downturn"". La LGD downturn debe aplicarse cuando: (1) existe una correlación clara entre la evolución macroeconómica y la tasa de impagos, (2) la tasa de impagos se eleva de forma significativa y se mantiene durante un período prolongado, (3) las LGD experimentan una caída material en exposiciones in-default, y (4) el ciclo económico está en fase de recesión.","Una LGD (Loss Given Default) Downturn se refiere a la pérdida potencial que un banco puede sufrir en caso de default de un préstamo o obligación, considerando una situación de recesión económica o deterioro significativo del mercado. Esta pérdida se calcula como la diferencia entre el valor nominal del préstamo y el valor esperado del activo en caso de default.
+
+La LGD Downturn se aplica principalmente en contextos de crisis económicas o recesiones, donde los valores de mercado de los activos colaterales pueden caer drásticamente. Esto es relevante para la gestión del riesgo crediticio y la capitalización de los bancos, ya que afecta directamente a la calidad del activo y, por ende, al nivel de riesgo asociado.
+
+En España, la regulación sobre la LGD Downturn está estrechamente vinculada a la Directiva de Capital Propio II (CRR - Capital Requirements Regulation) y la normativa del Banco Central Europeo (BCE). Según la CRR, los bancos deben tener en cuenta las condiciones de mercado actual (actualmente, la LGD Downturn) para determinar la pérdida esperada en caso de default.
+
+La",0.7951,0.8796,0.8419,-0.0844
+reg_011,regulatory,¿Qué es el Expected Loss Best Estimate (ELBE) para exposiciones en impago?,El Expected Loss Best Estimate (ELBE) es la mejor estimación de la pérdida esperada para una exposición que se encuentra en situación de impago. Se calcula como el producto de la exposición en el momento del impago (EAD) por la LGD in-default.,"El Expected Loss Best Estimate (ELBE) es una metodología de estimación del pérdida esperada aplicable a exposiciones en impago en el sector bancario español. Según el Capítulo 6 de la directriz IRBA 14/2018, ""las entidades deben estimar el ELBE como el valor esperado de las pérdidas futuras, basándose en datos históricos de impagos y recuperaciones"". El ELBE debe incluir: (1) pérdidas directas (costes de recuperación), (2) costes indirectos (reestructuración, gestión de impago), (3) daño reputacional, y (4) costes legales. La estimación debe ser prospectiva, considerando el ciclo económico actual y perspectivas futuras. Las entidades deben documentar el método de cálculo y revisar al menos anualmente la validez de sus supuestos.","El Expected Loss Best Estimate (ELBE) es una metodología utilizada en la contabilidad financiera para determinar los provisiones para pérdidas esperadas (Expected Credit Loss, ECL) en exposiciones crediticias, incluyendo aquellas relacionadas con impagos. Esta metodología se basa en la normativa de contabilidad IFRS 9 ""Financial Instruments"" (Instrumentos Financieros), que entró en vigor a partir del 1 de enero de 2018.
+
+Según IFRS 9, las entidades financieras deben reconocer provisiones por pérdidas esperadas (ECL) para instrumentos financieros de cartera existentes, incluidas las exposiciones en impago, basándose en el mejor estimado de la pérdida esperada (Best Estimate of Expected Credit Losses, BEEL). El ELBE es, en esencia, el BEEL aplicado a la cartera de exposiciones crediticias.
+
+Características clave del ELBE:
+
+1. **Tiempo**: Se considera tanto el tiempo transcurrido desde la finalización del período de gracia como el tiempo previsto para la finalización del período de gracia.
+
+2. **Ciclos",0.8942,0.9093,0.9251,-0.0151
+reg_012,regulatory,¿Cómo se calcula la EAD (Exposure at Default) y qué componentes incluye?,"La EAD representa el importe de exposición esperado en el momento del impago. Para productos con saldo fijo, es el principal pendiente más intereses devengados. Para productos con saldo variable, debe estimarse considerando el saldo dispuesto actual y el factor de conversión de crédito (CCF).","La EAD (Exposure at Default) es una medida clave en la estimación del riesgo de crédito. Se calcula como: EAD = LGD * (PD / (1 - PD)) * Exposure when Default Occurs. Los componentes principales son:
+
+1. LGD (Loss Given Default): pérdida en caso de impago, que se estima como el valor presente de las exposiciones impagadas menos el valor presente de los recursos disponibles para cubrirlas.
+
+2. PD (Probability of Default): probabilidad de impago, que debe ser una estimación conservadora basada en datos históricos.
+
+3. Exposure when Default Occurs: tamaño de la exposición en el momento del impago, que puede variar si hay pagos parciales o si la exposición está en proceso de garantía.
+
+La EAD representa el importe máximo que una entidad puede perder en un impago, considerando el momento del impago y la probabilidad de impago.","La EAD (Exposure at Default) es una medida crucial en la gestión de riesgos crediticios, especialmente en el contexto del capital propio de los bancos y la supervisión regulatoria. En España, la EAD está sujeta a las directrices del Banco Central Europeo (BCE) y la normativa del Real Decreto-Ley 15/2010, de 3 de junio, sobre la normativa de Basel II.
+
+### Definición de EAD:
+La EAD se define como el valor monetario total de la exposición crediticia que un banco tiene a un cliente o grupo de clientes en el momento del default. Es decir, es el monto total que el banco podría perder si el deudor no cumpliera con sus obligaciones.
+
+### Componentes de la EAD:
+
+1. **Saldo de la Cartera**: Este es el componente principal de la EAD. Se refiere al monto total de la deuda pendiente de pago por parte del deudor al momento del default. Esto incluye cualquier saldo de préstamos, líneas de crédito, y otros instrumentos financieros.
+
+2. **Posiciones Netas**: En algunos casos, pueden existir pos",0.7854,0.7006,0.7385,0.0848
+reg_013,regulatory,¿Qué es el factor de conversión de crédito (CCF) y cómo debe estimarse?,El factor de conversión de crédito (CCF) es el porcentaje del importe no dispuesto de una línea de crédito que se espera esté dispuesto en el momento del impago.,"El factor de conversión de crédito (CCF) es una tasa utilizada en el marco IRB (Internal Ratings-Based Approach) para calcular las PD (Probabilidad de Impago) de exposiciones a créditos. El CCF representa el porcentaje del monto principal que se espera impague en una recuperación típica. La EBA/GL/2013/16 establece que ""el CCF debe basarse en datos históricos de recuperaciones reales, ajustados por factores que afectan la recuperación"". Los requisitos específicos incluyen: (1) utilizar datos de al menos 5 años, (2) incluir todas las recuperaciones completas y parciales, (3) ajustar por factores como tipo de garantía, impago de intereses, o impagos simultáneos, (4) considerar diferencias entre tipos de productos (líneas de crédito vs préstamos), y (5) aplicar metodologías consistentes para estimación y validación.","El Factor de Conversión de Crédito (CCF, por sus siglas en inglés Credit Conversion Factor) es una herramienta utilizada en la normativa de capital de los bancos, especialmente en el marco de Basel III, para cuantificar el riesgo crediticio asociado a ciertos instrumentos financieros que no son directamente crediticios pero que tienen un potencial de default.
+
+### Definición del CCF
+
+El CCF se utiliza para convertir los activos no crediticios en equivalentes crediticios. Por ejemplo, si un banco tiene una posición en derivados o en instrumentos de financiación, estos deben ser convertidos en un valor equivalente al riesgo crediticio usando el CCF. Esto permite que las autoridades regulatorias puedan comparar el riesgo crediticio entre diferentes tipos de activos.
+
+### Estimación del CCF
+
+La estimación del CCF se realiza siguiendo las directrices establecidas por la Autoridad Bancaria Europea (European Banking Authority - EBA) y la Comisión Europea (European Commission). En España, estas directrices se implementan a través de la normativa del Banco de España y la Ley del Sector Financiero.
+
+####",0.8745,0.8696,0.8419,0.0049
+reg_014,regulatory,¿Qué papel juega el backtesting en la validación de modelos IRB?,"El backtesting es un elemento fundamental de la validación que compara tasas de impago observadas vs PD estimadas, pérdidas realizadas vs LGD estimadas, y saldos al impago vs EAD estimadas.","El backtesting es una parte crucial de la validación de modelos IRB (Internal Ratings-Based) según el Capítulo 7 del Reglamento (UE) nº 575/2013. Su objetivo es verificar si los parámetros del modelo (PD y LGD) están en línea con la experiencia histórica observada. El backtesting comprueba que: (1) las tasas de impago estimadas son conservadoras respecto a las observadas, (2) las PD asignadas reflejan adecuadamente el riesgo de crédito, (3) las LGD son conservadoras y suficientemente robustas, y (4) existen limitaciones conocidas en el modelo. Los requisitos específicos incluyen: (1) análisis de desviaciones materiales entre estimaciones y observaciones, (2) identificación de tendencias o patrones inesperados, (3) evaluación de la sensibilidad de resultados a cambios en parámetros, y (4) documentación completa de procesos y conclusiones. Los resultados del backtesting informan sobre la validez del modelo y guían posibles ajustes o desarrollo de nuevos modelos cuando sea necesario.","El backtesting desempeña un papel crucial en la validación de los modelos de Calibración de Riesgo (IRB - Internal Ratings-Based) en el sector bancario, especialmente en España y conforme a la normativa europea. Este proceso se refiere a la revisión histórica de las predicciones de un modelo de riesgo para evaluar su precisión y eficacia.
+
+En el contexto del IRB, el backtesting se utiliza para verificar si los estimados de probabilidad de mora y las tasas de default obtenidos por los bancos a través de sus propios modelos son consistentes con los resultados observados en la historia pasada. La Directiva Capital de la Unión Europea (UCR - Uniform Capital Requirements Directive) y la normativa de la Autoridad Bancaria Europea (ABE) exigen que los bancos realicen backtesting periódico para garantizar la confiabilidad de sus modelos de calibración de riesgo.
+
+Los aspectos clave del backtesting en el IRB incluyen:
+
+1. **Calibración de parámetros**: Verificar si los parámetros utilizados en el modelo de calibración de riesgo están en línea con",0.8106,0.7216,0.8816,0.089
+reg_015,regulatory,¿Con qué frecuencia deben revisarse los modelos de estimación de parámetros de riesgo?,Los modelos de estimación de parámetros de riesgo deben revisarse al menos anualmente.,"Según el Capítulo 6 del CRR (Capital Requirements Regulation), los modelos de estimación de parámetros de riesgo deben revisarse al menos anualmente, pero ""la frecuencia de revisión debe ser más frecuente si existen cambios materiales en las características del portfolio o en las prácticas de calificación"". La EBA/GL/2016/16 establece que ""las entidades deben documentar las revisiones realizadas y cualquier cambio material en los modelos"". Los cambios materiales requieren una validación adicional y, en algunos casos, una nueva calibración o aprobación por parte de las autoridades.","La frecuencia de revisión de los modelos de estimación de parámetros de riesgo puede variar dependiendo del tipo de modelo, el contexto específico y las directrices regulatorias aplicables. Sin embargo, en general, se recomienda una revisión regular para garantizar su adecuación y eficacia.
+
+Según la normativa europea, específicamente la Directiva CRD IV (Capital Requirements Directive IV) y la Directiva CRR (Capital Requirements Regulation), los bancos deben revisar y actualizar sus modelos de riesgo de manera periódica. La normativa no especifica una fecha exacta, pero sí indica que debe ser lo suficientemente frecuente como para garantizar que los modelos reflejen adecuadamente los riesgos actuales.
+
+En España, la Superintendencia de Seguros y Pensiones Privadas (SPP) y la Comisión Nacional del Mercado de Valores (CNMV) son las entidades encargadas de supervisar a los bancos y otras entidades financieras. Aunque no hay una norma específica que indique una frecuencia exacta, la práctica habitual es que estos modelos se revisen al menos anualmente, y más frecuentemente",0.742,0.6827,0.9051,0.0593
+reg_016,regulatory,¿Qué papel juega el juicio experto en la estimación de parámetros de riesgo?,"El juicio experto puede ser necesario cuando los datos históricos son insuficientes o no representativos, pero debe aplicarse de manera estructurada y controlada, documentado y justificado.","El juicio experto juega un papel importante en la estimación de parámetros de riesgo, especialmente cuando los datos históricos son limitados o no son completamente aplicables a las condiciones actuales. La EBA/GL/2017 establece que ""el juicio experto debe basarse en una comprensión profunda del negocio y del entorno macroeconómico, y debe ser coherente y documentado"". Los expertos deben considerar factores como: (1) características específicas del banco y sus activos, (2) cambios en el mercado o en la economía, (3) experiencia pasada de la entidad, (4) tendencias actuales y futuras, y (5) comparaciones con indicadores externos. Sin embargo, el uso del juicio experto debe estar limitado y estar respaldado por análisis cuantitativos robustos.","El juicio experto juega un papel crucial en la estimación de parámetros de riesgo, especialmente en contextos donde la información objetiva es limitada o no disponible. En el sector bancario, este método se utiliza comúnmente para estimar parámetros de riesgo que no pueden ser directamente observados o medidos con precisión, como los parámetros de volatilidad, la correlación entre activos, o las tasas de morosidad.
+
+En España, esta práctica se regula principalmente por la normativa del Banco de España y la Comisión Nacional del Mercado de Valores (CNMV), así como por las directrices de la Autoridad de Supervisión del Sector Financiero (ASF) y la European Banking Authority (EBA).
+
+1. **Regulación**: La normativa española sobre la estimación de parámetros de riesgo se basa en la Directiva 2013/36/EU de la Unión Europea, que fue adaptada a nivel nacional por la Ley 15/2014, de 28 de mayo, de Prevención del Riesgo Crediticio y Gestión del Patrimonio de las Entidades",0.7006,0.6034,0.9147,0.0972
+reg_017,regulatory,¿Qué tratamiento deben recibir las exposiciones con bajo número de impagos (low default portfolios)?,"Las carteras con bajo número de impagos requieren extender el período de observación, considerar datos externos, aplicar técnicas bayesianas, y aplicar márgenes de conservadurismo más amplios.","Las exposiciones con bajo número de impagos (low default portfolios) requieren un tratamiento especializado en la calificación de riesgo. La EBA/GL/2017/16 establece que ""las entidades deben ser conservadoras al asignar calificaciones para carteras con pocos impagos, ya que el número limitado de eventos puede llevar a estimaciones sesgadas"". Para estas carteras, las entidades deben: (1) utilizar metodologías que consideren el riesgo implícito en el bajo número de impagos, (2) aplicar ajustes apropiados cuando la experiencia interna sea insuficiente, (3) considerar datos externos adicionales cuando estén disponibles, (4) realizar análisis de sensibilidad que evalúen el impacto de supuestos alternativos, y (5) implementar controles adicionales para monitorear el desempeño de estas carteras y validar las calificaciones asignadas. Las directrices señalan que ""las entidades no deben presionar artificialmente para obtener calificaciones más altas simplemente porque el número de impagos es bajo"".","Las exposiciones con bajo número de impagos, también conocidas como ""low default portfolios"" o ""LDP"", se refieren a carteras de préstamos donde la probabilidad de impago es baja. En el contexto del sector bancario español, estas carteras se tratan de acuerdo a la normativa europea y española vigente, principalmente la Directiva CRD IV (Capital Requirements Directive IV) y su implementación en España a través del Real Decreto-Ley 15/2010, de 14 de julio, y posteriormente la Ley 15/2013, de 28 de noviembre, de Reforma del Sector Financiero.
+
+Según la normativa, las exposiciones con bajo riesgo de impago pueden ser valoradas utilizando métodos de estimación del riesgo propios, siempre que cumplan con ciertos criterios. Estos criterios incluyen:
+
+1. **Historial de impago**: La cartera debe tener un historial de impago muy bajo o nulo.
+2. **Tasa de morosidad**: Debe haber una tasa de morosidad muy baja o nula.
+3. **Calificación credit",0.6304,0.4222,0.6811,0.2083
+reg_018,regulatory,¿Qué requisitos existen para la documentación de modelos de riesgo de crédito según estas directrices?,"La documentación debe incluir descripción de la metodología, datos utilizados, proceso de segmentación y calibración, resultados de validación, limitaciones conocidas, y políticas de governance.","Las directrices IRB.1 establecen que las entidades deben documentar de manera completa y estructurada todos los aspectos del desarrollo, validación, aprobación y supervisión de modelos de riesgo de crédito. La documentación debe incluir: (1) descripción detallada del modelo, sus supuestos y limitaciones, (2) metodología de validación y resultados, (3) procesos de aprobación y cambios, (4) políticas de mantenimiento y calibración, (5) casos de aplicación y resultados, y (6) conclusiones sobre la adecuación del modelo. La documentación debe ser suficiente para que una autoridad pueda entender el modelo y evaluar su conformidad con las directrices.","En España, los requisitos para la documentación de modelos de riesgo de crédito están regulados principalmente por la Ley de Servicios de la Información Financiera (Ley 11/2013, de 19 de junio) y la Directiva Europea sobre la Autorregulación del Sector de los Servicios Financieros (Directiva 2014/65/EU). Sin embargo, la normativa más específica y detallada se encuentra en la normativa de la Autoridad de Supervisión del Sector Financeiro (AECM) y en las Directrices de Modelización de Riesgos de la Comisión Nacional del Mercado de Valores (CNMV).
+
+La documentación que debe presentar una entidad financiera para cumplir con estos requisitos suele incluir:
+
+1. **Descripción del Modelo**: Debe proporcionar una descripción clara y detallada del modelo, incluyendo su propósito, diseño, estructura, métodos de calibración y validación.
+
+2. **Calibración**: La documentación debe incluir la información sobre cómo se ha calibrado el modelo, los datos utilizados y los procedimientos seguidos.
+
+",0.686,0.5212,0.764,0.1648
+reg_019,regulatory,¿Cómo deben valorarse las garantías reales en la estimación de LGD?,"Las garantías reales deben valorarse considerando el valor de mercado en el momento de la ejecución, los costes de ejecución, el tiempo esperado hasta la realización, y la volatilidad del valor a lo largo del tiempo.","Según el Capítulo 6 del Reglamento (UE) nº 575/2013, las garantías reales deben valorarse utilizando el método de valoración de mercado cuando esté disponible. Si no hay mercado activo, se debe utilizar el método de valoración intrínseca. Para las garantías reales, la LGD se calcula como: LGD = (1 -回收中的金属材料应归类为：
+A. 可回收物
+B. 厨余垃圾
+C. 有害垃圾
+D. 其他垃圾","La estimación de la Loss Given Default (LGD) es un componente crucial en la evaluación del riesgo crediticio y en la determinación de capital requerido por parte de los bancos, conforme a la normativa europea. En España, esta regulación se rige principalmente por la Directiva de Capital Propio II (CRR) y la normativa del Banco de España.
+
+Las garantías reales son un elemento importante en la estimación de LGD, ya que pueden mitigar parcial o totalmente el daño financiero que resulta de una default. La valoración de estas garantías debe ser precisa para reflejar adecuadamente el nivel de protección que proporcionan.
+
+### Consideraciones en la Valoración de Garantías Reales
+
+1. **Valor de la Garantía**: La primera consideración es determinar el valor real de la garantía. Esto puede incluir bienes inmuebles, activos financieros, o cualquier otro tipo de garantía que el deudor pueda ofrecer.
+
+2. **Prioridad de la Garantía**: Es importante evaluar si la garantía tiene prioridad sobre otros créditos o si está subordinada. La prioridad de la garantía puede afect",0.7318,0.5179,0.5984,0.2139
+reg_020,regulatory,¿Qué papel juegan las pruebas de estrés en la validación de modelos IRB?,Las pruebas de estrés son un componente integral de la validación que evalúa cómo se comportarían los parámetros bajo escenarios adversos pero plausibles.,"Las pruebas de estrés son una parte integral de la validación de modelos IRB (Internal Ratings-Based) en los bancos españoles. El Reglamento (UE) nº 575/2013 establece que ""las entidades deben realizar pruebas de estrés apropiadas para validar sus modelos IRB"". Estas pruebas deben: (1) evaluar la sensibilidad del PTV a cambios simultáneos en múltiples drivers de riesgo, (2) verificar que los parámetros de riesgo resultantes son conservadores y realistas, (3) identificar potenciales deficiencias o limitaciones del modelo, y (4) informar sobre el impacto de crisis ficticias en la exposición a riesgos. Las pruebas de estrés deben realizarse al menos anualmente, pero más frecuentemente si se introducen cambios materiales en los modelos.","Las pruebas de estrés son una herramienta crucial en la validación de los modelos de riesgo de capital (IRB - Internal Ratings-Based) en el sector bancario, especialmente en el contexto del marco regulatorio europeo establecido por la Directiva Capital Requirements (CRD IV) y la Regulación de Solvencia II.
+
+### Definición y Propósito
+
+Las pruebas de estrés son simulaciones que permiten evaluar cómo se comportarían los modelos de riesgo de capital bajo condiciones extremas o adversas. El objetivo principal es asegurar que los bancos tienen suficientes fondos propios para cubrir posibles pérdidas significativas en sus carteras de crédito.
+
+### Aplicación en el Marco IRB
+
+En el contexto del IRB, las pruebas de estrés se utilizan para:
+
+1. **Validación de Modelos**: Verificar la robustez y consistencia de los modelos de riesgo de capital utilizados por los bancos. Esto incluye comprobar si los modelos capturan adecuadamente el riesgo crediticio y si proporcionan estimaciones precisas de los niveles de riesgo.
+
+2. **Calibración de Parámetros**: A",0.8155,0.772,0.8904,0.0435

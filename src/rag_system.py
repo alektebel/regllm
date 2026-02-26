@@ -40,8 +40,8 @@ class RegulatoryRAGSystem:
         """
         logger.info(f"Initializing RAG system with embedding model: {embedding_model_name}")
 
-        # Modelo de embeddings multilingue (espanol incluido)
-        self.embedder = SentenceTransformer(embedding_model_name)
+        # Modelo de embeddings multilingue — forzar CPU para reservar VRAM al LLM
+        self.embedder = SentenceTransformer(embedding_model_name, device="cpu")
 
         # Base de datos vectorial
         Path(persist_directory).mkdir(parents=True, exist_ok=True)
