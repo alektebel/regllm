@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.rag_system import RegulatoryRAGSystem
 from src.citation_rag import CitationRAG
 from src.chat_engine import ChatEngine, CSS, EXAMPLES, _content_to_text
-from src.db import init_db, run_db_sync
+from src.db import init_db, run_db_sync, store_feedback, log_async
 
 _LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -443,6 +443,20 @@ def ask_stream(
     ]
 
 
+# ─── Feedback handler ─────────────────────────────────────────────────────────
+
+def handle_like(evt: gr.LikeData) -> None:
+    """Called when the user clicks 👍 or 👎 on a chatbot message."""
+    try:
+        rating = "thumbs_up" if evt.liked else "thumbs_down"
+        question_text = None
+        # evt.index is the message index; the question is the preceding user turn
+        log_async(store_feedback(rating=rating, question_text=question_text))
+        logger.info(f"[feedback] {rating} for message index {evt.index}")
+    except Exception as e:
+        logger.warning(f"Feedback handler error: {e}")
+
+
 # ─── UI ───────────────────────────────────────────────────────────────────────
 
 def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
@@ -453,7 +467,7 @@ def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
     }
     fn = ask_stream if backend == "ollama" else ask
 
-    with gr.Blocks(title=title_map.get(backend, "RegLLM")) as demo:
+    with gr.Blocks(title=title_map.get(backend, "RegLLM"), css=CSS) as demo:
 
         gr.HTML(f"""
         <div class="regllm-header">
@@ -474,6 +488,7 @@ def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
                     height=540,
                     render_markdown=True,
                     show_label=False,
+                    likeable=True,
                 )
                 with gr.Row(elem_classes="input-row"):
                     txt = gr.Textbox(
@@ -508,6 +523,7 @@ def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
             outputs=[txt, chatbot],
         )
         clear_btn.click(lambda: ([], ""), outputs=[chatbot, txt])
+        chatbot.like(handle_like, None, None)
 
     return demo
 
@@ -563,5 +579,4 @@ if __name__ == "__main__":
         share=args.share,
         show_error=True,
         prevent_thread_lock=False,
-        css=CSS,
     )

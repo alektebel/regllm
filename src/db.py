@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
-    Column, Integer, Text, Float, String, DateTime, JSON,
+    Column, Integer, Text, Float, String, DateTime, JSON, ForeignKey,
     func, text,
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -59,6 +59,21 @@ class QAInteraction(Base):
     latency_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=text("now()"))
     metadata_ = Column("metadata", JSON, nullable=True)
+
+
+class UserFeedback(Base):
+    __tablename__ = "user_feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    question_id = Column(
+        Integer,
+        ForeignKey("qa_interactions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    question_text = Column(Text, nullable=True)
+    rating = Column(String(20), nullable=False)  # "thumbs_up" | "thumbs_down"
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=text("now()"))
 
 
 def _build_url() -> str:
@@ -283,6 +298,27 @@ def log_async(coro) -> None:
     """Fire-and-forget: submit a DB coroutine without blocking the caller."""
     loop = _get_bg_loop()
     asyncio.run_coroutine_threadsafe(coro, loop)
+
+
+async def store_feedback(
+    rating: str,
+    question_text: Optional[str] = None,
+    question_id: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> None:
+    """Store a user thumbs-up / thumbs-down rating. Fire-and-forget safe."""
+    try:
+        async with get_session() as session:
+            entry = UserFeedback(
+                question_id=question_id,
+                question_text=question_text,
+                rating=rating,
+                comment=comment,
+            )
+            session.add(entry)
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Failed to store feedback: {e}")
 
 
 async def search_similar_qa(query_text: str, top_k: int = 5) -> list[dict]:
