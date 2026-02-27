@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# Virtual environments
+regllm.env/
+venv/
+env/
+
+# Git
+.git/
+.gitattributes
+
+# Large model/data files — mounted as volumes at runtime
+vector_db/
+models/finetuned/
+models/merged/
+models/gguf/
+models/qwen*/
+data/raw/
+data/exports/
+
+# Secrets — injected via .env at runtime
+.env
+
+# Dev/test files
+tests/
+*.ipynb
+.ipynb_checkpoints/
+
+# Logs and temp
+*.log
+*.tmp
+temp/
+tmp/
+
+# Launch scripts — not needed inside the container
+launch_*.sh
