@@ -15,7 +15,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.chat_engine import ChatEngine, _content_to_text, SYSTEM_PROMPT
+from src.chat_engine import ChatEngine, _content_to_text, SYSTEM_PROMPT, REJECTION_CARD
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -173,32 +173,99 @@ def test_enrich_references_no_citation_rag():
         "justificacion_confianza": "",
     }
     result = engine.enrich_references(parsed, "cualquier pregunta")
-    # Unchanged: no citation_rag available
-    assert len(result["referencias"]) == 1
-    assert result["referencias"][0]["documento"] == "CRR"
+    # No citation_rag → referencias cleared, confianza None
+    assert result["referencias"] == []
+    assert result["confianza"] is None
+    assert result["justificacion_confianza"] == ""
 
 
-def test_enrich_references_deduplicates():
+def test_enrich_references_overwrites_from_db():
+    """References come exclusively from the DB; model-generated ones are discarded."""
     citation_rag = MagicMock()
-    citation_rag.search.return_value = [
-        {"documento": "CRR", "articulo": "Art. 92", "paragrafo": "§1", "text": "Capital requirements"},
-        {"documento": "CRD", "articulo": "Art. 10", "paragrafo": "", "text": "Governance rules"},
+    db_hits = [
+        {"documento": "CRR", "articulo": "Art. 92", "paragrafo": "§1", "text": "Capital requirements", "score": 0.85},
+        {"documento": "CRD", "articulo": "Art. 10", "paragrafo": "", "text": "Governance rules", "score": 0.72},
     ]
+    citation_rag.search.return_value = db_hits
     engine = make_engine(citation_rag=citation_rag)
     parsed = {
-        "respuesta": "Texto.",
+        "respuesta": "El capital mínimo es 8%.",
         "referencias": [
-            {"documento": "CRR", "articulo": "Art. 92", "paragrafo": "§1", "descripcion": "Already present"},
+            # model-hallucinated ref that should be discarded
+            {"documento": "INVENTED", "articulo": "Art. 999", "paragrafo": "", "descripcion": "fake"},
         ],
         "confianza": None,
         "justificacion_confianza": "",
     }
     result = engine.enrich_references(parsed, "capital ratios")
-    # CRR Art.92 already exists → not duplicated; CRD Art.10 → added
-    docs = [(r["documento"], r["articulo"]) for r in result["referencias"]]
-    assert docs.count(("CRR", "Art. 92")) == 1
-    assert ("CRD", "Art. 10") in docs
+    # Model ref discarded; only DB hits remain
+    docs = [r["documento"] for r in result["referencias"]]
+    assert "INVENTED" not in docs
+    assert "CRR" in docs
+    assert "CRD" in docs
     assert len(result["referencias"]) == 2
+
+
+def test_enrich_references_computes_confidence():
+    """confianza is the mean cosine similarity of the answer against citation nodes."""
+    citation_rag = MagicMock()
+    citation_rag.search.return_value = [
+        {"documento": "CRR", "articulo": "Art. 92", "paragrafo": "§1", "text": "Capital", "score": 0.80},
+        {"documento": "CRD", "articulo": "Art. 10", "paragrafo": "", "text": "Gov", "score": 0.60},
+    ]
+    engine = make_engine(citation_rag=citation_rag)
+    parsed = {
+        "respuesta": "El capital mínimo es 8%.",
+        "referencias": [],
+        "confianza": None,
+        "justificacion_confianza": "",
+    }
+    result = engine.enrich_references(parsed, "requisitos de capital")
+    # mean of (0.80, 0.60) = 0.70 → 70%
+    assert result["confianza"] == 70
+    assert "0.70" in result["justificacion_confianza"]
+
+
+# ─── check_topic ──────────────────────────────────────────────────────────────
+
+def test_check_topic_allows_regulatory_question():
+    engine = make_engine()
+    assert engine.check_topic("¿Qué establece el artículo 92 del CRR sobre capital?") is True
+
+
+def test_check_topic_blocks_poem_request():
+    engine = make_engine()
+    assert engine.check_topic("Hazme una poesía de riesgo de crédito") is False
+
+
+def test_check_topic_blocks_joke():
+    engine = make_engine()
+    assert engine.check_topic("Cuéntame un chiste sobre Basilea III") is False
+
+
+def test_check_topic_embedding_fallback_blocks_low_score():
+    """When the citation DB returns low similarity, question is off-topic."""
+    citation_rag = MagicMock()
+    citation_rag.search.return_value = [
+        {"score": 0.10}, {"score": 0.08}, {"score": 0.05},
+    ]
+    engine = make_engine(citation_rag=citation_rag)
+    assert engine.check_topic("¿Cuál es la receta del gazpacho?") is False
+
+
+def test_check_topic_embedding_allows_high_score():
+    """When the citation DB returns high similarity, question is on-topic."""
+    citation_rag = MagicMock()
+    citation_rag.search.return_value = [
+        {"score": 0.75}, {"score": 0.68},
+    ]
+    engine = make_engine(citation_rag=citation_rag)
+    assert engine.check_topic("¿Cómo se calcula el ratio CET1?") is True
+
+
+def test_rejection_card_content():
+    assert "resp-card" in REJECTION_CARD
+    assert "regulación bancaria" in REJECTION_CARD
 
 
 # ─── build_context ────────────────────────────────────────────────────────────

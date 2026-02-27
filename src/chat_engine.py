@@ -13,7 +13,38 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ─── Structured system prompt ────────────────────────────────────────────────
+# ─── Topic guard ──────────────────────────────────────────────────────────────
+
+# Patterns that unambiguously signal a non-professional / creative request.
+_OFFTOPIC_RE = re.compile(
+    r'\b(poes[ií]a|poema|estrofa|rima|verso'
+    r'|chiste|broma|humorada'
+    r'|cuento|f[aá]bula|novela|historia\s+de\s+amor'
+    r'|canc[ií]n|letra\s+de\s+m[uú]sica'
+    r'|receta|ingredientes|cocina'
+    r'|dibuj[ao]|ilustra[cr]'
+    r'|traduc[ei]|traduc[cz]i[oó]n'
+    r'|escr[ií]be[nm]e\s+un(?:a)?\s+(?!pregunta|respuesta|informe|an[aá]lisis)'
+    r'|h[aá]zme\s+un(?:a)?\s+(?!pregunta|an[aá]lisis|informe|resumen\s+de\s+la\s+norma)'
+    r')\b',
+    re.IGNORECASE,
+)
+
+# Minimum cosine similarity a question must reach against the citation DB
+# to be considered on-topic. Any question scoring below this is rejected.
+_MIN_TOPIC_SCORE = 0.20
+
+REJECTION_CARD = (
+    '<div class="resp-card">'
+    '<div class="resp-section" style="background:#FFF5F5;">'
+    '<div class="resp-label" style="color:#b91c1c;">Consulta fuera de ámbito</div>'
+    '<div class="resp-body">'
+    'Este asistente responde exclusivamente preguntas sobre '
+    '<strong>regulación bancaria, riesgo de crédito y normativa financiera</strong> '
+    '(CRR, CRD IV/V, IFRS 9, Basilea III/IV, directrices EBA/BCE, etc.).<br><br>'
+    'Por favor, reformule su pregunta en ese contexto.'
+    '</div></div></div>'
+)
 
 # ─── Shared UI constants (used by all app variants) ──────────────────────────
 
@@ -132,20 +163,19 @@ EXAMPLES = [
 
 # ─── Structured system prompt ─────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Eres un experto asistente en regulación bancaria y riesgo de crédito.
+SYSTEM_PROMPT = """Eres un asistente especializado exclusivamente en regulación bancaria y riesgo de crédito.
+Ámbito: CRR, CRD IV/V, IFRS 9, Basilea III/IV, directrices EBA/BCE, normativa prudencial.
+
 Responde SIEMPRE en español y SIEMPRE en el siguiente formato JSON (sin markdown, sin texto fuera del JSON):
 
 {
-  "respuesta": "Texto completo de la respuesta en español...",
-  "referencias": [
-    {"documento": "CRR", "articulo": "Art. 92", "paragrafo": "§1(a)", "descripcion": "Capital requirements ratio"}
-  ],
-  "confianza": 85,
-  "justificacion_confianza": "Alta confianza porque el artículo está directamente citado en las fuentes."
+  "respuesta": "Texto completo de la respuesta en español, técnico y preciso."
 }
 
-Nunca inventes artículos o normativas. Si no sabes, refléjalo en la confianza y justificación.
-Si no encuentras referencias relevantes, devuelve "referencias": []."""
+REGLAS:
+- Responde solo preguntas de regulación bancaria/financiera. Si la pregunta está fuera de ámbito, indícalo.
+- Nunca inventes artículos, normativas ni cifras. Si no sabes, dilo explícitamente.
+- No incluyas referencias ni puntuaciones: el sistema las obtiene automáticamente de la base de datos regulatoria."""
 
 
 class ChatEngine:
@@ -240,37 +270,92 @@ class ChatEngine:
             "justificacion_confianza": "",
         }
 
-    # ── Reference enrichment via citation RAG ─────────────────────────────────
+    # ── Topic guard ───────────────────────────────────────────────────────────
+
+    def check_topic(self, question: str) -> bool:
+        """
+        Return True if the question is on-topic (banking / regulatory domain).
+
+        Two-layer check:
+          1. Regex — catches obvious creative/personal requests instantly.
+          2. Embedding distance — if CitationRAG is available, rejects questions
+             whose best cosine similarity against the citation DB is below
+             _MIN_TOPIC_SCORE (calibrated to ~0.20).
+        """
+        if _OFFTOPIC_RE.search(question):
+            return False
+
+        if self.citation_rag is not None:
+            try:
+                hits = self.citation_rag.search(question, top_k=3)
+                if hits:
+                    best = max(
+                        (h["score"] for h in hits if h.get("score") is not None),
+                        default=0.0,
+                    )
+                    if best < _MIN_TOPIC_SCORE:
+                        return False
+            except Exception as e:
+                logger.warning(f"Topic check embedding failed: {e}")
+
+        return True
+
+    # ── Reference enrichment + confidence from vector DB ─────────────────────
 
     def enrich_references(self, parsed: dict, question: str, top_k: int = 5) -> dict:
         """
-        Augment model-extracted referencias with vector-matched citation hits.
-        Deduplicates by (documento, articulo) pair.
+        Replace model referencias entirely with CitationRAG hits (DB-only, no hallucination).
+        Also computes confianza as the mean cosine similarity of the model answer
+        against the top-k citation nodes — grounded in vector distance, not self-report.
         """
         if self.citation_rag is None:
+            parsed["referencias"] = []
+            parsed["confianza"] = None
+            parsed["justificacion_confianza"] = ""
             return parsed
 
+        # ── Step 1: citation hits for the question → referencias panel ────────
         try:
-            hits = self.citation_rag.search(question, top_k=top_k)
+            q_hits = self.citation_rag.search(question, top_k=top_k)
         except Exception as e:
-            logger.warning(f"Citation RAG search failed: {e}")
-            return parsed
+            logger.warning(f"CitationRAG question search failed: {e}")
+            q_hits = []
 
-        existing_keys = {
-            (r.get("documento", ""), r.get("articulo", ""))
-            for r in parsed["referencias"]
-        }
+        parsed["referencias"] = [
+            {
+                "documento": h.get("documento", ""),
+                "articulo": h.get("articulo", ""),
+                "paragrafo": h.get("paragrafo", ""),
+                "descripcion": h.get("text", "")[:120],
+            }
+            for h in q_hits
+        ]
 
-        for hit in hits:
-            key = (hit.get("documento", ""), hit.get("articulo", ""))
-            if key not in existing_keys:
-                parsed["referencias"].append({
-                    "documento": hit.get("documento", ""),
-                    "articulo": hit.get("articulo", ""),
-                    "paragrafo": hit.get("paragrafo", ""),
-                    "descripcion": hit.get("text", "")[:120],
-                })
-                existing_keys.add(key)
+        # ── Step 2: confidence from answer ↔ citation similarity ──────────────
+        answer_text = parsed.get("respuesta", "").strip()
+        try:
+            a_hits = self.citation_rag.search(answer_text[:500], top_k=top_k) if answer_text else []
+        except Exception as e:
+            logger.warning(f"CitationRAG answer search failed: {e}")
+            a_hits = []
+
+        if a_hits:
+            scores = [h["score"] for h in a_hits if h.get("score") is not None]
+            mean_score = sum(scores) / len(scores) if scores else 0.0
+            pct = max(0, min(100, int(round(mean_score * 100))))
+            top = a_hits[0]
+            top_ref = " · ".join(filter(None, [
+                top.get("documento", ""), top.get("articulo", ""), top.get("paragrafo", ""),
+            ]))
+            justif = (
+                f"Similitud media respuesta↔base regulatoria: {mean_score:.2f}. "
+                f"Referencia más próxima: {top_ref}."
+            )
+            parsed["confianza"] = pct
+            parsed["justificacion_confianza"] = justif
+        else:
+            parsed["confianza"] = None
+            parsed["justificacion_confianza"] = ""
 
         return parsed
 

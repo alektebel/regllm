@@ -284,6 +284,19 @@ def ask(
     if not engine:
         return "Sistema no inicializado.", history
 
+    if not engine.check_topic(question):
+        from src.chat_engine import REJECTION_CARD
+        normalised = [
+            {
+                "role": t["role"] if isinstance(t, dict) else t[0],
+                "content": _content_to_text(t["content"] if isinstance(t, dict) else t[1]),
+            }
+            for t in history
+        ]
+        normalised.append({"role": "user", "content": question})
+        normalised.append({"role": "assistant", "content": REJECTION_CARD})
+        return "", normalised
+
     t0 = time.time()
 
     context, _ = engine.build_context(question, n_sources=n_sources, hybrid=hybrid)
@@ -333,6 +346,15 @@ def ask_stream(
 
     if not engine:
         yield "Sistema no inicializado. Reinicia la app.", history
+        return
+
+    if not engine.check_topic(question):
+        from src.chat_engine import REJECTION_CARD
+        yield "", [
+            *history,
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": REJECTION_CARD},
+        ]
         return
 
     t0 = time.time()
