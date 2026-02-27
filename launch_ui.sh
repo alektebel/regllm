@@ -63,13 +63,43 @@ if [ "$NO_TUNNEL" -eq 0 ] && [ -z "$CLOUDFLARED" ]; then
   NO_TUNNEL=1
 fi
 
-# ─── Kill any stale app.py (local) instance ──────────────────────────────────
+# ─── Kill any stale app.py instance ──────────────────────────────────────────
 STALE=$(pgrep -f "python.*app\.py" 2>/dev/null | tr '\n' ' ')
 if [ -n "$STALE" ]; then
-  echo "Killing stale app.py (PIDs: $STALE) to free GPU memory..."
+  echo "Sending SIGTERM to stale app.py (PIDs: $STALE)..."
   kill $STALE 2>/dev/null || true
-  sleep 3
+  # Wait up to 10 s for graceful exit (atexit flushes ChromaDB WAL)
+  for i in $(seq 1 10); do
+    sleep 1
+    if ! pgrep -f "python.*app\.py" > /dev/null 2>&1; then
+      echo "  Exited cleanly after ${i}s"
+      break
+    fi
+  done
+  # Force kill anything still alive
+  STILL=$(pgrep -f "python.*app\.py" 2>/dev/null | tr '\n' ' ')
+  if [ -n "$STILL" ]; then
+    echo "  Force killing (PIDs: $STILL)..."
+    kill -9 $STILL 2>/dev/null || true
+    sleep 2
+  fi
 fi
+
+# ─── Checkpoint ChromaDB WAL ──────────────────────────────────────────────────
+# Merges any WAL left by a crashed/killed process back into the main DB file,
+# preventing "database is locked" errors on startup.
+python3 -c "
+import sqlite3, os
+db = 'vector_db/chroma_db/chroma.sqlite3'
+if os.path.exists(db):
+    try:
+        conn = sqlite3.connect(db, timeout=5)
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        conn.close()
+        print('  ChromaDB WAL checkpointed')
+    except Exception as e:
+        print(f'  WAL checkpoint warning: {e}')
+" 2>/dev/null || true
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -125,8 +155,10 @@ fi
 cleanup() {
   echo ""
   echo "Shutting down..."
-  [ -n "$GRADIO_PID"  ] && kill "$GRADIO_PID"  2>/dev/null || true
-  [ -n "$TUNNEL_PID"  ] && kill "$TUNNEL_PID"  2>/dev/null || true
+  [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
+  [ -n "$GRADIO_PID" ] && kill "$GRADIO_PID" 2>/dev/null || true
+  # Wait for Gradio to finish so atexit can flush ChromaDB WAL before we exit
+  [ -n "$GRADIO_PID" ] && wait "$GRADIO_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
