@@ -1,10 +1,7 @@
 services:
-
-  # ── RegLLM app ──────────────────────────────────────────────────────────────
   app:
     build: .
     image: regllm:latest
-    # GPU access (requires nvidia-container-toolkit on the host)
     deploy:
       resources:
         reservations:
@@ -12,43 +9,14 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    env_file: .env
-    environment:
-      # Override POSTGRES_HOST so the app reaches the compose postgres service
-      - POSTGRES_HOST=postgres
     ports:
       - "7860:7860"
     volumes:
-      # LoRA adapter weights — read-only, must exist on the host
       - ./models/finetuned:/app/models/finetuned:ro
-      # ChromaDB persistence — survives container restarts
       - vector_db:/app/vector_db
-      # HuggingFace model cache — base model downloaded once, reused across restarts
       - hf_cache:/root/.cache/huggingface
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # ── PostgreSQL + pgvector ───────────────────────────────────────────────────
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-regllm}
-      POSTGRES_USER: ${POSTGRES_USER:-regllm}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-regllm} -d ${POSTGRES_DB:-regllm}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   vector_db:
   hf_cache:
