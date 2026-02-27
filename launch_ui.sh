@@ -76,7 +76,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  RegLLM — Fine-tuned Qwen2.5-7B"
 echo "  Adapter  : $MODEL_PATH"
 echo "  Local    : http://localhost:$PORT"
-[ "$NO_TUNNEL" -eq 0 ] && echo "  Tunnel   : Cloudflare (URL will appear below)"
+[ "$NO_TUNNEL" -eq 0 ] && echo "  Tunnel   : https://regllm.xyz"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -113,11 +113,11 @@ fi
 TUNNEL_PID=""
 if [ "$NO_TUNNEL" -eq 0 ]; then
   echo ""
-  echo "🌍  Starting Cloudflare tunnel..."
-  echo "    Your public URL will appear on the line starting with 'trycloudflare.com'"
+  echo "  Starting Cloudflare tunnel..."
+  echo "    https://regllm.xyz"
   echo ""
-  "$CLOUDFLARED" tunnel --url "http://localhost:$PORT" 2>&1 | \
-    grep --line-buffered -E "trycloudflare|ERR|error|INF" &
+  "$CLOUDFLARED" tunnel run regllm 2>&1 | \
+    grep --line-buffered -E "regllm\.xyz|ERR|error|INF" &
   TUNNEL_PID=$!
 fi
 
