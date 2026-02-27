@@ -1,17 +1,44 @@
 services:
+
   app:
     build: .
     image: regllm:latest
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-regllm}
+      - POSTGRES_USER=${POSTGRES_USER:-regllm}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
     ports:
       - "7860:7860"
     volumes:
       - ./models/finetuned:/app/models/finetuned:ro
       - vector_db:/app/vector_db
       - hf_cache:/root/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-regllm}
+      POSTGRES_USER: ${POSTGRES_USER:-regllm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-regllm} -d ${POSTGRES_DB:-regllm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
 volumes:
   vector_db:
   hf_cache:
+  postgres_data:
