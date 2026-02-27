@@ -1,5 +1,5 @@
-# ── Base: CUDA 12.4 runtime (compatible with PyTorch cu124 stable wheels) ──────
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+# ── Base: plain Python (CPU-only) ─────────────────────────────────────────────
+FROM python:3.10-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -9,21 +9,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # ── System dependencies ────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.10 \
-        python3.10-dev \
-        python3-pip \
         git \
         build-essential \
         curl \
-    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3.10 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# ── PyTorch (separate layer — rarely changes, good cache hit) ──────────────────
+# ── PyTorch CPU-only (separate layer — rarely changes, good cache hit) ─────────
 RUN pip install torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/cu124
+    --index-url https://download.pytorch.org/whl/cpu
 
 # ── Application dependencies ───────────────────────────────────────────────────
 COPY requirements-prod.txt .

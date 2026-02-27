@@ -109,31 +109,46 @@ def _init_local(adapter: str) -> None:
     except AttributeError:
         pass
 
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from transformers import AutoModelForCausalLM, AutoTokenizer
     from peft import PeftModel
 
     adapter_path = Path(adapter)
     if not adapter_path.is_absolute():
         adapter_path = Path(__file__).parent / adapter_path
 
+    use_gpu = torch.cuda.is_available()
+    logger.info(f"Device: {'GPU (CUDA)' if use_gpu else 'CPU'}")
+
     logger.info(f"Loading tokenizer from {adapter_path}")
     _local_tokenizer = AutoTokenizer.from_pretrained(str(adapter_path), trust_remote_code=True)
 
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-    )
     BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
-    logger.info(f"Loading base model: {BASE_MODEL} (4-bit nf4 QLoRA)")
-    base = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL,
-        quantization_config=bnb,
-        device_map="auto",
-        trust_remote_code=True,
-        low_cpu_mem_usage=True,
-    )
+
+    if use_gpu:
+        from transformers import BitsAndBytesConfig
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+        )
+        logger.info(f"Loading base model: {BASE_MODEL} (4-bit QLoRA, GPU)")
+        base = AutoModelForCausalLM.from_pretrained(
+            BASE_MODEL,
+            quantization_config=bnb,
+            device_map="auto",
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+        )
+    else:
+        logger.info(f"Loading base model: {BASE_MODEL} (float32, CPU — this will be slow)")
+        base = AutoModelForCausalLM.from_pretrained(
+            BASE_MODEL,
+            torch_dtype=torch.float32,
+            device_map="cpu",
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+        )
     logger.info(f"Applying LoRA adapter from {adapter_path}")
     _local_model = PeftModel.from_pretrained(base, str(adapter_path))
     _local_model.eval()

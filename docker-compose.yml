@@ -2,13 +2,6 @@ services:
   app:
     build: .
     image: regllm:latest
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
