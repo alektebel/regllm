@@ -9,6 +9,8 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
       - "7860:7860"
     volumes:

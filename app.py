@@ -29,7 +29,12 @@ from src.citation_rag import CitationRAG
 from src.chat_engine import ChatEngine, CSS, EXAMPLES, _content_to_text
 from src.db import init_db, run_db_sync
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, _LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    force=True,
+)
 logger = logging.getLogger(__name__)
 
 # ─── Globals ──────────────────────────────────────────────────────────────────
@@ -284,7 +289,13 @@ def ask(
     if not engine:
         return "Sistema no inicializado.", history
 
-    if not engine.check_topic(question):
+    logger.info(f"[request] '{question[:100]}'")
+    t0 = time.time()
+
+    t1 = time.time()
+    on_topic = engine.check_topic(question)
+    logger.info(f"[topic]    {'pass' if on_topic else 'REJECTED'} ({int((time.time()-t1)*1000)}ms)")
+    if not on_topic:
         from src.chat_engine import REJECTION_CARD
         normalised = [
             {
@@ -297,11 +308,14 @@ def ask(
         normalised.append({"role": "assistant", "content": REJECTION_CARD})
         return "", normalised
 
-    t0 = time.time()
-
+    t1 = time.time()
     context, _ = engine.build_context(question, n_sources=n_sources, hybrid=hybrid)
-    messages = engine.build_messages(question, context, history)
+    logger.info(f"[rag]      context built ({int((time.time()-t1)*1000)}ms)")
 
+    messages = engine.build_messages(question, context, history)
+    logger.info(f"[prompt]   {len(messages)} messages, {sum(len(m['content']) for m in messages)} chars")
+
+    t1 = time.time()
     try:
         if _backend == "local":
             raw = _generate_local(messages)
@@ -312,12 +326,16 @@ def ask(
     except Exception as e:
         logger.error(f"Generation error ({_backend}): {e}", exc_info=True)
         raw = f"Error durante la generación: {str(e)}"
+    logger.info(f"[generate] {len(raw)} chars ({int((time.time()-t1)*1000)}ms)")
 
+    t1 = time.time()
     parsed = engine.parse_response(raw)
     parsed = engine.enrich_references(parsed, question)
-    rendered = engine.render_message(parsed)
+    logger.info(f"[enrich]   confidence={parsed.get('confianza')}% refs={len(parsed.get('referencias', []))} ({int((time.time()-t1)*1000)}ms)")
 
+    rendered = engine.render_message(parsed)
     latency_ms = int((time.time() - t0) * 1000)
+    logger.info(f"[done]     total={latency_ms}ms")
     engine.log(question, rendered, latency_ms=latency_ms)
 
     # Normalise history to dict format (handles both tuple and dict styles)
@@ -348,7 +366,13 @@ def ask_stream(
         yield "Sistema no inicializado. Reinicia la app.", history
         return
 
-    if not engine.check_topic(question):
+    logger.info(f"[request] '{question[:100]}'")
+    t0 = time.time()
+
+    t1 = time.time()
+    on_topic = engine.check_topic(question)
+    logger.info(f"[topic]    {'pass' if on_topic else 'REJECTED'} ({int((time.time()-t1)*1000)}ms)")
+    if not on_topic:
         from src.chat_engine import REJECTION_CARD
         yield "", [
             *history,
@@ -357,15 +381,20 @@ def ask_stream(
         ]
         return
 
-    t0 = time.time()
-
+    t1 = time.time()
     context, _ = engine.build_context(question, n_sources=n_sources, hybrid=hybrid)
+    logger.info(f"[rag]      context built ({int((time.time()-t1)*1000)}ms)")
+
     messages = engine.build_messages(question, context, history)
+    logger.info(f"[prompt]   {len(messages)} messages, {sum(len(m['content']) for m in messages)} chars")
 
     partial = ""
+    t1 = time.time()
+    n_chunks = 0
     try:
         for chunk in _generate_ollama_stream(messages):
             partial += chunk
+            n_chunks += 1
             yield "", [
                 *history,
                 {"role": "user", "content": question},
@@ -380,12 +409,16 @@ def ask_stream(
             {"role": "assistant", "content": partial},
         ]
         return
+    logger.info(f"[generate] {n_chunks} chunks, {len(partial)} chars ({int((time.time()-t1)*1000)}ms)")
 
+    t1 = time.time()
     parsed = engine.parse_response(partial)
     parsed = engine.enrich_references(parsed, question)
-    rendered = engine.render_message(parsed)
+    logger.info(f"[enrich]   confidence={parsed.get('confianza')}% refs={len(parsed.get('referencias', []))} ({int((time.time()-t1)*1000)}ms)")
 
+    rendered = engine.render_message(parsed)
     latency_ms = int((time.time() - t0) * 1000)
+    logger.info(f"[done]     total={latency_ms}ms")
     engine.log(question, rendered, latency_ms=latency_ms)
 
     yield "", [

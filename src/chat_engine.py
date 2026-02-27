@@ -202,6 +202,8 @@ class ChatEngine:
 
     def build_context(self, question: str, n_sources: int = 5, hybrid: bool = True) -> tuple[str, list]:
         """Run RAG retrieval; return (context_string, raw_results)."""
+        mode = "hybrid" if hybrid else "semantic"
+        logger.debug(f"RAG {mode} search — n_sources={n_sources}")
         try:
             if hybrid:
                 results = self.rag.buscar_hibrida(question, n_resultados=n_sources)
@@ -212,7 +214,15 @@ class ChatEngine:
             results = []
 
         if not results:
+            logger.warning("RAG returned 0 results")
             return "No se encontraron documentos relevantes en la base de conocimiento.", []
+
+        logger.info(f"RAG {mode}: {len(results)} docs retrieved")
+        for i, r in enumerate(results, 1):
+            src = r.get("metadata", {}).get("source", "?")
+            dist = r.get("distancia")
+            dist_str = f" dist={dist:.3f}" if dist is not None else ""
+            logger.debug(f"  [{i}] {src}{dist_str}")
 
         parts = []
         for i, r in enumerate(results, 1):
@@ -254,12 +264,14 @@ class ChatEngine:
             if match:
                 data = json.loads(match.group())
                 # Normalise keys
-                return {
+                result = {
                     "respuesta": str(data.get("respuesta", raw)),
                     "referencias": data.get("referencias", []),
                     "confianza": data.get("confianza"),
                     "justificacion_confianza": data.get("justificacion_confianza", ""),
                 }
+                logger.debug(f"Response parsed as JSON ({len(result['respuesta'])} chars)")
+                return result
         except Exception as e:
             logger.debug(f"JSON parse failed ({e}); using raw text as respuesta")
 
@@ -283,6 +295,7 @@ class ChatEngine:
              _MIN_TOPIC_SCORE (calibrated to ~0.20).
         """
         if _OFFTOPIC_RE.search(question):
+            logger.info("Topic guard: rejected by regex")
             return False
 
         if self.citation_rag is not None:
@@ -293,7 +306,9 @@ class ChatEngine:
                         (h["score"] for h in hits if h.get("score") is not None),
                         default=0.0,
                     )
+                    logger.info(f"Topic guard: best_score={best:.3f} threshold={_MIN_TOPIC_SCORE}")
                     if best < _MIN_TOPIC_SCORE:
+                        logger.info("Topic guard: rejected by embedding score")
                         return False
             except Exception as e:
                 logger.warning(f"Topic check embedding failed: {e}")
