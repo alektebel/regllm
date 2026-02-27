@@ -1,0 +1,16 @@
+# Lightweight mock — verifies Docker networking, port mapping, and Cloudflare
+# tunnel WITHOUT building the full CUDA image or loading any model weights.
+#
+# Usage:
+#   docker compose -f docker-compose.mock.yml up
+#   # open https://regllm.xyz or http://localhost:7860
+
+services:
+  mock:
+    image: python:3.10-slim
+    command: ["python", "/app/scripts/mock_server.py", "--port", "7860"]
+    volumes:
+      - ./scripts/mock_server.py:/app/scripts/mock_server.py:ro
+    ports:
+      - "7860:7860"
+    restart: "no"
