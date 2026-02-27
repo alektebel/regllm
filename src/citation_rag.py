@@ -15,8 +15,9 @@ import re
 from pathlib import Path
 from typing import Optional
 
-import chromadb
 from sentence_transformers import SentenceTransformer
+
+from src.chroma_client import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,7 @@ class CitationRAG:
         chroma_path: str = "./vector_db/chroma_db",
         embed_model: str = EMBED_MODEL,
     ):
-        Path(chroma_path).mkdir(parents=True, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=chroma_path)
+        self.client = get_client(chroma_path)
         self.encoder = SentenceTransformer(embed_model, device="cpu")
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME,

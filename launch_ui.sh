@@ -64,9 +64,9 @@ if [ "$NO_TUNNEL" -eq 0 ] && [ -z "$CLOUDFLARED" ]; then
 fi
 
 # ─── Kill any stale app.py (local) instance ──────────────────────────────────
-STALE=$(pgrep -f "python.*app\.py.*--backend local" 2>/dev/null | tr '\n' ' ')
+STALE=$(pgrep -f "python.*app\.py" 2>/dev/null | tr '\n' ' ')
 if [ -n "$STALE" ]; then
-  echo "⚠️   Killing stale app.py --backend local (PIDs: $STALE) to free GPU memory..."
+  echo "Killing stale app.py (PIDs: $STALE) to free GPU memory..."
   kill $STALE 2>/dev/null || true
   sleep 3
 fi

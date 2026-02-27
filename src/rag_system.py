@@ -5,7 +5,8 @@ Provides semantic search and hybrid search capabilities for regulatory documents
 
 from sentence_transformers import SentenceTransformer
 import chromadb
-from chromadb.config import Settings
+
+from src.chroma_client import get_client
 import numpy as np
 import re
 import json
@@ -44,8 +45,7 @@ class RegulatoryRAGSystem:
         self.embedder = SentenceTransformer(embedding_model_name, device="cpu")
 
         # Base de datos vectorial
-        Path(persist_directory).mkdir(parents=True, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        self.client = get_client(persist_directory)
 
         # Coleccion para documentos regulatorios
         self.collection = self.client.get_or_create_collection(

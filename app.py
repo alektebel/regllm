@@ -13,6 +13,7 @@ this module is importable without torch / groq / ollama installed.
 
 import logging
 import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -487,6 +488,12 @@ if __name__ == "__main__":
         help="[groq|ollama] Model name override",
     )
     args = parser.parse_args()
+
+    def _handle_sigterm(signum, frame):
+        logger.info("SIGTERM received — shutting down cleanly")
+        sys.exit(0)  # triggers atexit, which closes ChromaDB + DB
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     doc_count = init(args.backend, adapter=args.adapter, model=args.model)
 
