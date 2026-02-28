@@ -9,41 +9,113 @@ ollama) share the same pipeline and only differ in their generate() call.
 import json
 import logging
 import re
+import threading
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 # ─── Topic guard ──────────────────────────────────────────────────────────────
 
-# Patterns that unambiguously signal a non-professional / creative request.
+# Layer 1 — Regex: instantly reject obvious non-professional / creative requests.
 _OFFTOPIC_RE = re.compile(
-    r'\b(poes[ií]a|poema|estrofa|rima|verso'
-    r'|chiste|broma|humorada'
-    r'|cuento|f[aá]bula|novela|historia\s+de\s+amor'
-    r'|canc[ií]n|letra\s+de\s+m[uú]sica'
-    r'|receta|ingredientes|cocina'
-    r'|dibuj[ao]|ilustra[cr]'
-    r'|traduc[ei]|traduc[cz]i[oó]n'
-    r'|escr[ií]be[nm]e\s+un(?:a)?\s+(?!pregunta|respuesta|informe|an[aá]lisis)'
-    r'|h[aá]zme\s+un(?:a)?\s+(?!pregunta|an[aá]lisis|informe|resumen\s+de\s+la\s+norma)'
-    r')\b',
+    r"\b(poes[ií]a|poema|estrofa|rima|verso"
+    r"|chiste|broma|humorada"
+    r"|cuento|f[aá]bula|novela|historia\s+de\s+amor"
+    r"|canc[ií]n|letra\s+de\s+m[uú]sica"
+    r"|receta|ingredientes|cocina"
+    r"|dibuj[ao]|ilustra[cr]"
+    r"|traduc[ei]|traduc[cz]i[oó]n"
+    r"|escr[ií]be[nm]e\s+un(?:a)?\s+(?!pregunta|respuesta|informe|an[aá]lisis)"
+    r"|h[aá]zme\s+un(?:a)?\s+(?!pregunta|an[aá]lisis|informe|resumen\s+de\s+la\s+norma)"
+    r")\b",
     re.IGNORECASE,
 )
 
-# Minimum cosine similarity a question must reach against the citation DB
-# to be considered on-topic. Any question scoring below this is rejected.
-_MIN_TOPIC_SCORE = 0.20
+# Layer 2 — Embedding guardrail: curated seed sentences covering every major
+# sub-domain of credit-risk banking regulation.  An incoming question must
+# reach _TOPIC_GUARD_THRESHOLD cosine similarity against at least one seed
+# to be considered on-topic; anything below is rejected.
+
+_TOPIC_SEEDS = [
+    # Capital requirements & CRR/CRD
+    "requisitos de capital CET1 Tier 1 Tier 2 activos ponderados por riesgo RWA CRR regulación bancaria",
+    "ratio de capital mínimo Basilea III CRD IV CRD V normativa prudencial entidades crédito supervisión",
+    "capital ordinario nivel 1 CET1 absorción pérdidas buffer de capital conservación",
+    "requerimientos de capital adicional Pilar 2 SREP supervisor proceso revisión",
+    # Credit risk — IRB / SA
+    "riesgo de crédito probabilidad de impago PD pérdida en caso de impago LGD exposición EAD parámetros IRB",
+    "método estándar avanzado riesgo crédito ponderación exposición calificación externa crediticia",
+    "enfoque basado calificaciones internas IRB modelos internos riesgo crédito validación supervisora",
+    "concentración riesgo crédito grandes exposiciones límite regulatorio CRR contraparte",
+    # IFRS 9 / provisioning
+    "pérdidas esperadas IFRS 9 provisiones crediticias deterioro activos financieros ECL modelo",
+    "clasificación y medición activos financieros IFRS 9 etapas deterioro riesgo crédito",
+    # Liquidity ratios
+    "ratio cobertura de liquidez LCR activos líquidos alta calidad HQLA salidas netas Basilea III",
+    "ratio financiación estable neta NSFR fuentes financiación estable disponible requerida Basilea",
+    # Supervisory framework
+    "ICAAP evaluación interna adecuación capital proceso supervisor Pilar 2 pruebas estrés",
+    "directrices EBA BCE normativa prudencial entidades de crédito banca europea supervisión",
+    "Basilea III IV revisión fundamental estándares internacionales capital riesgo comité supervisión bancaria",
+    # NPL / asset quality
+    "préstamos dudosos NPL ratio calidad activos cobertura provisiones banco exposición deteriorada",
+    "exposiciones dudosas NPE clasificación deterioro crediticio entidad crediticia reestructuración",
+    # Leverage & systemic risk
+    "ratio apalancamiento Tier 1 exposición total activo balance Basilea III límite regulatorio",
+    "entidades sistémicas importancia global GSIB colchón sistémico capital adicional resolución",
+    # IFRS 9 / ECB / EBA documents
+    "directrices EBA gestión riesgo crédito concesión préstamos monitoring seguimiento NPL",
+    "artículo CRR reglamento capital requisitos ratio solvencia cálculo regulatorio europeo",
+]
+
+_TOPIC_GUARD_THRESHOLD = 0.30  # min cosine similarity to accept as on-topic
+_EMBED_MODEL_CE = "paraphrase-multilingual-MiniLM-L12-v2"
+
+_tg_model = None
+_tg_seed_vecs = None
+_tg_lock = threading.Lock()
+
+
+def _get_topic_guard_vecs():
+    """Lazy-load embed model and pre-compute seed vectors once per process."""
+    global _tg_model, _tg_seed_vecs
+    with _tg_lock:
+        if _tg_seed_vecs is None:
+            from sentence_transformers import SentenceTransformer
+
+            _tg_model = SentenceTransformer(_EMBED_MODEL_CE)
+            _tg_seed_vecs = _tg_model.encode(_TOPIC_SEEDS, convert_to_numpy=True)
+    return _tg_model, _tg_seed_vecs
+
+
+def _topic_embedding_score(question: str) -> float:
+    """
+    Return max cosine similarity of question against credit-risk/regulation seed sentences.
+    Returns 1.0 (fail-open) if the embed model cannot be loaded, so the guard
+    never blocks users due to a missing dependency.
+    """
+    try:
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        model, seed_vecs = _get_topic_guard_vecs()
+        q_vec = model.encode([question], convert_to_numpy=True)
+        sims = cosine_similarity(q_vec, seed_vecs)[0]
+        return float(sims.max())
+    except Exception as e:
+        logger.warning(f"Topic embedding guard failed: {e}")
+        return 1.0  # fail-open: don't block if guard is unavailable
+
 
 REJECTION_CARD = (
     '<div class="resp-card">'
     '<div class="resp-section" style="background:#FFF5F5;">'
     '<div class="resp-label" style="color:#b91c1c;">Consulta fuera de ámbito</div>'
     '<div class="resp-body">'
-    'Este asistente responde exclusivamente preguntas sobre '
-    '<strong>regulación bancaria, riesgo de crédito y normativa financiera</strong> '
-    '(CRR, CRD IV/V, IFRS 9, Basilea III/IV, directrices EBA/BCE, etc.).<br><br>'
-    'Por favor, reformule su pregunta en ese contexto.'
-    '</div></div></div>'
+    "Este asistente responde exclusivamente preguntas sobre "
+    "<strong>regulación bancaria, riesgo de crédito y normativa financiera</strong> "
+    "(CRR, CRD IV/V, IFRS 9, Basilea III/IV, directrices EBA/BCE, etc.).<br><br>"
+    "Por favor, reformule su pregunta en ese contexto."
+    "</div></div></div>"
 )
 
 # ─── Shared UI constants (used by all app variants) ──────────────────────────
@@ -60,8 +132,15 @@ footer { display: none !important; }
     padding: 16px 24px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     margin-bottom: 0;
+}
+.regllm-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 .regllm-header h1 {
     margin: 0;
@@ -200,7 +279,9 @@ class ChatEngine:
 
     # ── Context building ──────────────────────────────────────────────────────
 
-    def build_context(self, question: str, n_sources: int = 5, hybrid: bool = True) -> tuple[str, list]:
+    def build_context(
+        self, question: str, n_sources: int = 5, hybrid: bool = True
+    ) -> tuple[str, list]:
         """Run RAG retrieval; return (context_string, raw_results)."""
         mode = "hybrid" if hybrid else "semantic"
         logger.debug(f"RAG {mode} search — n_sources={n_sources}")
@@ -215,7 +296,10 @@ class ChatEngine:
 
         if not results:
             logger.warning("RAG returned 0 results")
-            return "No se encontraron documentos relevantes en la base de conocimiento.", []
+            return (
+                "No se encontraron documentos relevantes en la base de conocimiento.",
+                [],
+            )
 
         logger.info(f"RAG {mode}: {len(results)} docs retrieved")
         for i, r in enumerate(results, 1):
@@ -245,7 +329,9 @@ class ChatEngine:
             if text:
                 messages.append({"role": role, "content": text})
 
-        user_content = f"Contexto regulatorio recuperado:\n{context}\n\nPregunta: {question}"
+        user_content = (
+            f"Contexto regulatorio recuperado:\n{context}\n\nPregunta: {question}"
+        )
         messages.append({"role": "user", "content": user_content})
         return messages
 
@@ -270,7 +356,9 @@ class ChatEngine:
                     "confianza": data.get("confianza"),
                     "justificacion_confianza": data.get("justificacion_confianza", ""),
                 }
-                logger.debug(f"Response parsed as JSON ({len(result['respuesta'])} chars)")
+                logger.debug(
+                    f"Response parsed as JSON ({len(result['respuesta'])} chars)"
+                )
                 return result
         except Exception as e:
             logger.debug(f"JSON parse failed ({e}); using raw text as respuesta")
@@ -286,32 +374,27 @@ class ChatEngine:
 
     def check_topic(self, question: str) -> bool:
         """
-        Return True if the question is on-topic (banking / regulatory domain).
+        Return True if the question is on-topic (credit-risk banking regulation).
 
         Two-layer check:
-          1. Regex — catches obvious creative/personal requests instantly.
-          2. Embedding distance — if CitationRAG is available, rejects questions
-             whose best cosine similarity against the citation DB is below
-             _MIN_TOPIC_SCORE (calibrated to ~0.20).
+          1. Regex — instantly rejects obvious creative/personal requests.
+          2. Embedding guardrail — computes max cosine similarity against 20
+             curated credit-risk/regulation seed sentences. Questions scoring
+             below _TOPIC_GUARD_THRESHOLD are rejected regardless of phrasing.
         """
+        # Layer 1: regex fast path
         if _OFFTOPIC_RE.search(question):
             logger.info("Topic guard: rejected by regex")
             return False
 
-        if self.citation_rag is not None:
-            try:
-                hits = self.citation_rag.search(question, top_k=3)
-                if hits:
-                    best = max(
-                        (h["score"] for h in hits if h.get("score") is not None),
-                        default=0.0,
-                    )
-                    logger.info(f"Topic guard: best_score={best:.3f} threshold={_MIN_TOPIC_SCORE}")
-                    if best < _MIN_TOPIC_SCORE:
-                        logger.info("Topic guard: rejected by embedding score")
-                        return False
-            except Exception as e:
-                logger.warning(f"Topic check embedding failed: {e}")
+        # Layer 2: embedding similarity against regulatory seed sentences
+        score = _topic_embedding_score(question)
+        logger.info(
+            f"Topic guard: embedding_score={score:.3f} threshold={_TOPIC_GUARD_THRESHOLD}"
+        )
+        if score < _TOPIC_GUARD_THRESHOLD:
+            logger.info("Topic guard: rejected by embedding (off-topic)")
+            return False
 
         return True
 
@@ -349,7 +432,11 @@ class ChatEngine:
         # ── Step 2: confidence from answer ↔ citation similarity ──────────────
         answer_text = parsed.get("respuesta", "").strip()
         try:
-            a_hits = self.citation_rag.search(answer_text[:500], top_k=top_k) if answer_text else []
+            a_hits = (
+                self.citation_rag.search(answer_text[:500], top_k=top_k)
+                if answer_text
+                else []
+            )
         except Exception as e:
             logger.warning(f"CitationRAG answer search failed: {e}")
             a_hits = []
@@ -359,9 +446,16 @@ class ChatEngine:
             mean_score = sum(scores) / len(scores) if scores else 0.0
             pct = max(0, min(100, int(round(mean_score * 100))))
             top = a_hits[0]
-            top_ref = " · ".join(filter(None, [
-                top.get("documento", ""), top.get("articulo", ""), top.get("paragrafo", ""),
-            ]))
+            top_ref = " · ".join(
+                filter(
+                    None,
+                    [
+                        top.get("documento", ""),
+                        top.get("articulo", ""),
+                        top.get("paragrafo", ""),
+                    ],
+                )
+            )
             justif = (
                 f"Similitud media respuesta↔base regulatoria: {mean_score:.2f}. "
                 f"Referencia más próxima: {top_ref}."
@@ -381,9 +475,9 @@ class ChatEngine:
         Format a parsed structured response into stacked HTML card sections for Gradio chatbot.
         Three always-visible rows: Respuesta, Referencias, Confianza.
         """
-        respuesta    = parsed.get("respuesta", "").strip()
-        referencias  = parsed.get("referencias") or []
-        confianza    = parsed.get("confianza")
+        respuesta = parsed.get("respuesta", "").strip()
+        referencias = parsed.get("referencias") or []
+        confianza = parsed.get("confianza")
         justificacion = parsed.get("justificacion_confianza", "").strip()
 
         # Row 0 — Respuesta
@@ -391,33 +485,33 @@ class ChatEngine:
             '<div class="resp-section">'
             '<div class="resp-label">Respuesta</div>'
             f'<div class="resp-body">{respuesta}</div>'
-            '</div>'
+            "</div>"
         )
 
         # Row 1 — Referencias
         if referencias:
             items_html = ""
             for ref in referencias:
-                doc   = ref.get("documento", "")
-                art   = ref.get("articulo", "")
-                par   = ref.get("paragrafo", "")
-                desc  = ref.get("descripcion", "")
+                doc = ref.get("documento", "")
+                art = ref.get("articulo", "")
+                par = ref.get("paragrafo", "")
+                desc = ref.get("descripcion", "")
                 label = " · ".join(filter(None, [doc, art, par]))
-                item  = f"<strong>{label}</strong>" + (f" — {desc}" if desc else "")
+                item = f"<strong>{label}</strong>" + (f" — {desc}" if desc else "")
                 items_html += f'<div class="ref-item">• {item}</div>'
             row1 = (
                 '<div class="resp-section resp-section--refs">'
                 '<div class="resp-label">Referencias</div>'
                 f'<div class="resp-body">{items_html}</div>'
-                '</div>'
+                "</div>"
             )
         else:
             row1 = (
                 '<div class="resp-section resp-section--refs">'
                 '<div class="resp-label">Referencias</div>'
                 '<div class="resp-body" style="color:#94a3b8;font-style:italic;">'
-                'Sin referencias disponibles</div>'
-                '</div>'
+                "Sin referencias disponibles</div>"
+                "</div>"
             )
 
         # Row 2 — Confianza
@@ -426,24 +520,28 @@ class ChatEngine:
             bar = (
                 '<div class="conf-bar-wrap">'
                 f'<div class="conf-fill" style="width:{pct}%"></div>'
-                '</div>'
+                "</div>"
             )
-            justif_html = f'<div class="conf-justif">{justificacion}</div>' if justificacion else ""
+            justif_html = (
+                f'<div class="conf-justif">{justificacion}</div>'
+                if justificacion
+                else ""
+            )
             row2 = (
                 '<div class="resp-section resp-section--conf">'
                 '<div class="resp-label">Confianza</div>'
                 '<div class="resp-body">'
                 f'<span class="conf-pct">{pct}%</span>'
-                f'{bar}{justif_html}'
-                '</div></div>'
+                f"{bar}{justif_html}"
+                "</div></div>"
             )
         else:
             row2 = (
                 '<div class="resp-section resp-section--conf">'
                 '<div class="resp-label">Confianza</div>'
                 '<div class="resp-body" style="color:#94a3b8;font-style:italic;">'
-                'No disponible</div>'
-                '</div>'
+                "No disponible</div>"
+                "</div>"
             )
 
         return f'<div class="resp-card">{row0}{row1}{row2}</div>'
@@ -454,18 +552,22 @@ class ChatEngine:
         """Fire-and-forget: log QA interaction to PostgreSQL (non-blocking)."""
         try:
             from src.db import log_qa_interaction, log_async
-            log_async(log_qa_interaction(
-                question=question,
-                model_answer=answer,
-                category="live",
-                source=self.db_source,
-                latency_ms=latency_ms,
-            ))
+
+            log_async(
+                log_qa_interaction(
+                    question=question,
+                    model_answer=answer,
+                    category="live",
+                    source=self.db_source,
+                    latency_ms=latency_ms,
+                )
+            )
         except Exception as e:
             logger.warning(f"DB log skipped: {e}")
 
 
 # ─── Shared helpers ───────────────────────────────────────────────────────────
+
 
 def _content_to_text(content) -> str:
     """

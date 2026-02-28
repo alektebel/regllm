@@ -57,15 +57,18 @@ _ollama_host = "http://localhost:11434"
 
 # ─── Backend: local ───────────────────────────────────────────────────────────
 
+
 def _find_latest_adapter() -> str:
     root = Path(__file__).parent / "models/finetuned"
     candidates = sorted(
         [
-            p for p in root.glob("run_*/final_model")
+            p
+            for p in root.glob("run_*/final_model")
             if (p / "adapter_model.safetensors").exists()
         ]
         + [
-            p for p in root.glob("run_*/checkpoint-*")
+            p
+            for p in root.glob("run_*/checkpoint-*")
             if (p / "adapter_model.safetensors").exists()
         ],
         key=lambda p: p.stat().st_mtime,
@@ -85,24 +88,29 @@ def _init_local(adapter: str) -> None:
 
     # Patch caching_allocator_warmup before importing transformers
     import transformers.modeling_utils as _mu
+
     _mu.caching_allocator_warmup = lambda *a, **kw: None
 
     # Patch peft/accelerate: get_balanced_memory fails with non-hashable set
     import accelerate.utils.modeling as _am
+
     _orig_gbm = _am.get_balanced_memory
 
     def _patched_gbm(model, max_memory=None, no_split_module_classes=None, **kwargs):
         if isinstance(no_split_module_classes, (set, list)):
             no_split_module_classes = list(no_split_module_classes)
         return _orig_gbm(
-            model, max_memory=max_memory,
-            no_split_module_classes=no_split_module_classes, **kwargs
+            model,
+            max_memory=max_memory,
+            no_split_module_classes=no_split_module_classes,
+            **kwargs,
         )
 
     _am.get_balanced_memory = _patched_gbm
 
     import peft.peft_model as _pm
     import peft.utils.other as _po
+
     _pm.get_balanced_memory = _patched_gbm
     try:
         _po.get_balanced_memory = _patched_gbm
@@ -120,12 +128,15 @@ def _init_local(adapter: str) -> None:
     logger.info(f"Device: {'GPU (CUDA)' if use_gpu else 'CPU'}")
 
     logger.info(f"Loading tokenizer from {adapter_path}")
-    _local_tokenizer = AutoTokenizer.from_pretrained(str(adapter_path), trust_remote_code=True)
+    _local_tokenizer = AutoTokenizer.from_pretrained(
+        str(adapter_path), trust_remote_code=True
+    )
 
     BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
     if use_gpu:
         from transformers import BitsAndBytesConfig
+
         bnb = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
@@ -141,7 +152,9 @@ def _init_local(adapter: str) -> None:
             low_cpu_mem_usage=True,
         )
     else:
-        logger.info(f"Loading base model: {BASE_MODEL} (float32, CPU — this will be slow)")
+        logger.info(
+            f"Loading base model: {BASE_MODEL} (float32, CPU — this will be slow)"
+        )
         base = AutoModelForCausalLM.from_pretrained(
             BASE_MODEL,
             torch_dtype=torch.float32,
@@ -160,7 +173,9 @@ def _generate_local(messages: list) -> str:
     import torch
 
     text = _local_tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True,
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
     )
     inputs = _local_tokenizer(text, return_tensors="pt").to(_local_model.device)
     with torch.no_grad():
@@ -171,11 +186,12 @@ def _generate_local(messages: list) -> str:
             do_sample=True,
             pad_token_id=_local_tokenizer.eos_token_id,
         )
-    new_tokens = output_ids[0][inputs["input_ids"].shape[1]:]
+    new_tokens = output_ids[0][inputs["input_ids"].shape[1] :]
     return _local_tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
 # ─── Backend: groq ────────────────────────────────────────────────────────────
+
 
 def _init_groq(model: str = None) -> None:
     global _groq_client, _groq_model
@@ -205,6 +221,7 @@ def _generate_groq(messages: list) -> str:
 
 # ─── Backend: ollama ──────────────────────────────────────────────────────────
 
+
 def _init_ollama(model: str = None) -> None:
     global _ollama_model, _ollama_host
 
@@ -227,8 +244,7 @@ def _init_ollama(model: str = None) -> None:
         logger.info(f"Ollama model '{_ollama_model}' ready")
     except _ollama_lib.ResponseError as e:
         raise RuntimeError(
-            f"Cannot reach Ollama at {_ollama_host}: {e}\n"
-            "Start it with: ollama serve"
+            f"Cannot reach Ollama at {_ollama_host}: {e}\nStart it with: ollama serve"
         ) from e
 
 
@@ -248,6 +264,7 @@ def _generate_ollama_stream(messages: list) -> Generator[str, None, None]:
 
 
 # ─── Shared init ──────────────────────────────────────────────────────────────
+
 
 def init(backend: str, **kwargs) -> int:
     """
@@ -285,11 +302,14 @@ def init(backend: str, **kwargs) -> int:
     else:
         raise ValueError(f"Unknown backend: {backend!r}. Choose: local, groq, ollama")
 
-    engine = ChatEngine(rag_system, citation_rag=citation_rag, db_source=f"app_{backend}")
+    engine = ChatEngine(
+        rag_system, citation_rag=citation_rag, db_source=f"app_{backend}"
+    )
     return doc_count
 
 
 # ─── Query handlers ───────────────────────────────────────────────────────────
+
 
 def ask(
     question: str,
@@ -309,13 +329,18 @@ def ask(
 
     t1 = time.time()
     on_topic = engine.check_topic(question)
-    logger.info(f"[topic]    {'pass' if on_topic else 'REJECTED'} ({int((time.time()-t1)*1000)}ms)")
+    logger.info(
+        f"[topic]    {'pass' if on_topic else 'REJECTED'} ({int((time.time() - t1) * 1000)}ms)"
+    )
     if not on_topic:
         from src.chat_engine import REJECTION_CARD
+
         normalised = [
             {
                 "role": t["role"] if isinstance(t, dict) else t[0],
-                "content": _content_to_text(t["content"] if isinstance(t, dict) else t[1]),
+                "content": _content_to_text(
+                    t["content"] if isinstance(t, dict) else t[1]
+                ),
             }
             for t in history
         ]
@@ -325,10 +350,12 @@ def ask(
 
     t1 = time.time()
     context, _ = engine.build_context(question, n_sources=n_sources, hybrid=hybrid)
-    logger.info(f"[rag]      context built ({int((time.time()-t1)*1000)}ms)")
+    logger.info(f"[rag]      context built ({int((time.time() - t1) * 1000)}ms)")
 
     messages = engine.build_messages(question, context, history)
-    logger.info(f"[prompt]   {len(messages)} messages, {sum(len(m['content']) for m in messages)} chars")
+    logger.info(
+        f"[prompt]   {len(messages)} messages, {sum(len(m['content']) for m in messages)} chars"
+    )
 
     t1 = time.time()
     try:
@@ -341,12 +368,14 @@ def ask(
     except Exception as e:
         logger.error(f"Generation error ({_backend}): {e}", exc_info=True)
         raw = f"Error durante la generación: {str(e)}"
-    logger.info(f"[generate] {len(raw)} chars ({int((time.time()-t1)*1000)}ms)")
+    logger.info(f"[generate] {len(raw)} chars ({int((time.time() - t1) * 1000)}ms)")
 
     t1 = time.time()
     parsed = engine.parse_response(raw)
     parsed = engine.enrich_references(parsed, question)
-    logger.info(f"[enrich]   confidence={parsed.get('confianza')}% refs={len(parsed.get('referencias', []))} ({int((time.time()-t1)*1000)}ms)")
+    logger.info(
+        f"[enrich]   confidence={parsed.get('confianza')}% refs={len(parsed.get('referencias', []))} ({int((time.time() - t1) * 1000)}ms)"
+    )
 
     rendered = engine.render_message(parsed)
     latency_ms = int((time.time() - t0) * 1000)
@@ -386,22 +415,30 @@ def ask_stream(
 
     t1 = time.time()
     on_topic = engine.check_topic(question)
-    logger.info(f"[topic]    {'pass' if on_topic else 'REJECTED'} ({int((time.time()-t1)*1000)}ms)")
+    logger.info(
+        f"[topic]    {'pass' if on_topic else 'REJECTED'} ({int((time.time() - t1) * 1000)}ms)"
+    )
     if not on_topic:
         from src.chat_engine import REJECTION_CARD
-        yield "", [
-            *history,
-            {"role": "user", "content": question},
-            {"role": "assistant", "content": REJECTION_CARD},
-        ]
+
+        yield (
+            "",
+            [
+                *history,
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": REJECTION_CARD},
+            ],
+        )
         return
 
     t1 = time.time()
     context, _ = engine.build_context(question, n_sources=n_sources, hybrid=hybrid)
-    logger.info(f"[rag]      context built ({int((time.time()-t1)*1000)}ms)")
+    logger.info(f"[rag]      context built ({int((time.time() - t1) * 1000)}ms)")
 
     messages = engine.build_messages(question, context, history)
-    logger.info(f"[prompt]   {len(messages)} messages, {sum(len(m['content']) for m in messages)} chars")
+    logger.info(
+        f"[prompt]   {len(messages)} messages, {sum(len(m['content']) for m in messages)} chars"
+    )
 
     partial = ""
     t1 = time.time()
@@ -410,54 +447,75 @@ def ask_stream(
         for chunk in _generate_ollama_stream(messages):
             partial += chunk
             n_chunks += 1
-            yield "", [
-                *history,
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": partial},
-            ]
+            yield (
+                "",
+                [
+                    *history,
+                    {"role": "user", "content": question},
+                    {"role": "assistant", "content": partial},
+                ],
+            )
     except Exception as e:
         logger.error(f"Ollama error: {e}", exc_info=True)
         partial = f"Error al consultar el modelo: {str(e)}"
-        yield "", [
-            *history,
-            {"role": "user", "content": question},
-            {"role": "assistant", "content": partial},
-        ]
+        yield (
+            "",
+            [
+                *history,
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": partial},
+            ],
+        )
         return
-    logger.info(f"[generate] {n_chunks} chunks, {len(partial)} chars ({int((time.time()-t1)*1000)}ms)")
+    logger.info(
+        f"[generate] {n_chunks} chunks, {len(partial)} chars ({int((time.time() - t1) * 1000)}ms)"
+    )
 
     t1 = time.time()
     parsed = engine.parse_response(partial)
     parsed = engine.enrich_references(parsed, question)
-    logger.info(f"[enrich]   confidence={parsed.get('confianza')}% refs={len(parsed.get('referencias', []))} ({int((time.time()-t1)*1000)}ms)")
+    logger.info(
+        f"[enrich]   confidence={parsed.get('confianza')}% refs={len(parsed.get('referencias', []))} ({int((time.time() - t1) * 1000)}ms)"
+    )
 
     rendered = engine.render_message(parsed)
     latency_ms = int((time.time() - t0) * 1000)
     logger.info(f"[done]     total={latency_ms}ms")
     engine.log(question, rendered, latency_ms=latency_ms)
 
-    yield "", [
-        *history,
-        {"role": "user", "content": question},
-        {"role": "assistant", "content": rendered},
-    ]
+    yield (
+        "",
+        [
+            *history,
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": rendered},
+        ],
+    )
 
 
 # ─── Feedback handler ─────────────────────────────────────────────────────────
 
-def handle_like(evt: gr.LikeData) -> None:
-    """Called when the user clicks 👍 or 👎 on a chatbot message."""
+
+def handle_like(evt) -> None:
+    """Called when the user clicks Like / Dislike on a chatbot message (gr.LikeData)."""
     try:
-        rating = "thumbs_up" if evt.liked else "thumbs_down"
-        question_text = None
-        # evt.index is the message index; the question is the preceding user turn
-        log_async(store_feedback(rating=rating, question_text=question_text))
-        logger.info(f"[feedback] {rating} for message index {evt.index}")
+        liked = getattr(evt, "liked", None)
+        if liked is True:
+            rating = "thumbs_up"
+        elif liked is False:
+            rating = "thumbs_down"
+        else:
+            rating = str(liked)  # string feedback value in Gradio 6
+        log_async(store_feedback(rating=rating))
+        logger.info(
+            f"[feedback] {rating} for message index {getattr(evt, 'index', '?')}"
+        )
     except Exception as e:
         logger.warning(f"Feedback handler error: {e}")
 
 
 # ─── UI ───────────────────────────────────────────────────────────────────────
+
 
 def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
     title_map = {
@@ -467,10 +525,10 @@ def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
     }
     fn = ask_stream if backend == "ollama" else ask
 
-    with gr.Blocks(title=title_map.get(backend, "RegLLM"), css=CSS) as demo:
-
+    with gr.Blocks(title=title_map.get(backend, "RegLLM")) as demo:
         gr.HTML(f"""
         <div class="regllm-header">
+            <img src="/file=bankregicon.jpg" class="regllm-logo" alt="Logo">
             <div style="flex:1">
                 <h1>RegLLM</h1>
                 <p class="subtitle">Asistente de regulación bancaria · EBA · CRR/CRD · Basilea III/IV</p>
@@ -488,7 +546,7 @@ def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
                     height=540,
                     render_markdown=True,
                     show_label=False,
-                    likeable=True,
+                    feedback_options=("Like", "Dislike"),
                 )
                 with gr.Row(elem_classes="input-row"):
                     txt = gr.Textbox(
@@ -498,19 +556,28 @@ def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
                         lines=1,
                         container=False,
                     )
-                    send_btn = gr.Button("Enviar", variant="primary", scale=1, elem_id="send-btn")
+                    send_btn = gr.Button(
+                        "Enviar", variant="primary", scale=1, elem_id="send-btn"
+                    )
                 gr.Examples(examples=EXAMPLES, inputs=txt)
 
             with gr.Column(scale=1, min_width=220):
-                with gr.Accordion("Configuracion", open=False, elem_classes="settings-panel"):
+                with gr.Accordion(
+                    "Configuracion", open=False, elem_classes="settings-panel"
+                ):
                     n_sources = gr.Slider(
-                        minimum=1, maximum=10, value=5, step=1,
+                        minimum=1,
+                        maximum=10,
+                        value=5,
+                        step=1,
                         label="Fragmentos RAG",
                     )
                     hybrid_search = gr.Checkbox(
                         value=True, label="Busqueda hibrida (semantica + BM25)"
                     )
-                    clear_btn = gr.Button("Limpiar conversacion", variant="secondary", size="sm")
+                    clear_btn = gr.Button(
+                        "Limpiar conversacion", variant="secondary", size="sm"
+                    )
 
         send_btn.click(
             fn=fn,
@@ -535,7 +602,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="RegLLM — Unified Gradio UI")
     parser.add_argument(
-        "--backend", choices=["local", "groq", "ollama"], default="groq",
+        "--backend",
+        choices=["local", "groq", "ollama"],
+        default="groq",
         help="Inference backend: local (QLoRA), groq (API), ollama (GGUF)",
     )
     parser.add_argument("--port", type=int, default=7860)
@@ -543,11 +612,13 @@ if __name__ == "__main__":
     parser.add_argument("--share", action="store_true")
     # Backend-specific flags
     parser.add_argument(
-        "--adapter", default=None,
+        "--adapter",
+        default=None,
         help="[local] Path to LoRA adapter (relative to project root)",
     )
     parser.add_argument(
-        "--model", default=None,
+        "--model",
+        default=None,
         help="[groq|ollama] Model name override",
     )
     args = parser.parse_args()
@@ -563,12 +634,12 @@ if __name__ == "__main__":
 
     demo = build_ui(args.backend, doc_count, lbl)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  RegLLM — backend: {args.backend}")
     print(f"  Label   : {lbl}")
     print(f"  Docs    : {doc_count}")
     print(f"  Local   : http://localhost:{args.port}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     if args.backend == "ollama":
         demo.queue()
@@ -579,4 +650,6 @@ if __name__ == "__main__":
         share=args.share,
         show_error=True,
         prevent_thread_lock=False,
+        css=CSS,
+        allowed_paths=[os.path.abspath(".")],
     )

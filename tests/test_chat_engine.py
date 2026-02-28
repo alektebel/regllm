@@ -230,37 +230,55 @@ def test_enrich_references_computes_confidence():
 
 def test_check_topic_allows_regulatory_question():
     engine = make_engine()
-    assert engine.check_topic("¿Qué establece el artículo 92 del CRR sobre capital?") is True
+    with patch("src.chat_engine._topic_embedding_score", return_value=0.72):
+        assert engine.check_topic("¿Qué establece el artículo 92 del CRR sobre capital?") is True
 
 
 def test_check_topic_blocks_poem_request():
+    """Caught by regex — embedding guard is never called."""
     engine = make_engine()
     assert engine.check_topic("Hazme una poesía de riesgo de crédito") is False
 
 
 def test_check_topic_blocks_joke():
+    """Caught by regex — embedding guard is never called."""
     engine = make_engine()
     assert engine.check_topic("Cuéntame un chiste sobre Basilea III") is False
 
 
-def test_check_topic_embedding_fallback_blocks_low_score():
-    """When the citation DB returns low similarity, question is off-topic."""
-    citation_rag = MagicMock()
-    citation_rag.search.return_value = [
-        {"score": 0.10}, {"score": 0.08}, {"score": 0.05},
-    ]
-    engine = make_engine(citation_rag=citation_rag)
-    assert engine.check_topic("¿Cuál es la receta del gazpacho?") is False
+def test_check_topic_embedding_blocks_low_score():
+    """Low embedding score rejects the question."""
+    engine = make_engine()
+    with patch("src.chat_engine._topic_embedding_score", return_value=0.12):
+        assert engine.check_topic("¿Cuál es el precio del aceite de oliva?") is False
 
 
 def test_check_topic_embedding_allows_high_score():
-    """When the citation DB returns high similarity, question is on-topic."""
-    citation_rag = MagicMock()
-    citation_rag.search.return_value = [
-        {"score": 0.75}, {"score": 0.68},
-    ]
-    engine = make_engine(citation_rag=citation_rag)
-    assert engine.check_topic("¿Cómo se calcula el ratio CET1?") is True
+    """High embedding score passes the question."""
+    engine = make_engine()
+    with patch("src.chat_engine._topic_embedding_score", return_value=0.75):
+        assert engine.check_topic("¿Cómo se calcula el ratio CET1?") is True
+
+
+def test_check_topic_embedding_boundary_just_below():
+    """Score exactly at threshold - ε must be rejected."""
+    engine = make_engine()
+    with patch("src.chat_engine._topic_embedding_score", return_value=0.299):
+        assert engine.check_topic("alguna pregunta ambigua") is False
+
+
+def test_check_topic_embedding_boundary_at_threshold():
+    """Score exactly at threshold must be accepted."""
+    engine = make_engine()
+    with patch("src.chat_engine._topic_embedding_score", return_value=0.30):
+        assert engine.check_topic("alguna pregunta borderline") is True
+
+
+def test_check_topic_failopen_when_guard_unavailable():
+    """If embedding guard raises, fail-open (return 1.0 → accept)."""
+    engine = make_engine()
+    with patch("src.chat_engine._topic_embedding_score", return_value=1.0):
+        assert engine.check_topic("¿Qué es el NSFR?") is True
 
 
 def test_rejection_card_content():
