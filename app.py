@@ -59,7 +59,17 @@ _ollama_host = "http://localhost:11434"
 
 
 def _find_latest_adapter() -> str:
+    """
+    Locate the LoRA adapter to load, trying sources in order:
+
+      1. Local run directory  (models/finetuned/run_*/final_model)
+      2. HuggingFace Hub      (ADAPTER_HF_REPO env var)
+      3. MLflow Model Registry (MLFLOW_TRACKING_URI + MLFLOW_MODEL_NAME env vars)
+      4. S3 direct sync       (MODEL_S3_URI env var)
+    """
     root = Path(__file__).parent / "models/finetuned"
+
+    # ── 1. Local adapter ─────────────────────────────────────────────────────
     candidates = sorted(
         [
             p
@@ -70,15 +80,95 @@ def _find_latest_adapter() -> str:
             p
             for p in root.glob("run_*/checkpoint-*")
             if (p / "adapter_model.safetensors").exists()
+        ]
+        + [
+            p
+            for p in [root / "current"]
+            if (p / "adapter_model.safetensors").exists()
         ],
         key=lambda p: p.stat().st_mtime,
     )
-    if not candidates:
-        raise FileNotFoundError(
-            "No trained adapter found under models/finetuned/. "
-            "Run: python scripts/train_combined.py"
+    if candidates:
+        path = str(candidates[-1].relative_to(Path(__file__).parent))
+        logger.info(f"Using local adapter: {path}")
+        return path
+
+    # ── 2. HuggingFace Hub ────────────────────────────────────────────────────
+    hf_repo = os.getenv("ADAPTER_HF_REPO")
+    if hf_repo:
+        dest = root / "hf_download"
+        dest.mkdir(parents=True, exist_ok=True)
+        logger.info(f"No local adapter found. Downloading from HF Hub: {hf_repo}")
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=hf_repo,
+                local_dir=str(dest),
+                ignore_patterns=["*.bin"],   # prefer safetensors
+            )
+            if (dest / "adapter_model.safetensors").exists():
+                logger.info(f"HF Hub download complete: {dest}")
+                return str(dest.relative_to(Path(__file__).parent))
+        except Exception as e:
+            logger.warning(f"HF Hub download failed: {e}")
+
+    # ── 3. MLflow Model Registry ──────────────────────────────────────────────
+    mlflow_uri = os.getenv("MLFLOW_TRACKING_URI")
+    mlflow_model = os.getenv("MLFLOW_MODEL_NAME", "regllm-lora-adapter")
+    mlflow_stage = os.getenv("MLFLOW_MODEL_STAGE", "Production")
+    if mlflow_uri:
+        dest = root / "mlflow_download"
+        dest.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            f"No local adapter found. Pulling from MLflow registry "
+            f"({mlflow_model}/{mlflow_stage}) at {mlflow_uri}"
         )
-    return str(candidates[-1].relative_to(Path(__file__).parent))
+        try:
+            import mlflow
+            mlflow.set_tracking_uri(mlflow_uri)
+            local_path = mlflow.artifacts.download_artifacts(
+                f"models:/{mlflow_model}/{mlflow_stage}",
+                dst_path=str(dest),
+            )
+            # download_artifacts returns the lora_adapter sub-path
+            adapter_dir = Path(local_path)
+            if not (adapter_dir / "adapter_model.safetensors").exists():
+                # look one level deeper (artifact_path="lora_adapter")
+                sub = next(adapter_dir.iterdir(), None)
+                if sub and (sub / "adapter_model.safetensors").exists():
+                    adapter_dir = sub
+            if (adapter_dir / "adapter_model.safetensors").exists():
+                logger.info(f"MLflow download complete: {adapter_dir}")
+                return str(adapter_dir.relative_to(Path(__file__).parent))
+        except Exception as e:
+            logger.warning(f"MLflow download failed: {e}")
+
+    # ── 4. S3 direct sync ─────────────────────────────────────────────────────
+    s3_uri = os.getenv("MODEL_S3_URI")
+    if s3_uri:
+        dest = root / "s3_download"
+        dest.mkdir(parents=True, exist_ok=True)
+        logger.info(f"No local adapter found. Syncing from S3: {s3_uri}")
+        try:
+            import subprocess
+            subprocess.run(
+                ["aws", "s3", "sync", s3_uri, str(dest), "--no-progress"],
+                check=True,
+            )
+            if (dest / "adapter_model.safetensors").exists():
+                logger.info(f"S3 sync complete: {dest}")
+                return str(dest.relative_to(Path(__file__).parent))
+        except Exception as e:
+            logger.warning(f"S3 sync failed: {e}")
+
+    raise FileNotFoundError(
+        "No LoRA adapter found. Tried: local models/finetuned/, "
+        "ADAPTER_HF_REPO, MLFLOW_TRACKING_URI, MODEL_S3_URI.\n\n"
+        "Options:\n"
+        "  • Train one:         python scripts/train_combined.py\n"
+        "  • Use HF Hub:        export ADAPTER_HF_REPO=your-org/regllm-adapter\n"
+        "  • Use Groq instead:  python app.py --backend groq\n"
+    )
 
 
 def _init_local(adapter: str) -> None:

@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dark theme by default */
+    --background: 222 14% 10%;
+    --foreground: 210 20% 92%;
+    --card: 222 14% 13%;
+    --card-foreground: 210 20% 92%;
+    --popover: 222 14% 13%;
+    --popover-foreground: 210 20% 92%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 14% 18%;
+    --secondary-foreground: 210 20% 92%;
+    --muted: 222 14% 16%;
+    --muted-foreground: 215 16% 55%;
+    --accent: 222 14% 18%;
+    --accent-foreground: 210 20% 92%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 14% 20%;
+    --input: 222 14% 18%;
+    --ring: 217 91% 60%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Streaming cursor */
+.streaming-cursor::after {
+  content: "▋";
+  animation: blink 0.8s step-end infinite;
+  color: hsl(var(--primary));
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Prose overrides for dark mode */
+.prose {
+  --tw-prose-body: hsl(var(--foreground));
+  --tw-prose-headings: hsl(var(--foreground));
+  --tw-prose-links: hsl(var(--primary));
+  --tw-prose-bold: hsl(var(--foreground));
+  --tw-prose-counters: hsl(var(--muted-foreground));
+  --tw-prose-bullets: hsl(var(--muted-foreground));
+  --tw-prose-code: hsl(var(--foreground));
+  --tw-prose-pre-bg: hsl(var(--muted));
+  --tw-prose-quotes: hsl(var(--muted-foreground));
+}
+
+.prose pre {
+  @apply bg-muted rounded-lg p-4 overflow-x-auto text-sm;
+}
+
+.prose code:not(pre code) {
+  @apply bg-muted rounded px-1.5 py-0.5 text-sm font-mono;
+}

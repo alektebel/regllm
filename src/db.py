@@ -15,7 +15,7 @@ from sqlalchemy import (
     func, text,
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import sessionmaker, DeclarativeBase, relationship
 from pgvector.sqlalchemy import Vector
 
 logger = logging.getLogger(__name__)
@@ -74,6 +74,50 @@ class UserFeedback(Base):
     rating = Column(String(20), nullable=False)  # "thumbs_up" | "thumbs_down"
     comment = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=text("now()"))
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(320), unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    conversations = relationship(
+        "Conversation", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(500), default="New conversation")
+    backend = Column(String(20), default="groq")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    user = relationship("User", back_populates="conversations")
+    messages = relationship(
+        "ConversationMessage",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="ConversationMessage.created_at",
+    )
+
+
+class ConversationMessage(Base):
+    __tablename__ = "conversation_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(
+        Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    role = Column(String(20), nullable=False)   # "user" | "assistant"
+    content = Column(Text, nullable=False)
+    sources = Column(JSON, nullable=True)        # list of RAG source dicts
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    conversation = relationship("Conversation", back_populates="messages")
 
 
 def _build_url() -> str:

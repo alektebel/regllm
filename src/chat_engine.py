@@ -248,13 +248,17 @@ SYSTEM_PROMPT = """Eres un asistente especializado exclusivamente en regulación
 Responde SIEMPRE en español y SIEMPRE en el siguiente formato JSON (sin markdown, sin texto fuera del JSON):
 
 {
-  "respuesta": "Texto completo de la respuesta en español, técnico y preciso."
+  "resumen": "1-2 frases que respondan directamente la pregunta.",
+  "desarrollo": "Explicación técnica completa. Párrafos separados por \\n\\n.",
+  "articulos": ["CRR Art. 92", "EBA/GL/2020/06 §4.3"],
+  "advertencias": "Limitaciones, excepciones o aspectos que el usuario debe verificar con los documentos oficiales. Null si no aplica."
 }
 
 REGLAS:
-- Responde solo preguntas de regulación bancaria/financiera. Si la pregunta está fuera de ámbito, indícalo.
-- Nunca inventes artículos, normativas ni cifras. Si no sabes, dilo explícitamente.
-- No incluyas referencias ni puntuaciones: el sistema las obtiene automáticamente de la base de datos regulatoria."""
+- Responde solo preguntas de regulación bancaria/financiera.
+- Nunca inventes artículos, normativas ni cifras. Si no sabes algo, dilo explícitamente.
+- "articulos" debe contener solo referencias que aparezcan en el contexto recuperado; lista vacía si no hay ninguna.
+- "advertencias" es obligatorio cuando la norma tiene excepciones importantes o está en proceso de transposición."""
 
 
 class ChatEngine:
@@ -340,31 +344,67 @@ class ChatEngine:
     def parse_response(self, raw: str) -> dict:
         """
         Extract structured JSON from model output.
-        Falls back to plain-text respuesta on parse failure.
+
+        Expected fields: resumen, desarrollo, articulos, advertencias.
+        Falls back gracefully for old-format responses (respuesta key) or
+        plain text.
         """
         try:
-            # Strip markdown code fences
             cleaned = re.sub(r"```(?:json)?", "", raw).strip()
-            # Extract outermost {...}
             match = re.search(r"\{.*\}", cleaned, re.DOTALL)
             if match:
                 data = json.loads(match.group())
-                # Normalise keys
-                result = {
-                    "respuesta": str(data.get("respuesta", raw)),
-                    "referencias": data.get("referencias", []),
-                    "confianza": data.get("confianza"),
-                    "justificacion_confianza": data.get("justificacion_confianza", ""),
-                }
-                logger.debug(
-                    f"Response parsed as JSON ({len(result['respuesta'])} chars)"
-                )
-                return result
+
+                # New structured format
+                if "resumen" in data or "desarrollo" in data:
+                    resumen = str(data.get("resumen", ""))
+                    desarrollo = str(data.get("desarrollo", ""))
+                    # Combine into a single respuesta for backwards compatibility
+                    respuesta = (
+                        f"**Resumen:** {resumen}\n\n{desarrollo}".strip()
+                        if resumen
+                        else desarrollo
+                    )
+                    result = {
+                        "respuesta": respuesta,
+                        "resumen": resumen,
+                        "desarrollo": desarrollo,
+                        "articulos": data.get("articulos", []),
+                        "advertencias": data.get("advertencias"),
+                        # Legacy fields kept for existing callers
+                        "referencias": data.get("articulos", []),
+                        "confianza": None,
+                        "justificacion_confianza": data.get("advertencias") or "",
+                    }
+                    logger.debug(
+                        f"Response parsed (structured, {len(respuesta)} chars, "
+                        f"{len(result['articulos'])} articles)"
+                    )
+                    return result
+
+                # Legacy format (respuesta key)
+                if "respuesta" in data:
+                    result = {
+                        "respuesta": str(data["respuesta"]),
+                        "resumen": "",
+                        "desarrollo": str(data["respuesta"]),
+                        "articulos": data.get("referencias", []),
+                        "advertencias": data.get("justificacion_confianza") or None,
+                        "referencias": data.get("referencias", []),
+                        "confianza": data.get("confianza"),
+                        "justificacion_confianza": data.get("justificacion_confianza", ""),
+                    }
+                    return result
+
         except Exception as e:
             logger.debug(f"JSON parse failed ({e}); using raw text as respuesta")
 
         return {
             "respuesta": raw,
+            "resumen": "",
+            "desarrollo": raw,
+            "articulos": [],
+            "advertencias": None,
             "referencias": [],
             "confianza": None,
             "justificacion_confianza": "",

@@ -91,6 +91,47 @@ def _normalize(item: dict, fallback_system: str | None = None) -> dict | None:
     return None
 
 
+def _log_dataset_provenance(mlflow_module) -> None:
+    """
+    Log which data files contributed to this training run and their sizes.
+    This lets you answer "what data was the model trained on?" from the MLflow UI.
+    """
+    import hashlib
+
+    finetuning_dir = PROJECT_ROOT / "data/finetuning"
+    reg_file = PROJECT_ROOT / "data/processed/train_data.json"
+
+    file_stats = {}
+    for path in sorted(finetuning_dir.rglob("*") if finetuning_dir.exists() else []):
+        if path.suffix in (".jsonl", ".json") and path.is_file():
+            key = str(path.relative_to(PROJECT_ROOT))
+            sha = hashlib.md5(path.read_bytes()).hexdigest()[:8]
+            file_stats[key] = {"size_bytes": path.stat().st_size, "md5_prefix": sha}
+
+    if reg_file.exists():
+        sha = hashlib.md5(reg_file.read_bytes()).hexdigest()[:8]
+        file_stats[str(reg_file.relative_to(PROJECT_ROOT))] = {
+            "size_bytes": reg_file.stat().st_size,
+            "md5_prefix": sha,
+        }
+
+    # Log as flat params (MLflow doesn't support nested dicts)
+    params = {"dataset_files_count": len(file_stats)}
+    for i, (fname, stats) in enumerate(file_stats.items()):
+        params[f"data_file_{i}"] = fname
+        params[f"data_file_{i}_md5"] = stats["md5_prefix"]
+
+    mlflow_module.log_params(params)
+
+    # Also log as a JSON artifact for full detail
+    import json, tempfile, os
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+        json.dump(file_stats, tmp, indent=2)
+        tmp_path = tmp.name
+    mlflow_module.log_artifact(tmp_path, artifact_path="dataset_provenance")
+    os.unlink(tmp_path)
+
+
 def _load_file(path: Path) -> list[dict]:
     """Load a .jsonl or .json file; return list of normalised items."""
     items = []
@@ -322,8 +363,11 @@ def main():
                 "gradient_accumulation_steps": 8,
                 "train_samples": len(train_data),
                 "val_samples": len(val_data),
+                "total_samples": len(train_data) + len(val_data),
                 "resume_from": resume_from or "none",
             })
+            # Track which data files contributed to this run
+            _log_dataset_provenance(mlflow)
         except Exception as e:
             logger.warning(f"MLflow init failed (training continues): {e}")
             mlflow_run = None
