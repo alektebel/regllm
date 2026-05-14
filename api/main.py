@@ -12,8 +12,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 # Ensure project root is on sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -21,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.db import dispose_engine, init_db
 
 logger = logging.getLogger(__name__)
+
+# ─── Rate limiter (shared across routers) ─────────────────────────────────────
+
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 # ─── Globals ──────────────────────────────────────────────────────────────────
 
@@ -59,7 +66,7 @@ async def lifespan(app: FastAPI):
         from src.chat_engine import ChatEngine
 
         rag = RegulatoryRAGSystem()
-        logger.info(f"RAG ready — {rag.collection.count()} documents")
+        logger.info(f"RAG ready — {rag.collection.count()} document chunks")
 
         try:
             citation_rag = CitationRAG()
@@ -86,6 +93,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

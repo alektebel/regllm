@@ -120,6 +120,32 @@ class ConversationMessage(Base):
     conversation = relationship("Conversation", back_populates="messages")
 
 
+class DocumentChunk(Base):
+    """RAG document chunks — replaces ChromaDB 'regulacion_bancaria' collection."""
+
+    __tablename__ = "document_chunks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chunk_id = Column(String(500), unique=True, nullable=False, index=True)
+    texto = Column(Text, nullable=False)
+    metadata_ = Column("metadata", JSON, nullable=True)
+    embedding = Column(Vector(768), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CitationChunk(Base):
+    """Per-article citation vectors — replaces ChromaDB 'regulation_citations' collection."""
+
+    __tablename__ = "citation_chunks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chunk_id = Column(String(500), unique=True, nullable=False, index=True)
+    texto = Column(Text, nullable=False)
+    metadata_ = Column("metadata", JSON, nullable=True)
+    embedding = Column(Vector(384), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 def _build_url() -> str:
     """Build PostgreSQL async connection URL from env vars."""
     host = os.getenv("POSTGRES_HOST", "localhost")
@@ -156,10 +182,18 @@ async def init_db():
             # Enable pgvector extension (idempotent)
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
-            # HNSW index for fast ANN search — works well at any table size
+            # HNSW indexes for fast ANN search
             await conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS qa_interactions_question_emb_idx "
                 "ON qa_interactions USING hnsw (question_embedding vector_cosine_ops)"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS document_chunks_emb_idx "
+                "ON document_chunks USING hnsw (embedding vector_cosine_ops)"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS citation_chunks_emb_idx "
+                "ON citation_chunks USING hnsw (embedding vector_cosine_ops)"
             ))
         logger.info("Database tables initialized")
     except Exception as e:

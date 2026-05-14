@@ -1,300 +1,497 @@
-# RegLLM
+# RegLLM — Spanish Banking Regulation Assistant
 
-**A fine-tuned language model for Spanish banking regulation.**
+**A fine-tuned LLM (Qwen2.5-7B + LoRA) for Spanish banking regulations, with a ChatGPT-style web UI, hybrid RAG, and full CI/CD to AWS.**
 
-RegLLM answers hard questions about EBA guidelines, CRR/CRD IV, and Basel III/IV by combining a fine-tuned Qwen2.5-7B with hybrid RAG over real regulatory documents. It runs fully on your machine, through a cloud API, or deployed to AWS — your choice.
-
----
-
-## Why it exists
-
-Banking regulation is dense, cross-referenced, and multilingual. A generic LLM will hallucinate article numbers, confuse CRR with CRD, and miss the nuance between IRBA and standardised approaches. RegLLM is trained specifically on the documents that matter — EBA guidelines, CRR/CRD IV, Basel III/IV, and five Spanish bank annual reports — and uses RAG to ground every answer in the actual text.
-
-Ask it things like:
-
-> *"¿Cuál es el tratamiento del riesgo de crédito contraparte bajo CRR para derivados OTC?"*
->
-> *"¿Qué requisitos de capital exige Basilea IV para carteras IRBA con LGD estimada?"*
->
-> *"Compara el método estándar con el IRB avanzado para el cálculo de APR."*
-
-It returns an answer with citations to the relevant article and paragraph — and rejects off-topic questions outright.
+RegLLM answers questions about EBA guidelines, CRR/CRD IV, and Basel III/IV by combining a fine-tuned language model with hybrid vector + keyword retrieval over real regulatory documents.
 
 ---
 
-## How it works
+## Architecture
 
 ```
-User query
-    │
-    ▼
-Topic Guard ── off-topic ──→  Rejection  (no LLM call wasted)
-    │ on-topic
-    ▼
-Hybrid RAG   70% semantic cosine  +  30% BM25
-    │         ChromaDB · paraphrase-multilingual-mpnet · 1 500-char chunks
-    ▼
-Prompt assembly   system  +  RAG context  +  history  +  question
-    │
-    ├── local  ──→  Qwen2.5-7B-Instruct  +  LoRA adapter  (4-bit QLoRA)
-    ├── groq   ──→  llama-3.3-70b-versatile  via Groq API
-    └── ollama ──→  regllm GGUF  on local Ollama server
-    │
-    ▼
-Response parser  +  citation enricher  +  hallucination checker
-    │
-    ▼
-Gradio UI   ←──  PostgreSQL  (query logs · user feedback · embeddings)
-```
+Browser
+  └─► Next.js 14  (port 3000)
+        └─► /api/* rewrite
+              └─► FastAPI  (port 8000)
+                    ├── POST  /auth/register|login   (5 req/min rate limit)
+                    ├── GET/POST/DELETE  /conversations
+                    └── POST  /chat/stream            (Server-Sent Events)
+                          └─► ChatEngine
+                                ├── Topic guard  (reject off-topic)
+                                ├── Semantic query cache  (cosine ≤ 0.08)
+                                ├── Hybrid RAG  (70% pgvector + 30% BM25)
+                                ├── Citation RAG  (per-article vectors)
+                                └── LLM backend
+                                      ├── Groq  llama-3.3-70b  ← default
+                                      ├── Ollama  (local server)
+                                      └── Local LoRA adapter  (QLoRA 4-bit)
 
-The three backends share the same RAG pipeline and chat engine. Swapping between them is a single CLI flag.
+PostgreSQL 16 + pgvector  (single instance — no separate vector DB)
+  ├── query_logs            legacy query history
+  ├── qa_interactions       QA pairs + 384-d embeddings (semantic cache)
+  ├── user_feedback         thumbs up / down ratings
+  ├── users                 JWT accounts
+  ├── conversations         chat sessions per user
+  ├── conversation_messages messages + RAG source citations
+  ├── document_chunks       main RAG index  (768-d, HNSW)
+  └── citation_chunks       per-article citation index  (384-d, HNSW)
+
+MLflow  (port 5000)
+  ├── Tracks SFT / GRPO / DPO training runs
+  ├── Model Registry: regllm-lora-adapter
+  └── Artifact storage → S3 in production
+```
 
 ---
 
-## Quick start
+## AWS Architecture
 
-### Option A — Groq API (no GPU, 30-second setup)
+```
+                        ┌──────────────────────────┐
+  Internet ──► Route 53 │  ALB (Application LB)    │
+                        │  HTTPS :443               │
+                        └──────────────┬───────────┘
+                                       │
+               ┌───────────────────────┼──────────────────────────┐
+               ▼                       ▼                           ▼
+   ECS Fargate: frontend     ECS Fargate: fastapi        RDS PostgreSQL 16
+   (Next.js, port 3000)      (FastAPI, port 8000)        + pgvector extension
+                              reads/writes DB ──────────► (all tables + vectors)
+
+   ECR                        S3 (×2)                  Secrets Manager
+   regllm-api:{sha}           mlflow-artifacts         db_password
+   regllm-frontend:{sha}      model-weights            jwt_secret
+                                                        groq_api_key
+```
+
+> **No EFS, no NAT Gateway.** pgvector replaces ChromaDB (eliminates EFS volume). ECS tasks run in public subnets (eliminates NAT Gateway). Both are the biggest cost drivers in a small deployment.
+
+### AWS Cost Estimate — 10 users/month
+
+| Service | Config | $/month |
+|---------|--------|---------|
+| RDS PostgreSQL t3.micro | 20 GB gp2, single-AZ | ~$15 |
+| ECS Fargate — fastapi | 0.5 vCPU / 1 GB RAM, ~8 h/day | ~$5 |
+| ECS Fargate — frontend | 0.25 vCPU / 0.5 GB RAM, ~8 h/day | ~$3 |
+| ALB | 1 instance | ~$16 |
+| ECR | ~2 GB stored | ~$0.20 |
+| S3 | MLflow artifacts | ~$0.10 |
+| Secrets Manager | 3 secrets | ~$0.12 |
+| **Total** | | **~$39/month** |
+
+**Further savings:**
+- Scale ECS to 0 tasks outside business hours → ~$8 off
+- Switch to Aurora Serverless v2 if traffic is bursty → pay per ACU-second
+- Groq free tier comfortably covers 10 users
+
+---
+
+## Local Development
+
+### Prerequisites
+
+- Docker + Docker Compose  
+- `GROQ_API_KEY` from [console.groq.com](https://console.groq.com)
+
+### Quick start
 
 ```bash
 git clone https://github.com/your-org/regllm.git && cd regllm
-python -m venv .venv && source .venv/bin/activate
-pip install torch --index-url https://download.pytorch.org/whl/cpu -q
-pip install -r requirements-prod.txt
-
-echo "GROQ_API_KEY=gsk_..." > .env
-python app.py --backend groq
+cp .env.example .env          # fill in GROQ_API_KEY and JWT_SECRET
+docker compose up --build
 ```
 
-Open **http://localhost:7860**
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| FastAPI docs | http://localhost:8000/docs |
+| MLflow UI | http://localhost:5000 |
+| PostgreSQL | localhost:5433 |
 
-### Option B — Local model (private, no API key)
+### Create a user
 
-On first run the app downloads the LoRA adapter automatically (≈ 300 MB) and the Qwen2.5-7B base model via HuggingFace (≈ 14 GB, cached after the first download):
+Register at `http://localhost:3000/register`, or:
 
 ```bash
-pip install -r requirements.txt   # includes torch + bitsandbytes
-python app.py --backend local
+curl -s -X POST http://localhost:8000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"changeme"}' | jq .
 ```
 
-To use a specific adapter:
+### Load regulation documents
 
 ```bash
-python app.py --backend local --adapter models/finetuned/run_20260222_224503/final_model
-```
-
-To publish and consume your own adapter from HuggingFace Hub:
-
-```bash
-# Set in .env:  ADAPTER_HF_REPO=your-org/regllm-adapter
-python app.py --backend local
-```
-
-### Option C — Docker Compose (app + MLflow + Postgres)
-
-```bash
-cp .env.example .env          # add GROQ_API_KEY and POSTGRES_PASSWORD
-docker compose up
-```
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| app     | http://localhost:7860 | Gradio UI |
-| mlflow  | http://localhost:5000 | Experiment tracker |
-| postgres | localhost:5432 | Query logs + MLflow backend |
-
----
-
-## Training your own model
-
-### 1. Gather data
-
-```bash
-# Scrape regulatory documents into data/raw/
-python src/scraper/regulation_scraper.py
-
-# Generate Q&A pairs (GPU)
-python scripts/generate_qa_from_docs.py --input data/raw/
-
-# Or use Ollama if you have no GPU
-python scripts/generate_qa_from_docs.py --input data/raw/ --backend ollama --model llama3.2
-
-# Index documents into ChromaDB
-python scripts/index_citations.py
-```
-
-### 2. Fine-tune (SFT)
-
-`train_combined.py` auto-discovers every JSONL under `data/finetuning/` and resumes from the latest checkpoint automatically:
-
-```bash
-python scripts/train_combined.py --epochs 5 --lr 1e-4
-```
-
-Every run is tracked in MLflow automatically. Open http://localhost:5000 to compare runs, view loss curves, and browse saved adapters.
-
-### 3. RLHF
-
-```bash
-# GRPO — test-based rewards (keyword overlap · citation matching · format quality)
-python -m src.rlhf.grpo_trainer --epochs 2
-
-# DPO — learns from thumbs-up / thumbs-down collected in the Gradio UI
-python -m src.rlhf.dpo_trainer
-```
-
-### 4. Promote a model to production
-
-```bash
-# In the MLflow UI (http://localhost:5000) or via CLI:
-mlflow models transition-version \
-  --name regllm-lora-adapter \
-  --version 3 \
-  --stage Production
-
-# The app (and Docker container) will serve this version automatically on next startup
-```
-
-### 5. Evaluate
-
-```bash
-python scripts/eval_qa.py          # keyword F1 + token F1 on ground-truth set
-python scripts/validate_model.py   # embedding similarity + citation quality
-python scripts/test_with_judge.py  # LLM-as-judge scoring
+docker compose exec fastapi python -c "
+from src.rag_system import RegulatoryRAGSystem
+rag = RegulatoryRAGSystem()
+rag.load_from_json('data/raw/regulations.json')
+print(rag.collection.count(), 'chunks indexed')
+"
 ```
 
 ---
 
-## MLflow experiment tracking
+## Database Migrations (Alembic)
 
-Every training run logs automatically:
+`Base.metadata.create_all()` is kept for frictionless local dev. **Production deployments use Alembic exclusively** to avoid accidental schema drift on a persistent RDS instance.
 
-| What | Detail |
-|------|--------|
-| Hyperparameters | base model, LoRA rank/alpha, learning rate, epochs, batch size, dataset size |
-| Metrics | train loss and eval loss at every step |
-| Artifacts | full LoRA adapter (adapter_model.safetensors + config) |
-| Model Registry | each adapter registered as a versioned `regllm-lora-adapter` |
+### Apply all migrations (first deploy)
 
-On AWS the artifact backend is S3. Locally it's `./mlruns/`.
+```bash
+POSTGRES_HOST=your-rds.rds.amazonaws.com \
+POSTGRES_PASSWORD=<from Secrets Manager> \
+alembic upgrade head
+```
 
----
+### Create a migration after changing `src/db.py`
 
-## Model details
+```bash
+alembic revision --autogenerate -m "add column X to table Y"
+# review the generated file in alembic/versions/
+alembic upgrade head
+```
 
-| Property | Value |
-|----------|-------|
-| Base model | `Qwen/Qwen2.5-7B-Instruct` |
-| Fine-tuning | LoRA (r=64, α=128) across 7 attention + FFN projection layers |
-| Quantisation | 4-bit NF4 QLoRA via BitsAndBytes |
-| Post-training | GRPO (test-based rewards) + DPO (user preference pairs) |
-| Languages | Spanish (primary), English |
-| Training corpus | EBA guidelines · CRR/CRD IV · Basel III/IV · 5 Spanish bank reports (2022–2023) |
-| Context window | 4 096 tokens |
-| Typical latency | 200–500 ms on GPU · 8–15 s on CPU |
+### Rollback
 
-### Hardware requirements
-
-| Use case | VRAM needed |
-|----------|------------|
-| Inference (4-bit) | 6 GB |
-| Training with LoRA (4-bit) | 12 GB |
-| CPU inference | 16 GB RAM |
-
-No GPU? Run `--backend groq` or `--backend ollama` for CPU-only operation.
+```bash
+alembic downgrade -1     # one revision back
+alembic downgrade base   # full teardown
+```
 
 ---
 
-## Deployment on AWS
+## Security
 
-Infrastructure is fully defined in Terraform under `infra/`. One command provisions everything:
+| Concern | Implementation |
+|---------|---------------|
+| Auth rate limiting | 5 req/min per IP on `/auth/login` and `/auth/register` (slowapi) |
+| JWT secret | Secrets Manager in production; never embedded in image or task definition |
+| CORS | Locked to `CORS_ORIGINS` env var (comma-separated); defaults to `http://localhost:3000` |
+| DB passwords | Auto-generated 32-char random by Terraform, injected via Secrets Manager |
+| SQL injection | SQLAlchemy ORM + parameterized queries throughout |
+| TLS | ALB terminates HTTPS; internal container traffic stays in VPC |
+
+---
+
+## Building Docker Images
+
+### API image
+
+```bash
+docker build -f Dockerfile.api -t regllm-api:latest .
+```
+
+The build does these things in order:
+
+1. Installs CPU-only PyTorch (prevents sentence-transformers from pulling ~1 GB CUDA packages)
+2. Installs `requirements-api.txt`
+3. **Bakes both embedding models into the image** — `paraphrase-multilingual-mpnet-base-v2` (768-d) and `MiniLM-L12-v2` (384-d). Without this, ECS health checks fail during the 2-minute cold-start model download.
+
+Expected image size: ~3 GB (models take ~1.5 GB).
+
+### Frontend image
+
+```bash
+docker build -f frontend/Dockerfile -t regllm-frontend:latest ./frontend
+```
+
+Multi-stage build: `node:20-alpine` builder → `node:20-alpine` runner with only `.next/standalone/` (~50 MB final image).
+
+---
+
+## CI/CD Pipeline
+
+### Overview
+
+```
+Every push / PR
+  └─► test.yml
+        ├── pgvector service container
+        ├── pip install (CPU torch + requirements-api.txt)
+        └── pytest -m "not slow and not llm_judge"
+
+Push to main (or manual trigger)
+  └─► deploy.yml
+        ├── OIDC → assume AWS IAM role (no long-lived keys)
+        ├── docker buildx → ECR (GHA layer cache speeds up rebuild)
+        │     regllm-api:{sha}
+        │     regllm-frontend:{sha}
+        ├── download current ECS task definition JSON
+        ├── swap image digest
+        ├── register new task definition revision
+        └── aws ecs update-service --force-new-deployment
+              └── ECS rolling deploy
+                    ├── new tasks start, pass health check → old tasks drain
+                    └── if health check fails → auto-rollback (circuit breaker)
+```
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `AWS_DEPLOY_ROLE_ARN` | IAM role ARN for OIDC — no access keys stored in GitHub |
+| `AWS_REGION` | e.g. `eu-west-1` |
+
+### test.yml
+
+```yaml
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_DB: regllm, POSTGRES_USER: regllm, POSTGRES_PASSWORD: changeme }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready" --health-interval 5s --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PASSWORD: changeme
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu -q
+      - run: pip install -r requirements-api.txt pytest pytest-asyncio -q
+      - run: pytest -m "not slow and not llm_judge" -x
+```
+
+### deploy.yml (key steps)
+
+```yaml
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment: { type: choice, options: [dev, prod], default: dev }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write    # OIDC token
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build + push API image (GHA layer cache)
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.api
+          push: true
+          tags: ${{ env.ECR_REGISTRY }}/regllm-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build + push frontend image
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.ECR_REGISTRY }}/regllm-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Rolling ECS deploy with circuit-breaker auto-rollback
+      - name: Deploy API to ECS
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition regllm-api --query taskDefinition)
+          NEW_TASK=$(echo "$TASK_DEF" | jq \
+            --arg img "${{ env.ECR_REGISTRY }}/regllm-api:${{ github.sha }}" \
+            '.containerDefinitions[0].image = $img
+             | del(.taskDefinitionArn,.revision,.status,
+                   .requiresAttributes,.placementConstraints,
+                   .compatibilities,.registeredAt,.registeredBy)')
+          aws ecs register-task-definition --cli-input-json "$NEW_TASK"
+          aws ecs update-service \
+            --cluster regllm \
+            --service regllm-api \
+            --task-definition regllm-api \
+            --deployment-configuration \
+              "deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --force-new-deployment
+          aws ecs wait services-stable \
+            --cluster regllm --services regllm-api
+```
+
+---
+
+## Terraform — AWS Infrastructure
 
 ```bash
 cd infra
-terraform init
+
+# One-time bootstrap: create S3 state bucket + DynamoDB lock table manually
+# Then:
+terraform init -backend-config=environments/dev.tfvars
+terraform plan  -var-file=environments/dev.tfvars
 terraform apply -var-file=environments/dev.tfvars
 ```
 
-What gets created:
+### Module map
 
-| Resource | Purpose |
-|----------|---------|
-| ECR | Docker image registry |
-| ECS Fargate | Serverless container for the app |
-| RDS PostgreSQL 16 | Query logs + MLflow metadata |
-| S3 (×2) | MLflow artifacts + raw model weights |
-| EFS | ChromaDB persistence across task restarts |
-| ALB | Public HTTPS entry point |
-| Secrets Manager | API keys and database password |
+| Module | Key resources |
+|--------|--------------|
+| `ecr` | Two ECR repos (api + frontend); lifecycle: keep last 10 images |
+| `s3` | `regllm-mlflow-artifacts-{env}` + `regllm-model-weights-{env}` (versioned) |
+| `secrets` | Secrets Manager entries for `db_password`, `jwt_secret`, `groq_api_key` |
+| `rds` | PostgreSQL 16, `shared_preload_libraries=pg_vector`, encrypted, delete-protection on prod |
+| `alb` | ALB + target groups for port 8000 and 3000 |
+| `ecs` | Fargate cluster, task definitions, services; IAM roles for Secrets + S3 |
 
-After applying, every `git push` to `main` triggers a GitHub Actions workflow that builds the image, pushes to ECR, and does a rolling ECS deploy with automatic rollback on failure.
+### Post-apply steps
 
-See [infra/README.md](infra/README.md) for the full bootstrap guide.
+```bash
+# 1. Run database migrations
+POSTGRES_HOST=$(terraform output -raw rds_endpoint) \
+POSTGRES_PASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id regllm/dev/db_password \
+  --query SecretString --output text) \
+alembic upgrade head
+
+# 2. Set your Groq API key
+aws secretsmanager put-secret-value \
+  --secret-id regllm/dev/groq_api_key \
+  --secret-string "gsk_..."
+```
 
 ---
 
-## Project structure
+## ChromaDB → pgvector Migration
+
+ChromaDB has been removed. All vectors are stored in PostgreSQL.
+
+| Before | After |
+|--------|-------|
+| `regulacion_bancaria` ChromaDB collection (768-d) | `document_chunks` table + HNSW index |
+| `regulation_citations` ChromaDB collection (384-d) | `citation_chunks` table + HNSW index |
+| EFS volume (ChromaDB persistence on ECS) | Same RDS instance |
+| `./vector_db/chroma_db/` local directory | `postgres_data` Docker volume |
+
+**Benefits:** one fewer service, eliminates EFS cost, transactional consistency with application data, same backup/restore procedure as the rest of the DB.
+
+---
+
+## Model Training
+
+```bash
+# SFT
+python scripts/train_combined.py --epochs 3 --lr 1e-4
+
+# GRPO (reward from keyword/citation/format quality)
+python -m src.rlhf.grpo_trainer --epochs 2
+
+# DPO (from collected thumbs up/down pairs)
+python scripts/export_dpo_pairs.py    # builds data/finetuning/dpo_pairs.jsonl
+python -m src.rlhf.dpo_trainer
+```
+
+Training runs appear in MLflow at `http://localhost:5000`.
+
+### Promote to production
+
+```bash
+# MLflow CLI:
+mlflow models transition-version \
+  --name regllm-lora-adapter --version 3 --stage Production
+
+# The container's entrypoint will pull this version on next cold start
+# (when REGLLM_BACKEND=local)
+```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REGLLM_BACKEND` | `groq` | LLM backend: `groq`, `ollama`, `local` |
+| `GROQ_API_KEY` | — | Required for groq backend |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID |
+| `POSTGRES_HOST` | `localhost` | DB hostname |
+| `POSTGRES_PORT` | `5432` | DB port |
+| `POSTGRES_DB` | `regllm` | Database name |
+| `POSTGRES_USER` | `regllm` | DB user |
+| `POSTGRES_PASSWORD` | `changeme` | **Change in production** |
+| `JWT_SECRET` | `change-me-in-production` | **Change in production** |
+| `JWT_EXPIRE_HOURS` | `168` | Token validity (7 days) |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
+| `MLFLOW_TRACKING_URI` | `http://localhost:5000` | MLflow server |
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
+
+---
+
+## Project Structure
 
 ```
 regllm/
-├── app.py                      # Entry point — Gradio UI (local / groq / ollama)
-├── config.py                   # Central config for all components
+├── app.py                      Gradio UI entry point (legacy)
+├── config.py                   Central config for all components
+├── api/
+│   ├── main.py                 FastAPI app + lifespan + CORS + rate limiter
+│   ├── auth.py                 JWT signing + bcrypt
+│   ├── deps.py                 FastAPI dependencies (get_db, get_current_user)
+│   ├── models.py               Pydantic request/response schemas
+│   └── routers/
+│       ├── auth.py             POST /auth/register|login, GET /auth/me
+│       ├── conversations.py    CRUD /conversations
+│       └── chat.py             POST /chat/stream  (SSE)
 ├── src/
-│   ├── chat_engine.py          # Query pipeline: topic guard → RAG → prompt → parse
-│   ├── rag_system.py           # ChromaDB + BM25 hybrid retrieval
-│   ├── citation_rag.py         # Per-article citation vectors
-│   ├── verification.py         # Hallucination detection + confidence scoring
-│   ├── db.py                   # Async PostgreSQL (logs, feedback, embeddings)
-│   ├── training/
-│   │   ├── train.py            # SFT training class
-│   │   └── model_setup.py      # Model loading + LoRA setup
-│   └── rlhf/
-│       ├── grpo_trainer.py     # Group Relative Policy Optimization
-│       ├── dpo_trainer.py      # Direct Preference Optimization
-│       └── grpo_rewards.py     # Keyword / source / format reward functions
+│   ├── chat_engine.py          Query pipeline: guard → cache → RAG → LLM → parse
+│   ├── rag_system.py           Hybrid RAG using pgvector + BM25 (document_chunks)
+│   ├── citation_rag.py         Per-article citation vectors (citation_chunks)
+│   ├── cache.py                Semantic query cache (cosine similarity on qa_interactions)
+│   ├── db.py                   Async SQLAlchemy ORM + pgvector helpers
+│   ├── verification.py         Hallucination detection + confidence scoring
+│   └── training/ + rlhf/       SFT, GRPO, DPO trainers
+├── alembic/                    Database migrations
+│   ├── env.py                  Reads DB URL from env vars
+│   └── versions/
+│       └── 0001_initial_schema.py
 ├── scripts/
-│   ├── train_combined.py       # Main training entry point (auto-discovers data)
-│   ├── entrypoint.sh           # Container startup: pulls adapter from MLflow / S3
-│   ├── eval_qa.py              # Evaluation: keyword F1 + token F1
-│   └── validate_model.py       # Comprehensive validation suite
-├── infra/                      # Terraform: ECR, ECS, RDS, S3, EFS, ALB, Secrets
-│   ├── modules/                # One module per AWS service
-│   └── environments/           # dev.tfvars  /  prod.tfvars
+│   ├── train_combined.py       Main training entry point
+│   ├── export_dpo_pairs.py     Export thumbs-up/down pairs for DPO
+│   └── eval_benchmark.py       Keyword-F1 evaluation
+├── frontend/                   Next.js 14 TypeScript app
+│   ├── app/                    App Router pages (auth + chat)
+│   ├── components/             Sidebar, ChatWindow, SourceDrawer, etc.
+│   └── Dockerfile              Multi-stage: builder + minimal runner
+├── infra/                      Terraform modules for AWS
 ├── .github/workflows/
-│   ├── test.yml                # pytest on every push and PR
-│   └── deploy.yml              # ECR push + ECS rolling deploy on main
-├── data/
-│   ├── raw/                    # Source PDFs and regulatory documents
-│   ├── processed/              # Processed Q&A datasets (JSONL)
-│   └── finetuning/             # Training datasets (auto-discovered)
-└── models/finetuned/           # LoRA adapter checkpoints (run_YYYYMMDD_HHMMSS/)
+│   ├── test.yml                pytest on every push/PR
+│   └── deploy.yml              ECR push + ECS rolling deploy on main
+├── Dockerfile.api              FastAPI image (models baked in)
+├── docker-compose.yml          Local dev: postgres + mlflow + fastapi + frontend
+├── requirements-api.txt        FastAPI dependencies (no torch for training)
+└── alembic.ini                 Alembic configuration
 ```
-
----
-
-## Environment variables
-
-| Variable | Required for | Description |
-|----------|-------------|-------------|
-| `GROQ_API_KEY` | groq backend | Groq API key (`gsk_...`) |
-| `POSTGRES_HOST` | DB logging | PostgreSQL host (default: localhost) |
-| `POSTGRES_PASSWORD` | DB logging | Database password |
-| `MLFLOW_TRACKING_URI` | MLflow | Tracking server URL (default: http://localhost:5000) |
-| `ADAPTER_HF_REPO` | auto-download | HuggingFace Hub repo, e.g. `your-org/regllm-adapter` |
-| `MODEL_S3_URI` | auto-download | S3 URI for adapter sync, e.g. `s3://bucket/adapters/latest/` |
-| `REGLLM_BACKEND` | Docker | Backend for container startup (default: `groq`) |
-
-Copy `.env.example` to `.env` and fill in what you need.
 
 ---
 
 ## Tests
 
 ```bash
-pytest -m "not slow and not llm_judge"   # unit tests, no GPU needed
-pytest -m "integration"                  # requires PostgreSQL running
-```
+# Fast unit tests (no GPU, no network)
+pytest -m "not slow and not llm_judge" -x
 
-CI runs both automatically on every pull request via GitHub Actions.
+# Integration tests (requires PostgreSQL)
+POSTGRES_HOST=localhost pytest -m integration
+
+# CI runs both automatically on every PR via .github/workflows/test.yml
+```
 
 ---
 

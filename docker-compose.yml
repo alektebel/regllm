@@ -20,7 +20,6 @@ services:
       - "7860:7860"
     volumes:
       - ./models/finetuned:/app/models/finetuned:ro
-      - vector_db:/app/vector_db
       - hf_cache:/root/.cache/huggingface
     depends_on:
       postgres:
@@ -67,7 +66,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-regllm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -99,8 +98,6 @@ services:
       - CORS_ORIGINS=http://localhost:3000
     ports:
       - "8000:8000"
-    volumes:
-      - vector_db:/app/vector_db
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,7 +118,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  vector_db:
   hf_cache:
   postgres_data:
   mlflow_artifacts:

@@ -8,7 +8,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements-api.txt .
+# Install CPU-only torch first so sentence-transformers doesn't pull CUDA (~1 GB)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements-api.txt
+
+# Bake embedding models into image — avoids 2-min download on ECS cold start
+RUN python -c "\
+from sentence_transformers import SentenceTransformer; \
+SentenceTransformer('sentence-transformers/paraphrase-multilingual-mpnet-base-v2'); \
+SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2'); \
+print('Models cached successfully')"
 
 COPY config.py .
 COPY src/ ./src/
