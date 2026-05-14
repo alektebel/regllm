@@ -26,15 +26,21 @@ RUN pip install -r requirements-prod.txt
 
 # ── Application source ────────────────────────────────────────────────────────
 # models/finetuned, vector_db are excluded by .dockerignore — mount as volumes
+COPY config.py .
 COPY app.py .
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY data/ ./data/
 
+RUN chmod +x scripts/entrypoint.sh
+
 # ── Runtime ───────────────────────────────────────────────────────────────────
 EXPOSE 7860
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+# start-period allows time for adapter download (local backend) or groq/ollama startup
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD curl -f http://localhost:7860 || exit 1
 
-CMD ["python", "app.py", "--backend", "local", "--port", "7860"]
+ENTRYPOINT ["scripts/entrypoint.sh"]
+# Default to groq — no weights needed, fast startup. Override with REGLLM_BACKEND=local.
+CMD ["--port", "7860"]

@@ -17,9 +17,18 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import torch
+import mlflow
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import MLflow config (lazy to avoid import errors in test envs)
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT))
+    from config import MLFLOW as MLFLOW_CFG
+except ImportError:
+    MLFLOW_CFG = None
 
 
 @dataclass
@@ -180,6 +189,31 @@ class RegulationDPOTrainer:
             tokenizer=self.tokenizer,
         )
 
+        from datetime import datetime
+
+        run_name = f"dpo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        mlflow_run = None
+        if MLFLOW_CFG is not None:
+            try:
+                mlflow.set_tracking_uri(MLFLOW_CFG['tracking_uri'])
+                mlflow.set_experiment(MLFLOW_CFG['experiments']['dpo'])
+                mlflow_run = mlflow.start_run(run_name=run_name)
+                mlflow.log_params({
+                    "model_path": self.config.model_path,
+                    "base_model": self.config.base_model,
+                    "beta": self.config.beta,
+                    "learning_rate": self.config.learning_rate,
+                    "batch_size": self.config.batch_size,
+                    "gradient_accumulation_steps": self.config.gradient_accumulation_steps,
+                    "max_steps": self.config.max_steps,
+                    "lora_r": self.config.lora_r,
+                    "lora_alpha": self.config.lora_alpha,
+                    "max_length": self.config.max_length,
+                })
+            except Exception as e:
+                logger.warning(f"MLflow init failed (training continues): {e}")
+                mlflow_run = None
+
         logger.info("Starting DPO training...")
         trainer.train()
 
@@ -187,6 +221,23 @@ class RegulationDPOTrainer:
         output_path = Path(self.config.output_dir) / "final_model"
         trainer.save_model(str(output_path))
         self.tokenizer.save_pretrained(str(output_path))
+
+        if mlflow_run is not None:
+            try:
+                for entry in trainer.state.log_history:
+                    step = entry.get("step", 0)
+                    if "loss" in entry:
+                        mlflow.log_metric("train_loss", entry["loss"], step=step)
+                    if "eval_loss" in entry:
+                        mlflow.log_metric("eval_loss", entry["eval_loss"], step=step)
+                mlflow.log_artifacts(str(output_path), artifact_path="lora_adapter")
+                model_uri = f"runs:/{mlflow_run.info.run_id}/lora_adapter"
+                mlflow.register_model(model_uri, MLFLOW_CFG['registered_model_name'])
+                logger.info(f"MLflow run: {mlflow_run.info.run_id}")
+            except Exception as e:
+                logger.warning(f"MLflow logging failed: {e}")
+            finally:
+                mlflow.end_run()
 
         logger.info(f"Training complete. Model saved to {output_path}")
         return output_path

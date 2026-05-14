@@ -281,6 +281,31 @@ LOGGING = {
 }
 
 # ============================================================================
+# MLflow Configuration
+# ============================================================================
+MLFLOW = {
+    # Tracking server URI — override via MLFLOW_TRACKING_URI env var
+    # Local dev:    "http://localhost:5000"
+    # Docker Compose: "http://mlflow:5000"
+    # AWS:          set MLFLOW_TRACKING_URI to the ALB DNS
+    'tracking_uri': os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000'),
+
+    # Artifact backend — local by default, s3://... on AWS
+    'artifact_root': os.getenv('MLFLOW_ARTIFACT_ROOT', './mlruns'),
+
+    # Experiment names per training pipeline
+    'experiments': {
+        'sft': 'regllm-sft',
+        'grpo': 'regllm-grpo',
+        'dpo': 'regllm-dpo',
+        'combined': 'regllm-combined',
+    },
+
+    # Model Registry name for LoRA adapters
+    'registered_model_name': 'regllm-lora-adapter',
+}
+
+# ============================================================================
 # Agent Configuration
 # ============================================================================
 AGENT = {

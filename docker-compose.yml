@@ -5,11 +5,17 @@ services:
     image: regllm:latest
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REGLLM_BACKEND=${REGLLM_BACKEND:-groq}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-regllm}
       - POSTGRES_USER=${POSTGRES_USER:-regllm}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_MODEL_NAME=${MLFLOW_MODEL_NAME:-regllm-lora-adapter}
+      - MLFLOW_MODEL_STAGE=${MLFLOW_MODEL_STAGE:-Production}
+      - ADAPTER_DIR=/app/models/finetuned/current
     ports:
       - "7860:7860"
     volumes:
@@ -19,6 +25,39 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mlflow:
+    image: python:3.10-slim
+    command: >
+      bash -c "
+        pip install mlflow psycopg2-binary -q &&
+        mlflow server
+          --host 0.0.0.0
+          --port 5000
+          --backend-store-uri postgresql://${POSTGRES_USER:-regllm}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-regllm}_mlflow
+          --default-artifact-root ${MLFLOW_ARTIFACT_ROOT:-/mlflow/artifacts}
+      "
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-regllm}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - POSTGRES_DB=${POSTGRES_DB:-regllm}
+      - MLFLOW_ARTIFACT_ROOT=${MLFLOW_ARTIFACT_ROOT:-/mlflow/artifacts}
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
     restart: unless-stopped
 
   postgres:
@@ -31,6 +70,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-regllm} -d ${POSTGRES_DB:-regllm}"]
       interval: 5s
@@ -42,3 +82,4 @@ volumes:
   vector_db:
   hf_cache:
   postgres_data:
+  mlflow_artifacts:

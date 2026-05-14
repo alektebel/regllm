@@ -27,8 +27,11 @@ import sys
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from config import MODEL, TRAINING, DATA_PROCESSING
+from config import MODEL, TRAINING, DATA_PROCESSING, MLFLOW as MLFLOW_CFG
 from .model_setup import ModelSetup
+
+import mlflow
+import mlflow.artifacts
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -294,7 +297,7 @@ class RegulationTrainer:
             metric_for_best_model="eval_loss",
             greater_is_better=False,
             fp16=torch.cuda.is_available(),
-            report_to="wandb",  # Enable Weights & Biases for training visualization
+            report_to="none",
             save_total_limit=TRAINING.get('save_total_limit', 2),
         )
 
@@ -322,16 +325,66 @@ class RegulationTrainer:
         logger.info(f"Gradient accumulation steps: {gradient_accumulation_steps}")
         logger.info(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
 
+        run_name = f"sft_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        try:
+            mlflow.set_tracking_uri(MLFLOW_CFG['tracking_uri'])
+            mlflow.set_experiment(MLFLOW_CFG['experiments']['sft'])
+            mlflow_run = mlflow.start_run(run_name=run_name)
+            mlflow.log_params({
+                "base_model": self.model_name,
+                "lora_r": MODEL['lora']['r'],
+                "lora_alpha": MODEL['lora']['lora_alpha'],
+                "lora_dropout": MODEL['lora']['lora_dropout'],
+                "num_epochs": num_epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "gradient_accumulation_steps": gradient_accumulation_steps,
+                "weight_decay": TRAINING.get('weight_decay'),
+                "warmup_steps": TRAINING.get('warmup_steps'),
+                "use_small_subset": self.use_small_subset,
+                "train_samples": len(train_dataset),
+                "val_samples": len(val_dataset),
+            })
+        except Exception as e:
+            logger.warning(f"MLflow init failed (training continues): {e}")
+            mlflow_run = None
+
         train_result = trainer.train()
 
         # Save model
         logger.info("Saving model...")
-        trainer.save_model(str(self.run_dir / "final_model"))
-        self.tokenizer.save_pretrained(str(self.run_dir / "final_model"))
+        final_model_path = self.run_dir / "final_model"
+        trainer.save_model(str(final_model_path))
+        self.tokenizer.save_pretrained(str(final_model_path))
 
         # Log metrics
         metrics = train_result.metrics
         logger.info(f"Training complete! Metrics: {metrics}")
+
+        # MLflow: log step metrics, artifacts, register model
+        if mlflow_run is not None:
+            try:
+                for entry in trainer.state.log_history:
+                    step = entry.get("step", 0)
+                    if "loss" in entry:
+                        mlflow.log_metric("train_loss", entry["loss"], step=step)
+                    if "eval_loss" in entry:
+                        mlflow.log_metric("eval_loss", entry["eval_loss"], step=step)
+                    if "learning_rate" in entry:
+                        mlflow.log_metric("learning_rate", entry["learning_rate"], step=step)
+                mlflow.log_metrics({
+                    "final_train_loss": metrics.get("train_loss", 0),
+                    "train_runtime_seconds": metrics.get("train_runtime", 0),
+                    "train_samples_per_second": metrics.get("train_samples_per_second", 0),
+                })
+                mlflow.log_artifacts(str(final_model_path), artifact_path="lora_adapter")
+                model_uri = f"runs:/{mlflow_run.info.run_id}/lora_adapter"
+                mlflow.register_model(model_uri, MLFLOW_CFG['registered_model_name'])
+                logger.info(f"MLflow run: {mlflow_run.info.run_id}")
+            except Exception as e:
+                logger.warning(f"MLflow logging failed: {e}")
+            finally:
+                mlflow.end_run()
 
         # Plot training progress
         self._extract_and_plot_history(trainer)

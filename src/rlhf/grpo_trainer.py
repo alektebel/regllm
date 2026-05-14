@@ -24,8 +24,10 @@ import torch
 from datasets import Dataset
 from peft import LoraConfig
 
-from config import GRPO, INFERENCE, MODEL
+from config import GRPO, INFERENCE, MODEL, MLFLOW as MLFLOW_CFG
 from src.rlhf.grpo_rewards import TestRewardComputer
+
+import mlflow
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -150,6 +152,7 @@ class RegLLMGRPOTrainer:
     def train(self):
         """Run GRPO training."""
         from trl import GRPOTrainer, GRPOConfig
+        from datetime import datetime
 
         logger.info("=" * 60)
         logger.info("RegLLM - GRPO Training")
@@ -225,6 +228,30 @@ class RegLLMGRPOTrainer:
             peft_config=peft_config,
         )
 
+        run_name = f"grpo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        try:
+            mlflow.set_tracking_uri(MLFLOW_CFG['tracking_uri'])
+            mlflow.set_experiment(MLFLOW_CFG['experiments']['grpo'])
+            mlflow_run = mlflow.start_run(run_name=run_name)
+            mlflow.log_params({
+                "base_model": self.base_model,
+                "num_generations": self.num_generations,
+                "max_completion_length": self.max_completion_length,
+                "learning_rate": self.learning_rate,
+                "num_train_epochs": self.num_train_epochs,
+                "batch_size": self.per_device_train_batch_size,
+                "gradient_accumulation_steps": self.gradient_accumulation_steps,
+                "beta": self.beta,
+                "lora_r": self.lora_r,
+                "lora_alpha": self.lora_alpha,
+                "reward_keyword_weight": self.reward_weights.get('keyword'),
+                "reward_source_weight": self.reward_weights.get('source'),
+                "reward_format_weight": self.reward_weights.get('format'),
+            })
+        except Exception as e:
+            logger.warning(f"MLflow init failed (training continues): {e}")
+            mlflow_run = None
+
         logger.info("Starting GRPO training...")
         trainer.train()
 
@@ -233,6 +260,23 @@ class RegLLMGRPOTrainer:
         trainer.save_model(str(output_path))
         if trainer.processing_class is not None:
             trainer.processing_class.save_pretrained(str(output_path))
+
+        if mlflow_run is not None:
+            try:
+                for entry in trainer.state.log_history:
+                    step = entry.get("step", 0)
+                    for key in ("loss", "reward", "reward/keyword", "reward/source",
+                                "reward/format", "kl"):
+                        if key in entry:
+                            mlflow.log_metric(key.replace("/", "_"), entry[key], step=step)
+                mlflow.log_artifacts(str(output_path), artifact_path="lora_adapter")
+                model_uri = f"runs:/{mlflow_run.info.run_id}/lora_adapter"
+                mlflow.register_model(model_uri, MLFLOW_CFG['registered_model_name'])
+                logger.info(f"MLflow run: {mlflow_run.info.run_id}")
+            except Exception as e:
+                logger.warning(f"MLflow logging failed: {e}")
+            finally:
+                mlflow.end_run()
 
         logger.info(f"Training complete. Model saved to {output_path}")
         return output_path
@@ -321,20 +365,32 @@ class RegLLMGRPOTrainer:
             )
 
         n = len(entries)
-        logger.info("=" * 60)
-        logger.info(f"Evaluation Results ({n} entries)")
-        logger.info(f"  Avg keyword reward:  {total_keyword / n:.3f}")
-        logger.info(f"  Avg source reward:   {total_source / n:.3f}")
-        logger.info(f"  Avg format reward:   {total_format / n:.3f}")
-        logger.info(f"  Avg combined reward: {total_reward / n:.3f}")
-        logger.info("=" * 60)
-
-        return {
+        results = {
             "keyword": total_keyword / n,
             "source": total_source / n,
             "format": total_format / n,
             "combined": total_reward / n,
         }
+        logger.info("=" * 60)
+        logger.info(f"Evaluation Results ({n} entries)")
+        logger.info(f"  Avg keyword reward:  {results['keyword']:.3f}")
+        logger.info(f"  Avg source reward:   {results['source']:.3f}")
+        logger.info(f"  Avg format reward:   {results['format']:.3f}")
+        logger.info(f"  Avg combined reward: {results['combined']:.3f}")
+        logger.info("=" * 60)
+
+        try:
+            if mlflow.active_run() is not None:
+                mlflow.log_metrics({
+                    "eval_keyword": results["keyword"],
+                    "eval_source": results["source"],
+                    "eval_format": results["format"],
+                    "eval_combined": results["combined"],
+                })
+        except Exception:
+            pass
+
+        return results
 
 
 def main():

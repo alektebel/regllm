@@ -21,11 +21,21 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torch.utils.data import Dataset
 import logging
+import sys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+try:
+    import mlflow
+    from config import MLFLOW as MLFLOW_CFG
+    _MLFLOW_AVAILABLE = True
+except ImportError:
+    _MLFLOW_AVAILABLE = False
+    MLFLOW_CFG = None
 BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 SYSTEM_PROMPT = (
     "Eres un asistente experto en regulación bancaria y el sector bancario español. "
@@ -294,6 +304,30 @@ def main():
         data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
     )
 
+    # ── MLflow setup ──
+    mlflow_run = None
+    if _MLFLOW_AVAILABLE:
+        try:
+            mlflow.set_tracking_uri(MLFLOW_CFG['tracking_uri'])
+            mlflow.set_experiment(MLFLOW_CFG['experiments']['combined'])
+            mlflow_run = mlflow.start_run(run_name=f"combined_{timestamp}")
+            mlflow.log_params({
+                "base_model": BASE_MODEL,
+                "epochs": args.epochs,
+                "lr": args.lr,
+                "batch_size": args.batch_size,
+                "max_length": args.max_length,
+                "lora_r": 32,
+                "lora_alpha": 64,
+                "gradient_accumulation_steps": 8,
+                "train_samples": len(train_data),
+                "val_samples": len(val_data),
+                "resume_from": resume_from or "none",
+            })
+        except Exception as e:
+            logger.warning(f"MLflow init failed (training continues): {e}")
+            mlflow_run = None
+
     # ── Train ──
     logger.info("Starting training...")
     trainer.train(resume_from_checkpoint=resume_from)
@@ -304,6 +338,26 @@ def main():
     trainer.save_model(str(final_path))
     tokenizer.save_pretrained(str(final_path))
     logger.info(f"Training complete. Model saved to {final_path}")
+
+    # ── MLflow: log metrics + register model ──
+    if mlflow_run is not None:
+        try:
+            for entry in trainer.state.log_history:
+                step = entry.get("step", 0)
+                if "loss" in entry:
+                    mlflow.log_metric("train_loss", entry["loss"], step=step)
+                if "eval_loss" in entry:
+                    mlflow.log_metric("eval_loss", entry["eval_loss"], step=step)
+                if "learning_rate" in entry:
+                    mlflow.log_metric("learning_rate", entry["learning_rate"], step=step)
+            mlflow.log_artifacts(str(final_path), artifact_path="lora_adapter")
+            model_uri = f"runs:/{mlflow_run.info.run_id}/lora_adapter"
+            mlflow.register_model(model_uri, MLFLOW_CFG['registered_model_name'])
+            logger.info(f"MLflow run: {mlflow_run.info.run_id}")
+        except Exception as e:
+            logger.warning(f"MLflow logging failed: {e}")
+        finally:
+            mlflow.end_run()
 
     # ── Quick test ──
     logger.info("\n=== Quick test ===")
