@@ -1,7 +1,6 @@
-// At build time inside Docker, INTERNAL_API_URL isn't injected, so default
-// to the Docker service name. For local dev (no Docker) set INTERNAL_API_URL
-// in frontend/.env.local to http://localhost:8000
-const internalApiUrl = process.env.INTERNAL_API_URL || "http://fastapi:8000";
+// In ECS the API runs as a sidecar on localhost:8000. For local Docker Compose
+// dev, set INTERNAL_API_URL=http://fastapi:8000 in your environment.
+const internalApiUrl = process.env.INTERNAL_API_URL || "http://localhost:8000";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
