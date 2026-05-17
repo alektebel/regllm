@@ -19,7 +19,6 @@ permissions:
 env:
   DEPLOY_ENV: ${{ github.event.inputs.environment || 'dev' }}
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  # The ALB DNS is stable after the first terraform apply.
   # NEXT_PUBLIC_API_URL must be baked into the Next.js build at image build time.
   NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
@@ -29,10 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      api-image:      ${{ steps.build-api.outputs.imageid }}
-      frontend-image: ${{ steps.build-frontend.outputs.imageid }}
-      image-tag:      ${{ steps.tag.outputs.tag }}
-      ecr-registry:   ${{ steps.login-ecr.outputs.registry }}
+      image-tag: ${{ steps.tag.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -51,34 +47,39 @@ jobs:
         id: tag
         run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      # Derive ECR base URL from caller identity (avoids passing account ID as output)
+      - name: Set ECR base URL
+        id: ecr-base
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "url=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       # ── API image ──────────────────────────────────────────────────────────
       - name: Build and push API image
-        id: build-api
         uses: docker/build-push-action@v6
         with:
           context: .
           file:    Dockerfile.api
           push:    true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/regllm-api-${{ env.DEPLOY_ENV }}:${{ steps.tag.outputs.tag }}
-            ${{ steps.login-ecr.outputs.registry }}/regllm-api-${{ env.DEPLOY_ENV }}:latest
+            ${{ steps.ecr-base.outputs.url }}/regllm-api-${{ env.DEPLOY_ENV }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.ecr-base.outputs.url }}/regllm-api-${{ env.DEPLOY_ENV }}:latest
           cache-from: type=gha,scope=api
           cache-to:   type=gha,mode=max,scope=api
 
       # ── Frontend image ─────────────────────────────────────────────────────
       - name: Build and push frontend image
-        id: build-frontend
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           file:    ./frontend/Dockerfile
           push:    true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/regllm-frontend-${{ env.DEPLOY_ENV }}:${{ steps.tag.outputs.tag }}
-            ${{ steps.login-ecr.outputs.registry }}/regllm-frontend-${{ env.DEPLOY_ENV }}:latest
+            ${{ steps.ecr-base.outputs.url }}/regllm-frontend-${{ env.DEPLOY_ENV }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.ecr-base.outputs.url }}/regllm-frontend-${{ env.DEPLOY_ENV }}:latest
           build-args: |
             NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
           cache-from: type=gha,scope=frontend
@@ -89,7 +90,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'dev' }}
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +100,13 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region:     ${{ env.AWS_REGION }}
+
+      # Derive ECR base URL again in this job (cross-job outputs of account IDs get masked)
+      - name: Set ECR base URL
+        id: ecr-base
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "url=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
 
       - name: Download current ECS task definition
         run: |
@@ -113,8 +121,7 @@ jobs:
         with:
           task-definition:  task-definition.json
           container-name:   regllm-api
-          image: >-
-            ${{ needs.build-and-push.outputs.ecr-registry }}/regllm-api-${{ env.DEPLOY_ENV }}:${{ needs.build-and-push.outputs.image-tag }}
+          image: ${{ steps.ecr-base.outputs.url }}/regllm-api-${{ env.DEPLOY_ENV }}:${{ needs.build-and-push.outputs.image-tag }}
 
       - name: Update frontend container image in task definition
         id: render-frontend
@@ -122,13 +129,12 @@ jobs:
         with:
           task-definition:  ${{ steps.render-api.outputs.task-definition }}
           container-name:   regllm-frontend
-          image: >-
-            ${{ needs.build-and-push.outputs.ecr-registry }}/regllm-frontend-${{ env.DEPLOY_ENV }}:${{ needs.build-and-push.outputs.image-tag }}
+          image: ${{ steps.ecr-base.outputs.url }}/regllm-frontend-${{ env.DEPLOY_ENV }}:${{ needs.build-and-push.outputs.image-tag }}
 
       - name: Deploy to ECS (rolling update with circuit breaker)
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition:           ${{ steps.render-frontend.outputs.task-definition }}
-          service:                   regllm-app-${{ env.DEPLOY_ENV }}
-          cluster:                   regllm-${{ env.DEPLOY_ENV }}
+          task-definition:            ${{ steps.render-frontend.outputs.task-definition }}
+          service:                    regllm-app-${{ env.DEPLOY_ENV }}
+          cluster:                    regllm-${{ env.DEPLOY_ENV }}
           wait-for-service-stability: true
