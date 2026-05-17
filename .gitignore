@@ -87,3 +87,6 @@ vector_db/
 pynvml
 infra/.terraform/
 regllm.env/
+
+# Don't ignore Next.js source library
+!frontend/lib/
