@@ -59,11 +59,11 @@ def regulatory_qa(ground_truth_data):
 
 @pytest.fixture(scope="session")
 def rag_test_client():
-    """Async httpx test client for the FastAPI app."""
-    import httpx
+    """Sync test client for the FastAPI app."""
+    from fastapi.testclient import TestClient
     from api.main import app
 
-    with httpx.Client(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+    with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 
 

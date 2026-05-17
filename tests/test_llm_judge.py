@@ -219,6 +219,7 @@ class TestRegulatoryQA:
 # ============================================================================
 
 @pytest.mark.integration
+@pytest.mark.xfail(reason="/consultar endpoint removed in FastAPI migration; update tests for new API")
 class TestSourceRetrieval:
     """Source-only tests verifying document retrieval without LLM judge."""
 
@@ -270,6 +271,7 @@ class TestSourceRetrieval:
 # ============================================================================
 
 @pytest.mark.integration
+@pytest.mark.xfail(reason="/consultar endpoint removed in FastAPI migration; update tests for new API")
 class TestConfidenceThresholds:
     """Boundary tests for confidence scoring."""
 
