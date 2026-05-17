@@ -218,6 +218,7 @@ class TestRegulatoryQA:
 # Source Retrieval Tests (no LLM judge needed)
 # ============================================================================
 
+@pytest.mark.integration
 class TestSourceRetrieval:
     """Source-only tests verifying document retrieval without LLM judge."""
 
@@ -268,6 +269,7 @@ class TestSourceRetrieval:
 # Confidence Threshold Tests
 # ============================================================================
 
+@pytest.mark.integration
 class TestConfidenceThresholds:
     """Boundary tests for confidence scoring."""
 

@@ -49,7 +49,9 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu --quiet
 
       - name: Install application dependencies
-        run: pip install -r requirements-prod.txt
+        run: |
+          pip install -r requirements-prod.txt
+          pip install -r requirements-api.txt
 
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio httpx
@@ -58,6 +60,9 @@ jobs:
         run: |
           pytest -m "not slow and not llm_judge and not integration" \
             --tb=short -q
+
+      - name: Run DB migrations
+        run: alembic upgrade head
 
       - name: Run integration tests (DB available)
         run: |

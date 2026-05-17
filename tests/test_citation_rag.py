@@ -88,6 +88,7 @@ def test_search_result_schema(tmp_path):
 
 # ─── index_regulation_doc ─────────────────────────────────────────────────────
 
+@pytest.mark.integration
 def test_index_regulation_doc(tmp_path):
     # Build a minimal regulation JSON file
     doc_data = [
