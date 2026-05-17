@@ -45,10 +45,10 @@ variable "regllm_backend" {
   default     = "groq"
 }
 
-variable "mlflow_model_stage" {
-  description = "MLflow Model Registry stage to serve"
+variable "cors_origins" {
+  description = "CORS allowed origins (defaults to ALB DNS if empty)"
   type        = string
-  default     = "Production"
+  default     = ""
 }
 
 variable "enable_https" {
@@ -61,4 +61,16 @@ variable "acm_certificate_arn" {
   description = "ACM certificate ARN for HTTPS (required when enable_https = true)"
   type        = string
   default     = ""
+}
+
+variable "github_org" {
+  description = "GitHub organisation or username that owns the repo (for OIDC trust)"
+  type        = string
+  default     = ""
+}
+
+variable "github_repo" {
+  description = "GitHub repository name (for OIDC trust), e.g. regllm"
+  type        = string
+  default     = "regllm"
 }

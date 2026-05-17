@@ -7,6 +7,12 @@ RUN npm install --legacy-peer-deps
 
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# NEXT_PUBLIC_* vars are baked into the bundle at build time.
+# Pass --build-arg NEXT_PUBLIC_API_URL=https://your-alb-url in CI/CD.
+ARG NEXT_PUBLIC_API_URL=""
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 RUN npm run build
 
 # ── Runner ────────────────────────────────────────────────────────────────────

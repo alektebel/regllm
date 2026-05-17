@@ -1,2 +1,18 @@
+# Enforce LF everywhere so Linux containers never get CRLF in scripts/Dockerfiles
+* text=auto eol=lf
+
+# Explicit LF for anything executed inside a container
+*.sh         text eol=lf
+*.py         text eol=lf
+*.ts         text eol=lf
+*.tsx        text eol=lf
+*.js         text eol=lf
+*.json       text eol=lf
+Dockerfile*  text eol=lf
+
+# Binary / LFS assets
 *.safetensors filter=lfs diff=lfs merge=lfs -text
-*.bin filter=lfs diff=lfs merge=lfs -text
+*.bin         filter=lfs diff=lfs merge=lfs -text
+*.png         binary
+*.jpg         binary
+*.pdf         binary

@@ -9,3 +9,7 @@ output "groq_api_key_secret_arn" {
 output "hf_token_secret_arn" {
   value = aws_secretsmanager_secret.hf_token.arn
 }
+
+output "jwt_secret_arn" {
+  value = aws_secretsmanager_secret.jwt_secret.arn
+}

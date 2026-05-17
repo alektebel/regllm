@@ -30,14 +30,18 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = [var.db_password_secret_arn, var.groq_api_key_secret_arn]
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = [
+        var.db_password_secret_arn,
+        var.groq_api_key_secret_arn,
+        var.jwt_secret_arn,
+      ]
     }]
   })
 }
 
-# ── IAM: task role (S3, Secrets Manager, EFS) ─────────────────────────────────
+# ── IAM: task role (Secrets Manager runtime access) ───────────────────────────
 resource "aws_iam_role" "ecs_task" {
   name = "${var.app_name}-ecs-task-${var.environment}"
 
@@ -55,35 +59,16 @@ resource "aws_iam_role_policy" "ecs_task_permissions" {
   role = aws_iam_role.ecs_task.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "S3ModelArtifacts"
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:ListBucket"]
-        Resource = [
-          "arn:aws:s3:::${var.mlflow_bucket}",
-          "arn:aws:s3:::${var.mlflow_bucket}/*",
-          "arn:aws:s3:::${var.weights_bucket}",
-          "arn:aws:s3:::${var.weights_bucket}/*",
-        ]
-      },
-      {
-        Sid    = "SecretsRead"
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
-        Resource = [var.db_password_secret_arn, var.groq_api_key_secret_arn]
-      },
-      {
-        Sid    = "EFSMount"
-        Effect = "Allow"
-        Action = [
-          "elasticfilesystem:ClientMount",
-          "elasticfilesystem:ClientWrite",
-          "elasticfilesystem:DescribeMountTargets",
-        ]
-        Resource = "*"
-      },
-    ]
+    Statement = [{
+      Sid    = "SecretsRead"
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = [
+        var.db_password_secret_arn,
+        var.groq_api_key_secret_arn,
+        var.jwt_secret_arn,
+      ]
+    }]
   })
 }
 
@@ -102,8 +87,12 @@ resource "aws_ecs_cluster_capacity_providers" "regllm" {
   capacity_providers = ["FARGATE"]
 }
 
-# ── Task Definition ───────────────────────────────────────────────────────────
-resource "aws_ecs_task_definition" "regllm_app" {
+# ── Task Definition (api + frontend sidecar) ──────────────────────────────────
+locals {
+  alb_dns = var.cors_origins != "" ? var.cors_origins : "http://localhost:3000"
+}
+
+resource "aws_ecs_task_definition" "regllm" {
   family                   = "${var.app_name}-app"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -112,76 +101,101 @@ resource "aws_ecs_task_definition" "regllm_app" {
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
-  # EFS volume for ChromaDB persistence
-  volume {
-    name = "chroma-data"
-    efs_volume_configuration {
-      file_system_id     = var.efs_file_system_id
-      transit_encryption = "ENABLED"
-      authorization_config {
-        access_point_id = var.efs_access_point_id
-        iam             = "ENABLED"
+  container_definitions = jsonencode([
+    # ── FastAPI (api) ──────────────────────────────────────────────────────
+    {
+      name      = "${var.app_name}-api"
+      image     = "${var.api_ecr_repository_url}:${var.api_image_tag}"
+      essential = true
+
+      portMappings = [{
+        containerPort = 8000
+        protocol      = "tcp"
+      }]
+
+      environment = [
+        { name = "REGLLM_BACKEND", value = var.regllm_backend },
+        { name = "POSTGRES_HOST",  value = split(":", var.rds_endpoint)[0] },
+        { name = "POSTGRES_PORT",  value = "5432" },
+        { name = "POSTGRES_DB",    value = "regllm" },
+        { name = "POSTGRES_USER",  value = "regllm" },
+        { name = "CORS_ORIGINS",   value = local.alb_dns },
+        { name = "LOG_LEVEL",      value = "INFO" },
+        { name = "JWT_EXPIRE_HOURS", value = "168" },
+      ]
+
+      secrets = [
+        { name = "POSTGRES_PASSWORD", valueFrom = var.db_password_secret_arn },
+        { name = "GROQ_API_KEY",      valueFrom = var.groq_api_key_secret_arn },
+        { name = "JWT_SECRET",        valueFrom = var.jwt_secret_arn },
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.regllm.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "api"
+        }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        interval    = 30
+        timeout     = 10
+        retries     = 3
+        startPeriod = 60
+      }
+    },
+
+    # ── Next.js (frontend) ─────────────────────────────────────────────────
+    {
+      name      = "${var.app_name}-frontend"
+      image     = "${var.frontend_ecr_repository_url}:${var.frontend_image_tag}"
+      essential = true
+
+      portMappings = [{
+        containerPort = 3000
+        protocol      = "tcp"
+      }]
+
+      environment = [
+        # Browser-side: points to the ALB (same host, different path)
+        { name = "NEXT_PUBLIC_API_URL", value = local.alb_dns },
+        # Server-side SSR: reaches the API container via localhost (sidecar)
+        { name = "INTERNAL_API_URL",    value = "http://localhost:8000" },
+      ]
+
+      dependsOn = [{
+        containerName = "${var.app_name}-api"
+        condition     = "HEALTHY"
+      }]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.regllm.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "frontend"
+        }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+        interval    = 30
+        timeout     = 10
+        retries     = 3
+        startPeriod = 60
       }
     }
-  }
-
-  container_definitions = jsonencode([{
-    name      = "${var.app_name}-app"
-    image     = "${var.ecr_repository_url}:latest"
-    essential = true
-
-    portMappings = [{
-      containerPort = 7860
-      protocol      = "tcp"
-    }]
-
-    environment = [
-      { name = "REGLLM_BACKEND",      value = var.regllm_backend },
-      { name = "MLFLOW_MODEL_NAME",   value = "regllm-lora-adapter" },
-      { name = "MLFLOW_MODEL_STAGE",  value = var.mlflow_model_stage },
-      { name = "MLFLOW_ARTIFACT_ROOT", value = "s3://${var.mlflow_bucket}/mlflow" },
-      { name = "POSTGRES_HOST",       value = split(":", var.rds_endpoint)[0] },
-      { name = "POSTGRES_PORT",       value = "5432" },
-      { name = "POSTGRES_DB",         value = "regllm" },
-      { name = "POSTGRES_USER",       value = "regllm" },
-      { name = "LOG_LEVEL",           value = "INFO" },
-    ]
-
-    secrets = [
-      { name = "POSTGRES_PASSWORD", valueFrom = var.db_password_secret_arn },
-      { name = "GROQ_API_KEY",      valueFrom = var.groq_api_key_secret_arn },
-    ]
-
-    mountPoints = [{
-      sourceVolume  = "chroma-data"
-      containerPath = "/app/vector_db/chroma_db"
-      readOnly      = false
-    }]
-
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.regllm.name
-        "awslogs-region"        = var.aws_region
-        "awslogs-stream-prefix" = "app"
-      }
-    }
-
-    healthCheck = {
-      command     = ["CMD-SHELL", "curl -f http://localhost:7860 || exit 1"]
-      interval    = 30
-      timeout     = 10
-      retries     = 3
-      startPeriod = 180
-    }
-  }])
+  ])
 }
 
 # ── ECS Service ───────────────────────────────────────────────────────────────
-resource "aws_ecs_service" "regllm_app" {
+resource "aws_ecs_service" "regllm" {
   name            = "${var.app_name}-app-${var.environment}"
   cluster         = aws_ecs_cluster.regllm.id
-  task_definition = aws_ecs_task_definition.regllm_app.arn
+  task_definition = aws_ecs_task_definition.regllm.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
@@ -192,9 +206,15 @@ resource "aws_ecs_service" "regllm_app" {
   }
 
   load_balancer {
-    target_group_arn = var.alb_target_group_arn
-    container_name   = "${var.app_name}-app"
-    container_port   = 7860
+    target_group_arn = var.api_target_group_arn
+    container_name   = "${var.app_name}-api"
+    container_port   = 8000
+  }
+
+  load_balancer {
+    target_group_arn = var.frontend_target_group_arn
+    container_name   = "${var.app_name}-frontend"
+    container_port   = 3000
   }
 
   deployment_circuit_breaker {
@@ -206,7 +226,7 @@ resource "aws_ecs_service" "regllm_app" {
     type = "ECS"
   }
 
-  # Allow ECS to manage the task definition version
+  # ECS manages the task definition revision after the first deploy
   lifecycle {
     ignore_changes = [task_definition]
   }

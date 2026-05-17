@@ -18,5 +18,10 @@ resource "aws_secretsmanager_secret" "hf_token" {
   recovery_window_in_days = local.recovery_days
 }
 
+resource "aws_secretsmanager_secret" "jwt_secret" {
+  name                    = "${var.app_name}/${var.environment}/jwt_secret"
+  recovery_window_in_days = local.recovery_days
+}
+
 # Note: secret *values* are populated manually (not in Terraform) to avoid
 # storing credentials in state files or git history.

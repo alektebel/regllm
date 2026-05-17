@@ -32,7 +32,8 @@ def _db_url() -> str:
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url") or _db_url()
+    # Always prefer env vars; fall back to alembic.ini only if env vars are absent.
+    url = _db_url() or config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -44,7 +45,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    url = config.get_main_option("sqlalchemy.url") or _db_url()
+    url = _db_url() or config.get_main_option("sqlalchemy.url")
     cfg = config.get_section(config.config_ini_section, {})
     cfg["sqlalchemy.url"] = url
 

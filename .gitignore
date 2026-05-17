@@ -85,3 +85,5 @@ vector_db/
 
 # pynvml binary (installed separately)
 pynvml
+infra/.terraform/
+regllm.env/

@@ -17,17 +17,18 @@ resource "aws_db_parameter_group" "regllm" {
   name   = "${var.app_name}-pg16-${var.environment}"
   family = "postgres16"
 
-  # Enable pg_vector extension
+  # pgvector installs via CREATE EXTENSION — shared_preload_libraries just needs pg_stat_statements
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_vector"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 }
 
 resource "aws_db_instance" "regllm" {
   identifier             = "${var.app_name}-postgres-${var.environment}"
   engine                 = "postgres"
-  engine_version         = "16.3"
+  engine_version         = "16.6"
   instance_class         = var.db_instance_class
   allocated_storage      = 20
   max_allocated_storage  = 100
