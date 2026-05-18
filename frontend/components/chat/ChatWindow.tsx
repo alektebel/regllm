@@ -5,7 +5,6 @@ import { Send, Square } from "lucide-react";
 import { AssistantMessage } from "./AssistantMessage";
 import { UserMessage } from "./UserMessage";
 import { SourceDrawer } from "./SourceDrawer";
-import { BackendSwitcher } from "@/components/BackendSwitcher";
 import { useStream } from "@/hooks/useStream";
 import { conversationsApi, type Source } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -24,7 +23,6 @@ export function ChatWindow({ conversationId: initialConvId }: Props) {
   const { messages, setMessages, isStreaming, conversationId, setConversationId, sendMessage, abort, reset } =
     useStream();
   const [input, setInput] = useState("");
-  const [backend, setBackend] = useState("groq");
   const [openSources, setOpenSources] = useState<Source[] | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -58,7 +56,7 @@ export function ChatWindow({ conversationId: initialConvId }: Props) {
     const q = input.trim();
     if (!q || isStreaming) return;
     setInput("");
-    await sendMessage(q, backend);
+    await sendMessage(q, "vllm");
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -137,7 +135,6 @@ export function ChatWindow({ conversationId: initialConvId }: Props) {
               }}
             />
             <div className="flex items-center gap-2 shrink-0">
-              <BackendSwitcher value={backend} onChange={setBackend} disabled={isStreaming} />
               {isStreaming ? (
                 <button
                   onClick={abort}
