@@ -124,8 +124,9 @@ resource "aws_ecs_task_definition" "regllm" {
         { name = "POSTGRES_DB",    value = "regllm" },
         { name = "POSTGRES_USER",  value = "regllm" },
         { name = "CORS_ORIGINS",   value = local.alb_dns },
-        { name = "LOG_LEVEL",      value = "INFO" },
+        { name = "LOG_LEVEL",        value = "INFO" },
         { name = "JWT_EXPIRE_HOURS", value = "168" },
+        { name = "QUERY_CACHE_ENABLED", value = "false" },
       ]
 
       secrets = [
