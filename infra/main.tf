@@ -222,6 +222,7 @@ module "ecs" {
   regllm_backend               = var.regllm_backend
   cors_origins                 = var.cors_origins
   vllm_host                    = var.vllm_host_override != "" ? var.vllm_host_override : (var.enable_inference ? "http://${module.inference[0].private_ip}:8080" : "")
+  vllm_model                   = var.vllm_model
 }
 
 module "inference" {

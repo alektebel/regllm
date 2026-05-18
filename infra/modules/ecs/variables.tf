@@ -44,3 +44,9 @@ variable "vllm_host" {
   type        = string
   default     = ""
 }
+
+variable "vllm_model" {
+  description = "Model name to send in the OpenAI-compatible API request."
+  type        = string
+  default     = "kabesaml/regllm-qwen25-7b-banking-merged"
+}

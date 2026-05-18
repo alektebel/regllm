@@ -118,6 +118,7 @@ resource "aws_ecs_task_definition" "regllm" {
       environment = [
         { name = "REGLLM_BACKEND", value = var.regllm_backend },
         { name = "VLLM_HOST",      value = var.vllm_host },
+        { name = "VLLM_MODEL",     value = var.vllm_model },
         { name = "POSTGRES_HOST",  value = split(":", var.rds_endpoint)[0] },
         { name = "POSTGRES_PORT",  value = "5432" },
         { name = "POSTGRES_DB",    value = "regllm" },

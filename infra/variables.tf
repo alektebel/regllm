@@ -81,6 +81,12 @@ variable "vllm_host_override" {
   default     = ""
 }
 
+variable "vllm_model" {
+  description = "Model name to send in the OpenAI-compatible API request."
+  type        = string
+  default     = "kabesaml/regllm-qwen25-7b-banking-merged"
+}
+
 variable "enable_inference" {
   description = "Launch the EC2 GPU inference instance (g4dn.xlarge + vLLM)"
   type        = bool
