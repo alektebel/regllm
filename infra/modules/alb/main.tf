@@ -38,7 +38,7 @@ resource "aws_lb_target_group" "frontend" {
     timeout             = 10
     healthy_threshold   = 2
     unhealthy_threshold = 3
-    matcher             = "200,301,302"
+    matcher             = "200,301,302,307"
   }
 }
 
