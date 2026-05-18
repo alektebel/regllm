@@ -59,6 +59,11 @@ async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
         async with client.stream(
             "POST", f"{host}/v1/chat/completions", json=payload, headers=headers
         ) as response:
+            if response.status_code != 200:
+                body = await response.aread()
+                raise RuntimeError(
+                    f"Inference endpoint returned {response.status_code}: {body.decode()[:300]}"
+                )
             async for line in response.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue
