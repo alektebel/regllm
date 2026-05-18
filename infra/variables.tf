@@ -74,3 +74,27 @@ variable "github_repo" {
   type        = string
   default     = "regllm"
 }
+
+variable "vllm_host_override" {
+  description = "External vLLM/HF Inference Endpoint URL. When set, skips the EC2 inference module."
+  type        = string
+  default     = ""
+}
+
+variable "enable_inference" {
+  description = "Launch the EC2 GPU inference instance (g4dn.xlarge + vLLM)"
+  type        = bool
+  default     = false
+}
+
+variable "base_model" {
+  description = "HuggingFace model repo to serve (e.g. mistralai/Mistral-7B-Instruct-v0.3)"
+  type        = string
+  default     = "Qwen/Qwen2.5-7B-Instruct"
+}
+
+variable "lora_repo" {
+  description = "HuggingFace LoRA adapter repo. Leave empty to serve the base model directly."
+  type        = string
+  default     = ""
+}

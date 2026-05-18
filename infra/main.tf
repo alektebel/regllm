@@ -121,6 +121,27 @@ resource "aws_security_group" "app" {
   }
 }
 
+resource "aws_security_group" "inference" {
+  count  = var.enable_inference ? 1 : 0
+  name   = "${var.app_name}-inference-${var.environment}"
+  vpc_id = aws_vpc.main.id
+
+  # vLLM from ECS tasks
+  ingress {
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+  # Outbound — model download from HuggingFace, AWS APIs
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 resource "aws_security_group" "db" {
   name   = "${var.app_name}-db-${var.environment}"
   vpc_id = aws_vpc.main.id
@@ -197,6 +218,21 @@ module "ecs" {
   db_password_secret_arn       = module.secrets.db_password_secret_arn
   groq_api_key_secret_arn      = module.secrets.groq_api_key_secret_arn
   jwt_secret_arn               = module.secrets.jwt_secret_arn
+  hf_token_secret_arn          = module.secrets.hf_token_secret_arn
   regllm_backend               = var.regllm_backend
   cors_origins                 = var.cors_origins
+  vllm_host                    = var.vllm_host_override != "" ? var.vllm_host_override : (var.enable_inference ? "http://${module.inference[0].private_ip}:8080" : "")
+}
+
+module "inference" {
+  count       = var.enable_inference ? 1 : 0
+  source      = "./modules/inference"
+  app_name    = var.app_name
+  environment = var.environment
+  aws_region  = var.aws_region
+  subnet_id   = aws_subnet.private[0].id
+  inference_security_group_id = aws_security_group.inference[0].id
+  hf_token_secret_arn         = module.secrets.hf_token_secret_arn
+  base_model                  = var.base_model
+  lora_repo                   = var.lora_repo
 }

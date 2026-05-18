@@ -93,6 +93,43 @@ async def _stream_ollama(messages: list) -> AsyncGenerator[str, None]:
                     continue
 
 
+async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
+    """Yield tokens from vLLM / HF Inference Endpoint (OpenAI-compatible API)."""
+    import httpx
+
+    host = os.getenv("VLLM_HOST", "http://localhost:8080")
+    model = os.getenv("VLLM_MODEL", "tgi")  # HF endpoints use "tgi" as model name
+    api_key = os.getenv("HF_TOKEN", "")
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "temperature": 0.2,
+        "max_tokens": 1024,
+    }
+
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        async with client.stream(
+            "POST", f"{host}/v1/chat/completions", json=payload, headers=headers
+        ) as response:
+            async for line in response.aiter_lines():
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[len("data: "):]
+                if data_str.strip() == "[DONE]":
+                    break
+                try:
+                    data = json.loads(data_str)
+                    delta = data["choices"][0]["delta"].get("content", "")
+                    if delta:
+                        yield delta
+                except (json.JSONDecodeError, KeyError):
+                    continue
+
+
 async def _stream_local(messages: list) -> AsyncGenerator[str, None]:
     """Yield tokens from local QLoRA model using TextIteratorStreamer in a thread."""
     import threading
@@ -261,6 +298,8 @@ async def chat_stream(
                 gen = _stream_groq(messages)
             elif body.backend == "ollama":
                 gen = _stream_ollama(messages)
+            elif body.backend == "vllm":
+                gen = _stream_vllm(messages)
             else:
                 gen = _stream_local(messages)
 

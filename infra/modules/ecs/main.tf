@@ -36,6 +36,7 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
         var.db_password_secret_arn,
         var.groq_api_key_secret_arn,
         var.jwt_secret_arn,
+        var.hf_token_secret_arn,
       ]
     }]
   })
@@ -67,6 +68,7 @@ resource "aws_iam_role_policy" "ecs_task_permissions" {
         var.db_password_secret_arn,
         var.groq_api_key_secret_arn,
         var.jwt_secret_arn,
+        var.hf_token_secret_arn,
       ]
     }]
   })
@@ -115,6 +117,7 @@ resource "aws_ecs_task_definition" "regllm" {
 
       environment = [
         { name = "REGLLM_BACKEND", value = var.regllm_backend },
+        { name = "VLLM_HOST",      value = var.vllm_host },
         { name = "POSTGRES_HOST",  value = split(":", var.rds_endpoint)[0] },
         { name = "POSTGRES_PORT",  value = "5432" },
         { name = "POSTGRES_DB",    value = "regllm" },
@@ -128,6 +131,7 @@ resource "aws_ecs_task_definition" "regllm" {
         { name = "POSTGRES_PASSWORD", valueFrom = var.db_password_secret_arn },
         { name = "GROQ_API_KEY",      valueFrom = var.groq_api_key_secret_arn },
         { name = "JWT_SECRET",        valueFrom = var.jwt_secret_arn },
+        { name = "HF_TOKEN",          valueFrom = var.hf_token_secret_arn },
       ]
 
       logConfiguration = {

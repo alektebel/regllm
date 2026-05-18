@@ -33,3 +33,14 @@ variable "cors_origins" {
   type    = string
   default = ""
 }
+
+variable "hf_token_secret_arn" {
+  description = "Secrets Manager ARN for the HuggingFace API token"
+  type        = string
+}
+
+variable "vllm_host" {
+  description = "Base URL of the vLLM inference server (e.g. http://10.0.11.x:8080). Empty string disables."
+  type        = string
+  default     = ""
+}
