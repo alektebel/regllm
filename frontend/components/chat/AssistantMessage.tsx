@@ -3,7 +3,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, BookOpen } from "lucide-react";
+import { Check, Copy, BookOpen, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Source } from "@/lib/api";
 
@@ -14,6 +14,71 @@ interface Props {
   onShowSources?: (sources: Source[]) => void;
 }
 
+interface RegllmResponse {
+  resumen: string;
+  desarrollo: string;
+  articulos?: string[];
+  advertencias?: string | null;
+}
+
+function parseRegllmJson(content: string): RegllmResponse | null {
+  try {
+    // Strip markdown code fences if present
+    const cleaned = content.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed.resumen === "string" && typeof parsed.desarrollo === "string") {
+      return parsed as RegllmResponse;
+    }
+  } catch {
+    // Not JSON — fall through
+  }
+  return null;
+}
+
+function StructuredResponse({ data }: { data: RegllmResponse }) {
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="rounded-lg bg-primary/5 border border-primary/20 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-1">Resumen</p>
+        <p className="text-sm">{data.resumen}</p>
+      </div>
+
+      {/* Full explanation */}
+      <div className="prose prose-sm max-w-none">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.desarrollo}</ReactMarkdown>
+      </div>
+
+      {/* Regulatory articles */}
+      {data.articulos && data.articulos.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            Referencias regulatorias
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {data.articulos.map((art) => (
+              <span
+                key={art}
+                className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground"
+              >
+                {art}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Warnings */}
+      {data.advertencias && (
+        <div className="flex gap-2 rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30 px-4 py-3">
+          <AlertTriangle size={14} className="text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+          <p className="text-xs text-yellow-800 dark:text-yellow-300">{data.advertencias}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AssistantMessage({ content, sources, streaming, onShowSources }: Props) {
   const [copied, setCopied] = useState(false);
 
@@ -22,6 +87,8 @@ export function AssistantMessage({ content, sources, streaming, onShowSources }:
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
+  const structured = !streaming ? parseRegllmJson(content) : null;
 
   return (
     <div className="group flex gap-3 py-4">
@@ -37,8 +104,14 @@ export function AssistantMessage({ content, sources, streaming, onShowSources }:
             streaming && !content && "streaming-cursor"
           )}
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          {streaming && content && <span className="streaming-cursor" />}
+          {structured ? (
+            <StructuredResponse data={structured} />
+          ) : (
+            <>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              {streaming && content && <span className="streaming-cursor" />}
+            </>
+          )}
         </div>
 
         {/* Action buttons */}
