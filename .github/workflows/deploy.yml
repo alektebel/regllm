@@ -113,6 +113,13 @@ jobs:
           aws ecs describe-task-definition \
             --task-definition regllm-app \
             --query taskDefinition \
+          | jq 'del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy) |
+                .containerDefinitions |= map(
+                  del(.healthCheck) |
+                  if .dependsOn then
+                    .dependsOn |= map(if .condition == "HEALTHY" then .condition = "START" else . end)
+                  else . end
+                )' \
             > task-definition.json
 
       - name: Update API container image in task definition
