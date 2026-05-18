@@ -143,13 +143,6 @@ resource "aws_ecs_task_definition" "regllm" {
         }
       }
 
-      healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
-        interval    = 30
-        timeout     = 10
-        retries     = 5
-        startPeriod = 180
-      }
     },
 
     # ── Next.js (frontend) ─────────────────────────────────────────────────
@@ -172,7 +165,7 @@ resource "aws_ecs_task_definition" "regllm" {
 
       dependsOn = [{
         containerName = "${var.app_name}-api"
-        condition     = "HEALTHY"
+        condition     = "START"
       }]
 
       logConfiguration = {
@@ -182,14 +175,6 @@ resource "aws_ecs_task_definition" "regllm" {
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "frontend"
         }
-      }
-
-      healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
-        interval    = 30
-        timeout     = 10
-        retries     = 3
-        startPeriod = 60
       }
     }
   ])
