@@ -37,62 +37,6 @@ def _sse(payload: dict) -> str:
 # ─── Per-backend streaming generators ─────────────────────────────────────────
 
 
-async def _stream_groq(messages: list) -> AsyncGenerator[str, None]:
-    """Yield tokens from Groq streaming API."""
-    from groq import Groq
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError("GROQ_API_KEY not set")
-    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-
-    client = Groq(api_key=api_key)
-    loop = asyncio.get_event_loop()
-
-    def _call():
-        return client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=1024,
-            stream=True,
-        )
-
-    stream = await loop.run_in_executor(None, _call)
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content or ""
-        if delta:
-            yield delta
-
-
-async def _stream_ollama(messages: list) -> AsyncGenerator[str, None]:
-    """Yield tokens from Ollama streaming API."""
-    import httpx
-
-    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    model = os.getenv("OLLAMA_MODEL", "regllm")
-
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": True,
-        "options": {"temperature": 0.2, "top_p": 0.9, "num_ctx": 4096},
-    }
-
-    async with httpx.AsyncClient(timeout=120) as client:
-        async with client.stream("POST", f"{host}/api/chat", json=payload) as response:
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    delta = data.get("message", {}).get("content", "")
-                    if delta:
-                        yield delta
-                except json.JSONDecodeError:
-                    continue
-
-
 async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
     """Yield tokens from vLLM / HF Inference Endpoint (OpenAI-compatible API)."""
     import httpx
@@ -128,51 +72,6 @@ async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
                         yield delta
                 except (json.JSONDecodeError, KeyError):
                     continue
-
-
-async def _stream_local(messages: list) -> AsyncGenerator[str, None]:
-    """Yield tokens from local QLoRA model using TextIteratorStreamer in a thread."""
-    import threading
-
-    from transformers import TextIteratorStreamer
-
-    # Import globals from app module (loaded at startup)
-    try:
-        from app import _local_model, _local_tokenizer
-    except ImportError as e:
-        raise RuntimeError(f"Local model not loaded: {e}")
-
-    if _local_model is None or _local_tokenizer is None:
-        raise RuntimeError("Local model not initialized. Start API with --backend local.")
-
-    import torch
-
-    text = _local_tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
-    inputs = _local_tokenizer(text, return_tensors="pt").to(_local_model.device)
-
-    streamer = TextIteratorStreamer(
-        _local_tokenizer, skip_prompt=True, skip_special_tokens=True
-    )
-    gen_kwargs = dict(
-        **inputs,
-        max_new_tokens=1024,
-        temperature=0.2,
-        do_sample=True,
-        pad_token_id=_local_tokenizer.eos_token_id,
-        streamer=streamer,
-    )
-
-    loop = asyncio.get_event_loop()
-    thread = threading.Thread(
-        target=lambda: _local_model.generate(**gen_kwargs), daemon=True
-    )
-    thread.start()
-
-    for token in streamer:
-        yield token
-        await asyncio.sleep(0)  # yield control to event loop between tokens
 
 
 # ─── Endpoint ─────────────────────────────────────────────────────────────────
@@ -294,14 +193,7 @@ async def chat_stream(
         yield _sse({"type": "sources", "sources": source_list})
 
         try:
-            if body.backend == "groq":
-                gen = _stream_groq(messages)
-            elif body.backend == "ollama":
-                gen = _stream_ollama(messages)
-            elif body.backend == "vllm":
-                gen = _stream_vllm(messages)
-            else:
-                gen = _stream_local(messages)
+            gen = _stream_vllm(messages)
 
             async for token in gen:
                 full_response.append(token)
