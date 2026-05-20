@@ -76,7 +76,7 @@ async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
         "messages": messages,
         "stream": True,
         "temperature": 0.2,
-        "max_tokens": 1024,
+        "max_tokens": 2048,
     }
 
     async with httpx.AsyncClient(timeout=120) as client:

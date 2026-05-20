@@ -21,18 +21,43 @@ interface RegllmResponse {
   advertencias?: string | null;
 }
 
+function extractJsonField(content: string, field: string): string | null {
+  const match = content.match(new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`));
+  return match ? match[1].replace(/\\n/g, "\n").replace(/\\"/g, '"') : null;
+}
+
+function extractJsonArray(content: string, field: string): string[] | null {
+  const match = content.match(new RegExp(`"${field}"\\s*:\\s*\\[([^\\]]*)\\]`));
+  if (!match) return null;
+  return match[1].match(/"([^"]+)"/g)?.map((s) => s.replace(/"/g, "")) ?? [];
+}
+
 function parseRegllmJson(content: string): RegllmResponse | null {
+  // Strip markdown code fences if present
+  const cleaned = content.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
+  if (!cleaned.includes('"resumen"')) return null;
+
+  // Try strict parse first
   try {
-    // Strip markdown code fences if present
-    const cleaned = content.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
     const parsed = JSON.parse(cleaned);
     if (parsed && typeof parsed.resumen === "string" && typeof parsed.desarrollo === "string") {
       return parsed as RegllmResponse;
     }
   } catch {
-    // Not JSON — fall through
+    // fall through to partial extraction
   }
-  return null;
+
+  // Partial/truncated JSON — extract fields with regex
+  const resumen = extractJsonField(cleaned, "resumen");
+  const desarrollo = extractJsonField(cleaned, "desarrollo");
+  if (!resumen || !desarrollo) return null;
+
+  return {
+    resumen,
+    desarrollo,
+    articulos: extractJsonArray(cleaned, "articulos") ?? [],
+    advertencias: extractJsonField(cleaned, "advertencias"),
+  };
 }
 
 function StructuredResponse({ data }: { data: RegllmResponse }) {
