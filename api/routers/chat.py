@@ -38,13 +38,39 @@ def _sse(payload: dict) -> str:
 
 
 async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
-    """Yield tokens from vLLM / HF Inference Endpoint (OpenAI-compatible API)."""
+    """Yield tokens from vLLM / HF Inference Endpoint (OpenAI-compatible API).
+
+    If the endpoint is scaled to zero (503), polls until it wakes up (up to 3 min),
+    yielding a status message so the SSE connection stays alive.
+    """
     import httpx
 
     host = os.getenv("VLLM_HOST", "http://localhost:8080")
     model = os.getenv("VLLM_MODEL", "tgi")  # HF endpoints use "tgi" as model name
     api_key = os.getenv("HF_TOKEN", "")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
+    # ── Wake-up polling (scale-to-zero cold start) ────────────────────────────
+    waking = False
+    async with httpx.AsyncClient(timeout=15) as probe:
+        for _ in range(36):  # 36 × 5 s = 3 min max
+            try:
+                r = await probe.get(f"{host}/health", headers=headers)
+                if r.status_code != 503:
+                    break
+            except Exception:
+                pass
+            else:
+                if not waking:
+                    yield "_Waking up inference endpoint, please wait..._\n\n"
+                    waking = True
+                await asyncio.sleep(5)
+                continue
+            break
+        else:
+            raise RuntimeError("Inference endpoint did not wake up within 3 minutes.")
+
+    # ── Stream response ───────────────────────────────────────────────────────
     payload = {
         "model": model,
         "messages": messages,
@@ -52,8 +78,6 @@ async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
         "temperature": 0.2,
         "max_tokens": 1024,
     }
-
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
     async with httpx.AsyncClient(timeout=120) as client:
         async with client.stream(
