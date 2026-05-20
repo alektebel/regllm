@@ -30,13 +30,13 @@ variable "db_instance_class" {
 variable "ecs_cpu" {
   description = "ECS task CPU units (1 vCPU = 1024)"
   type        = number
-  default     = 1024
+  default     = 512
 }
 
 variable "ecs_memory" {
   description = "ECS task memory in MiB"
   type        = number
-  default     = 2048
+  default     = 1024
 }
 
 variable "regllm_backend" {

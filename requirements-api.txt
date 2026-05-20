@@ -36,3 +36,8 @@ slowapi>=0.1.9
 
 # Groq API client
 groq>=0.9.0
+
+# Document ingestion (EUR-Lex HTML + EBA PDFs)
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+pdfplumber>=0.11.0

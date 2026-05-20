@@ -1,0 +1,101 @@
+name: Ingest Regulatory Documents
+
+on:
+  workflow_dispatch:        # manual trigger
+  schedule:
+    - cron: "0 6 * * 1"    # every Monday 06:00 UTC
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get VPC / subnet / security group IDs
+        id: infra
+        run: |
+          CLUSTER="regllm-dev"
+          SERVICE="regllm-app-dev"
+
+          # Reuse the same subnets and SG as the running ECS service
+          NETWORK_CONFIG=$(aws ecs describe-services \
+            --cluster $CLUSTER \
+            --services $SERVICE \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration' \
+            --output json)
+
+          SUBNETS=$(echo $NETWORK_CONFIG | jq -r '.subnets | join(",")')
+          SGS=$(echo $NETWORK_CONFIG    | jq -r '.securityGroups | join(",")')
+          TASK_DEF=$(aws ecs describe-services \
+            --cluster $CLUSTER \
+            --services $SERVICE \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          echo "subnets=$SUBNETS"   >> "$GITHUB_OUTPUT"
+          echo "sgs=$SGS"           >> "$GITHUB_OUTPUT"
+          echo "task_def=$TASK_DEF" >> "$GITHUB_OUTPUT"
+          echo "cluster=$CLUSTER"   >> "$GITHUB_OUTPUT"
+
+      - name: Run ingestion as one-off ECS task
+        id: run_task
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.infra.outputs.cluster }} \
+            --task-definition ${{ steps.infra.outputs.task_def }} \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.infra.outputs.subnets }}],securityGroups=[${{ steps.infra.outputs.sgs }}],assignPublicIp=ENABLED}" \
+            --overrides '{
+              "containerOverrides": [{
+                "name": "regllm-api",
+                "command": ["python", "scripts/ingest_regulations.py"],
+                "environment": [{"name": "LOG_LEVEL", "value": "INFO"}]
+              }]
+            }' \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
+          echo "Started ECS task: $TASK_ARN"
+
+      - name: Wait for ingestion task to complete
+        run: |
+          TASK_ARN="${{ steps.run_task.outputs.task_arn }}"
+          CLUSTER="${{ steps.infra.outputs.cluster }}"
+
+          echo "Waiting for task to finish…"
+          aws ecs wait tasks-stopped --cluster $CLUSTER --tasks $TASK_ARN
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster $CLUSTER \
+            --tasks $TASK_ARN \
+            --query 'tasks[0].containers[?name==`regllm-api`].exitCode' \
+            --output text)
+
+          echo "Exit code: $EXIT_CODE"
+          [ "$EXIT_CODE" = "0" ] || exit 1
+
+      - name: Print task logs
+        if: always()
+        run: |
+          TASK_ID=$(echo "${{ steps.run_task.outputs.task_arn }}" | awk -F/ '{print $NF}')
+          aws logs get-log-events \
+            --log-group-name /ecs/regllm-dev \
+            --log-stream-name "api/${TASK_ID}" \
+            --query 'events[*].message' \
+            --output text 2>/dev/null || echo "(no logs)"

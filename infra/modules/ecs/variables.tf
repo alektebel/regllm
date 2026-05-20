@@ -6,6 +6,7 @@ variable "ecs_memory"                  { type = number }
 variable "api_ecr_repository_url"      { type = string }
 variable "frontend_ecr_repository_url" { type = string }
 variable "private_subnet_ids"          { type = list(string) }
+variable "public_subnet_ids"           { type = list(string) }
 variable "app_security_group_id"       { type = string }
 variable "api_target_group_arn"        { type = string }
 variable "frontend_target_group_arn"   { type = string }

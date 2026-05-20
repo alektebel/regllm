@@ -80,13 +80,13 @@ resource "aws_ecs_cluster" "regllm" {
 
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = var.environment == "prod" ? "enabled" : "disabled"
   }
 }
 
 resource "aws_ecs_cluster_capacity_providers" "regllm" {
   cluster_name       = aws_ecs_cluster.regllm.name
-  capacity_providers = ["FARGATE"]
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
 }
 
 # ── Task Definition (api + frontend sidecar) ──────────────────────────────────
@@ -191,9 +191,9 @@ resource "aws_ecs_service" "regllm" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = var.private_subnet_ids
+    subnets          = var.public_subnet_ids
     security_groups  = [var.app_security_group_id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {
