@@ -21,6 +21,13 @@ from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
+# ── Hierarchy detection patterns (module-level) ───────────────────────────────
+
+_TITULO_PAT = re.compile(r"(T[ií]tulo\s+[IVXLCDM\d]+[.\s][^\n]*)", re.IGNORECASE)
+_CAPITULO_PAT = re.compile(r"(Cap[ií]tulo\s+[IVXLCDM\d]+[.\s][^\n]*)", re.IGNORECASE)
+_SECCION_PAT = re.compile(r"(Secci[oó]n\s+\d+[.\s][^\n]*)", re.IGNORECASE)
+_ARTICULO_PAT = re.compile(r"(Art[ií]culo\s+\d+[a-z]?(?:\s+bis)?[.\s])", re.IGNORECASE)
+
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
 
@@ -135,85 +142,112 @@ class RegulatoryRAGSystem:
         self._build_bm25_index()
         return len(textos)
 
-    # ── Segmentation (unchanged logic) ───────────────────────────────────────
+    # ── Segmentation ──────────────────────────────────────────────────────────
+
+    def _extract_hierarchy(self, text: str) -> dict:
+        """Scan text for the last seen Título/Capítulo/Sección before position."""
+        titulo = capitulo = seccion = ""
+        for m in _TITULO_PAT.finditer(text):
+            titulo = m.group(1).strip()[:80]
+        for m in _CAPITULO_PAT.finditer(text):
+            capitulo = m.group(1).strip()[:80]
+        for m in _SECCION_PAT.finditer(text):
+            seccion = m.group(1).strip()[:80]
+        return {"titulo": titulo, "capitulo": capitulo, "seccion": seccion}
+
+    def _breadcrumb(self, hier: dict) -> str:
+        parts = [v for v in [hier.get("titulo"), hier.get("capitulo"), hier.get("seccion")] if v]
+        return " | ".join(parts)
+
+    def _sliding_window(self, text: str, max_size: int = 800, overlap: int = 150) -> list[str]:
+        """Split text into overlapping windows."""
+        if len(text) <= max_size:
+            return [text]
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + max_size
+            chunk = text[start:end]
+            # Try to break at sentence boundary
+            last_period = max(chunk.rfind(". "), chunk.rfind(".\n"))
+            if last_period > max_size // 2:
+                chunk = chunk[:last_period + 1]
+            chunks.append(chunk.strip())
+            start += len(chunk) - overlap
+        return [c for c in chunks if len(c) > 50]
 
     def _segmentar_documento(self, texto: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         chunks = []
         if not texto or len(texto.strip()) < 100:
             return chunks
 
-        patron = r"(Art[ií]culo\s+\d+[a-z]?[.\s])"
-        partes = re.split(patron, texto, flags=re.IGNORECASE)
+        # Scan for hierarchy context (título/capítulo/sección) in full text
+        hier = self._extract_hierarchy(texto)
+
+        # Split by article boundaries
+        partes = _ARTICULO_PAT.split(texto)
 
         articulo_actual = None
-        contenido_actual = ""
+        hier_actual = dict(hier)
+        chunk_index = 0
 
         for parte in partes:
-            if re.match(patron, parte, re.IGNORECASE):
-                if articulo_actual and contenido_actual.strip():
-                    self._add_article_chunks(chunks, articulo_actual, contenido_actual, metadata)
+            if _ARTICULO_PAT.match(parte):
+                # Update hierarchy context up to this article
+                pos = texto.find(parte)
+                if pos >= 0:
+                    ctx = texto[:pos]
+                    for m in _TITULO_PAT.finditer(ctx):
+                        hier_actual["titulo"] = m.group(1).strip()[:80]
+                    for m in _CAPITULO_PAT.finditer(ctx):
+                        hier_actual["capitulo"] = m.group(1).strip()[:80]
+                    for m in _SECCION_PAT.finditer(ctx):
+                        hier_actual["seccion"] = m.group(1).strip()[:80]
                 articulo_actual = parte.strip()
-                contenido_actual = ""
-            elif articulo_actual:
-                contenido_actual += parte
-
-        if articulo_actual and contenido_actual.strip():
-            self._add_article_chunks(chunks, articulo_actual, contenido_actual, metadata)
+            elif articulo_actual and parte.strip():
+                new_chunks = self._add_article_chunks(
+                    articulo_actual, parte, metadata, dict(hier_actual), chunk_index
+                )
+                chunks.extend(new_chunks)
+                chunk_index += len(new_chunks)
 
         if not chunks:
             chunks = self._chunk_by_paragraphs(texto, metadata)
 
         return chunks
 
-    def _add_article_chunks(self, chunks, articulo, contenido, metadata):
-        max_chunk_size = 1500
-        parrafos = contenido.split("\n")
-        chunk_actual = f"{articulo}\n"
+    def _add_article_chunks(
+        self, articulo: str, contenido: str, metadata: Dict, hier: dict, base_index: int
+    ) -> List[Dict]:
+        source = metadata.get("source", metadata.get("documento_id", ""))
+        framework = metadata.get("framework", "")
+        breadcrumb = self._breadcrumb(hier)
+        prefix = " | ".join(p for p in [framework, breadcrumb, articulo] if p)
 
-        for parrafo in parrafos:
-            parrafo = parrafo.strip()
-            if not parrafo or len(parrafo) < 20:
-                continue
-            if len(chunk_actual) + len(parrafo) > max_chunk_size:
-                if len(chunk_actual) > 100:
-                    meta = (metadata.copy() if isinstance(metadata, dict) else {})
-                    meta["articulo"] = articulo
-                    meta["longitud"] = len(chunk_actual)
-                    chunks.append({"texto": chunk_actual.strip(), "metadata": meta})
-                chunk_actual = f"{articulo}\n{parrafo}\n"
-            else:
-                chunk_actual += f"{parrafo}\n"
-
-        if len(chunk_actual) > 100:
+        sub_chunks = self._sliding_window(contenido.strip(), max_size=800, overlap=150)
+        result = []
+        for i, sub in enumerate(sub_chunks):
+            text_with_context = f"{prefix}\n\n{sub}" if prefix else sub
             meta = (metadata.copy() if isinstance(metadata, dict) else {})
-            meta["articulo"] = articulo
-            meta["longitud"] = len(chunk_actual)
-            chunks.append({"texto": chunk_actual.strip(), "metadata": meta})
+            meta.update({
+                "articulo": articulo,
+                "titulo": hier.get("titulo", ""),
+                "capitulo": hier.get("capitulo", ""),
+                "seccion": hier.get("seccion", ""),
+                "chunk_index": base_index + i,
+                "longitud": len(text_with_context),
+            })
+            result.append({"texto": text_with_context.strip(), "metadata": meta})
+        return result
 
-    def _chunk_by_paragraphs(self, texto, metadata):
+    def _chunk_by_paragraphs(self, texto: str, metadata: Dict) -> List[Dict]:
         chunks = []
-        max_chunk_size = 1500
-        parrafos = texto.split("\n\n")
-        chunk_actual = ""
-
-        for parrafo in parrafos:
-            parrafo = parrafo.strip()
-            if not parrafo or len(parrafo) < 50:
-                continue
-            if len(chunk_actual) + len(parrafo) > max_chunk_size:
-                if len(chunk_actual) > 100:
-                    meta = (metadata.copy() if isinstance(metadata, dict) else {})
-                    meta["longitud"] = len(chunk_actual)
-                    chunks.append({"texto": chunk_actual.strip(), "metadata": meta})
-                chunk_actual = parrafo + "\n\n"
-            else:
-                chunk_actual += parrafo + "\n\n"
-
-        if len(chunk_actual) > 100:
+        source = metadata.get("source", "")
+        sub_chunks = self._sliding_window(texto, max_size=600, overlap=100)
+        for i, sub in enumerate(sub_chunks):
             meta = (metadata.copy() if isinstance(metadata, dict) else {})
-            meta["longitud"] = len(chunk_actual)
-            chunks.append({"texto": chunk_actual.strip(), "metadata": meta})
-
+            meta.update({"chunk_index": i, "longitud": len(sub)})
+            chunks.append({"texto": sub, "metadata": meta})
         return chunks
 
     # ── BM25 ─────────────────────────────────────────────────────────────────

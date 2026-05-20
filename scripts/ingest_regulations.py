@@ -45,14 +45,22 @@ CHECKSUMS_FILE = RAW_DIR / "checksums.json"
 #       "pdf"         → download PDF and extract text with pdfplumber
 
 SOURCES: list[dict] = [
-    # ── Core capital regulations ──────────────────────────────────────────────
+    # ── EUR-Lex: Core capital regulations ─────────────────────────────────────
     {
         "id": "crr_575_2013",
-        "name": "CRR — Reglamento (UE) 575/2013 (requisitos de capital)",
+        "name": "CRR — Reglamento (UE) 575/2013",
         "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32013R0575",
         "type": "eurlex_html",
         "framework": "CRR",
-        "tags": ["capital", "riesgo_credito", "riesgo_mercado", "riesgo_operacional", "liquidez", "crr"],
+        "tags": ["capital", "riesgo_credito", "riesgo_mercado", "riesgo_operacional", "liquidez", "irb", "sa"],
+    },
+    {
+        "id": "crr2_2019_876",
+        "name": "CRR2 — Reglamento (UE) 2019/876 (NSFR, SA-CCR, FRTB, grandes exposiciones)",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32019R0876",
+        "type": "eurlex_html",
+        "framework": "CRR2",
+        "tags": ["nsfr", "sa_ccr", "frtb", "grandes_exposiciones", "capital"],
     },
     {
         "id": "crr3_2024_1623",
@@ -60,24 +68,49 @@ SOURCES: list[dict] = [
         "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32024R1623",
         "type": "eurlex_html",
         "framework": "CRR3",
-        "tags": ["basilea_iv", "output_floor", "sa_cr", "irb", "op_risk_sma", "capital", "crr3"],
+        "tags": ["basilea_iv", "output_floor", "sa_cr", "irb", "op_risk_sma", "capital"],
     },
+    # ── EUR-Lex: CRD directives ───────────────────────────────────────────────
     {
         "id": "crd4_2013_36",
-        "name": "CRD IV — Directiva 2013/36/UE (gobierno, ICAAP, supervisión)",
+        "name": "CRD IV — Directiva 2013/36/UE (gobierno, ICAAP, SREP)",
         "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32013L0036",
         "type": "eurlex_html",
-        "framework": "CRD",
+        "framework": "CRD4",
         "tags": ["crd", "gobierno", "supervision", "icaap", "srep", "remuneracion", "colchones"],
     },
-    # ── Resolution framework ──────────────────────────────────────────────────
+    {
+        "id": "crd5_2019_878",
+        "name": "CRD V — Directiva 2019/878/UE",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32019L0878",
+        "type": "eurlex_html",
+        "framework": "CRD5",
+        "tags": ["crd", "pilar2", "colchones", "gobierno"],
+    },
+    {
+        "id": "crd6_2024_1619",
+        "name": "CRD VI — Directiva 2024/1619/UE",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32024L1619",
+        "type": "eurlex_html",
+        "framework": "CRD6",
+        "tags": ["crd", "supervision", "gobierno", "capital"],
+    },
+    # ── EUR-Lex: Resolution framework ─────────────────────────────────────────
     {
         "id": "brrd_2014_59",
         "name": "BRRD — Directiva 2014/59/UE (resolución bancaria, MREL, bail-in)",
         "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32014L0059",
         "type": "eurlex_html",
         "framework": "BRRD",
-        "tags": ["resolucion", "bail_in", "mrel", "tlac", "brrd", "planes_recuperacion"],
+        "tags": ["resolucion", "bail_in", "mrel", "planes_recuperacion"],
+    },
+    {
+        "id": "brrd2_2019_879",
+        "name": "BRRD2 — Directiva 2019/879/UE (MREL actualización, TLAC)",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32019L0879",
+        "type": "eurlex_html",
+        "framework": "BRRD2",
+        "tags": ["mrel", "tlac", "resolucion", "bail_in"],
     },
     {
         "id": "srmr_806_2014",
@@ -85,20 +118,70 @@ SOURCES: list[dict] = [
         "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32014R0806",
         "type": "eurlex_html",
         "framework": "SRM",
-        "tags": ["resolucion", "jur", "mrel", "srm", "bail_in"],
+        "tags": ["resolucion", "jur", "mrel", "srm"],
+    },
+    {
+        "id": "srmr2_2019_877",
+        "name": "SRMR2 — Reglamento (UE) 2019/877",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32019R0877",
+        "type": "eurlex_html",
+        "framework": "SRM2",
+        "tags": ["mrel", "tlac", "resolucion"],
+    },
+    # ── EUR-Lex: Deposit guarantee & derivatives ──────────────────────────────
+    {
+        "id": "dgsd_2014_49",
+        "name": "DGSD — Directiva 2014/49/UE (garantía de depósitos)",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32014L0049",
+        "type": "eurlex_html",
+        "framework": "DGSD",
+        "tags": ["garantia_depositos", "dgsd", "fondo_garantia"],
+    },
+    {
+        "id": "emir_648_2012",
+        "name": "EMIR — Reglamento (UE) 648/2012 (derivados OTC, CCPs)",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32012R0648",
+        "type": "eurlex_html",
+        "framework": "EMIR",
+        "tags": ["derivados_otc", "ccp", "contraparte", "margen", "riesgo_contraparte"],
+    },
+    # ── EUR-Lex: Markets ──────────────────────────────────────────────────────
+    {
+        "id": "mifir_600_2014",
+        "name": "MiFIR — Reglamento (UE) 600/2014 (transparencia de mercados)",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32014R0600",
+        "type": "eurlex_html",
+        "framework": "MiFIR",
+        "tags": ["mercados", "transparencia", "pre_trade", "post_trade", "derivados"],
+    },
+    {
+        "id": "mifid2_2014_65",
+        "name": "MiFID II — Directiva 2014/65/UE (mercados de instrumentos financieros)",
+        "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=CELEX:32014L0065",
+        "type": "eurlex_html",
+        "framework": "MiFID2",
+        "tags": ["mercados", "gobierno", "mejor_ejecucion", "idoneidad"],
     },
     # ── EBA Guidelines (PDFs) ─────────────────────────────────────────────────
+    {
+        "id": "eba_gl_2017_16",
+        "name": "EBA/GL/2017/16 Rev2 — Estimación de PD, LGD y tratamiento de exposiciones en default (IRB)",
+        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2017/EBA-GL-2017-16/EBA-GL-2017-16-Guidelines-on-PD-LGD-estimation-and-treatment-of-defaulted-exposures.pdf",
+        "type": "pdf",
+        "framework": "EBA_GL",
+        "tags": ["irb", "pd", "lgd", "ead", "riesgo_credito", "default"],
+    },
     {
         "id": "eba_gl_2020_06",
         "name": "EBA/GL/2020/06 — Directrices ICAAP e ILAAP",
         "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2020/EBA-GL-2020-06/872842/EBA%20GL%202020%2006%20Final%20Report%20on%20GL%20on%20ICAAP%20and%20ILAAP.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
-        "tags": ["icaap", "ilaap", "capital_interno", "pilar2", "srep"],
+        "tags": ["icaap", "ilaap", "capital_interno", "pilar2"],
     },
     {
         "id": "eba_gl_2022_12",
-        "name": "EBA/GL/2022/12 — Directrices IRRBB",
+        "name": "EBA/GL/2022/12 — Directrices IRRBB y CSRBB",
         "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2022/EBA-GL-2022-12/1051744/Final%20Report%20on%20Guidelines%20on%20IRRBB%20and%20CSRBB.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
@@ -106,19 +189,27 @@ SOURCES: list[dict] = [
     },
     {
         "id": "eba_gl_2018_10",
-        "name": "EBA/GL/2018/10 — Directrices NPE (créditos dudosos)",
+        "name": "EBA/GL/2018/10 — Directrices sobre créditos dudosos (NPE/NPL)",
         "url": "https://www.eba.europa.eu/sites/default/documents/files/documents/10180/2425705/b4bcf67f-5b41-4e4e-8d91-4b18e7c2a900/EBA_GL_2018_10_Final_Guidelines_on_NPEs.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
         "tags": ["npe", "npl", "creditos_dudosos", "stage3", "ifrs9"],
     },
     {
-        "id": "eba_gl_2020_07",
-        "name": "EBA/GL/2020/07 — Directrices LCR (coeficiente de cobertura de liquidez)",
-        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2020/EBA-GL-2020-07/873413/EBA%20GL%202020%2007%20Final%20report%20on%20LCR%20disclosure.pdf",
+        "id": "eba_gl_2020_05",
+        "name": "EBA/GL/2020/05 — Directrices sobre originación y seguimiento de préstamos",
+        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2020/EBA-GL-2020-05/872841/EBA%20GL%202020%2005%20Final%20Report%20on%20GL%20on%20loan%20origination%20and%20monitoring.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
-        "tags": ["lcr", "liquidez", "hqla", "divulgacion"],
+        "tags": ["originacion", "credito", "gobierno", "underwriting"],
+    },
+    {
+        "id": "eba_gl_2021_07",
+        "name": "EBA/GL/2021/07 — Directrices sobre el método estándar de riesgo de crédito",
+        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2021/EBA-GL-2021-07/1015613/EBA%20GL%202021%2007%20Guidelines%20on%20STA%20credit%20risk.pdf",
+        "type": "pdf",
+        "framework": "EBA_GL",
+        "tags": ["sa_cr", "riesgo_credito", "ponderacion", "estandar"],
     },
 ]
 
