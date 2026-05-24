@@ -100,7 +100,7 @@ To use S3 as the artifact backend when training:
 ```bash
 export MLFLOW_TRACKING_URI=http://your-mlflow-server:5000
 export MLFLOW_ARTIFACT_ROOT=s3://regllm-mlflow-artifacts-prod/mlflow
-python scripts/train_combined.py --epochs 5
+python scripts/training/train_combined.py --epochs 5
 ```
 
 ## Promote a model to Production

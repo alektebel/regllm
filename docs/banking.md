@@ -39,7 +39,7 @@ regllm/
 
 ```bash
 cd /home/diego/Development/regllm
-./scripts/setup_banking.sh
+./scripts/deploy/setup_banking.sh
 ```
 
 Este script instalará:

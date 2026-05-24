@@ -32,7 +32,7 @@ COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY data/ ./data/
 
-RUN chmod +x scripts/entrypoint.sh
+RUN chmod +x scripts/deploy/entrypoint.sh
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 EXPOSE 7860
@@ -41,6 +41,6 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD curl -f http://localhost:7860 || exit 1
 
-ENTRYPOINT ["scripts/entrypoint.sh"]
+ENTRYPOINT ["scripts/deploy/entrypoint.sh"]
 # Default to groq — no weights needed, fast startup. Override with REGLLM_BACKEND=local.
 CMD ["--port", "7860"]

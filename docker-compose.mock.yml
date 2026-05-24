@@ -8,9 +8,9 @@
 services:
   mock:
     image: python:3.10-slim
-    command: ["python", "/app/scripts/mock_server.py", "--port", "7860"]
+    command: ["python", "/app/scripts/deploy/mock_server.py", "--port", "7860"]
     volumes:
-      - ./scripts/mock_server.py:/app/scripts/mock_server.py:ro
+      - ./scripts/deploy/mock_server.py:/app/scripts/deploy/mock_server.py:ro
     ports:
       - "7860:7860"
     restart: "no"

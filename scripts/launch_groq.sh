@@ -9,7 +9,7 @@
 #   - cloudflared at ~/bin/cloudflared (already installed)
 
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 PORT=7860
 

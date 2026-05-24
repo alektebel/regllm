@@ -461,7 +461,7 @@ def ask(
     logger.info(f"[generate] {len(raw)} chars ({int((time.time() - t1) * 1000)}ms)")
 
     t1 = time.time()
-    parsed = engine.parse_response(raw)
+    parsed = engine.parse_response(raw, rag_context=context)
     parsed = engine.enrich_references(parsed, question)
     logger.info(
         f"[enrich]   confidence={parsed.get('confianza')}% refs={len(parsed.get('referencias', []))} ({int((time.time() - t1) * 1000)}ms)"
@@ -618,7 +618,7 @@ def build_ui(backend: str, doc_count: int, label: str) -> gr.Blocks:
     with gr.Blocks(title=title_map.get(backend, "RegLLM")) as demo:
         gr.HTML(f"""
         <div class="regllm-header">
-            <img src="/file=bankregicon.jpg" class="regllm-logo" alt="Logo">
+            <img src="/file=frontend/public/bankregicon.jpg" class="regllm-logo" alt="Logo">
             <div style="flex:1">
                 <h1>RegLLM</h1>
                 <p class="subtitle">Asistente de regulación bancaria · EBA · CRR/CRD · Basilea III/IV</p>

@@ -8,7 +8,7 @@
 #   ./launch_ui.sh --share       # use Gradio's built-in share link instead
 
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 PORT=7860

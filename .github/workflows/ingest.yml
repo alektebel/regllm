@@ -63,7 +63,7 @@ jobs:
             --overrides '{
               "containerOverrides": [{
                 "name": "regllm-api",
-                "command": ["python", "scripts/ingest_regulations.py"],
+                "command": ["python", "scripts/data/ingest_regulations.py"],
                 "environment": [{"name": "LOG_LEVEL", "value": "INFO"}]
               }]
             }' \

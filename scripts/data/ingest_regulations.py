@@ -344,6 +344,14 @@ def main():
     parser.add_argument("--force", action="store_true", help="Re-ingest even if checksum unchanged")
     parser.add_argument("--dry-run", action="store_true", help="Download only, do not write to DB")
     parser.add_argument("--source", help="Only ingest a single source by ID")
+    parser.add_argument(
+        "--embed-batch-size", type=int, default=8,
+        help="Chunks per embedding batch (lower = less RAM, default: 8)",
+    )
+    parser.add_argument(
+        "--skip-bm25", action="store_true",
+        help="Skip BM25 index rebuild after ingestion (saves ~0.5-2 GB RAM)",
+    )
     args = parser.parse_args()
 
     sources = SOURCES
@@ -355,7 +363,9 @@ def main():
             sys.exit(1)
 
     checksums = _load_checksums()
-    documents = []
+    rag = None
+    total_chunks = 0
+    ingested = 0
     skipped = 0
 
     for source in sources:
@@ -367,11 +377,23 @@ def main():
         if not args.force and checksums.get(source["id"]) == checksum:
             logger.info(f"  No change — skipping {source['id']}")
             skipped += 1
+            del text
             continue
 
-        checksums[source["id"]] = checksum
+        if args.dry_run:
+            logger.info(f"  Would ingest: {source['name']} ({len(text):,} chars)")
+            del text
+            continue
 
-        documents.append({
+        # Lazy-load RAG on first doc that needs ingesting
+        if rag is None:
+            logger.info("Loading RAG system and embedding model…")
+            from src.rag_system import RegulatoryRAGSystem
+            rag = RegulatoryRAGSystem(build_bm25_on_init=False)
+
+        ingested += 1
+        logger.info(f"[{ingested}] Ingesting: {source['name']}")
+        doc = {
             "text": text,
             "metadata": {
                 "documento_id": source["id"],
@@ -380,27 +402,25 @@ def main():
                 "tags": source["tags"],
                 "url": source["url"],
             },
-        })
+        }
+        n = rag.procesar_documentos([doc], rebuild_bm25=False, embed_batch_size=args.embed_batch_size)
+        total_chunks += n
+        checksums[source["id"]] = checksum
+        del text  # release parsed text before fetching next doc
+        logger.info(f"  → {n} chunks (running total: {total_chunks})")
 
-    logger.info(f"\nSummary: {len(documents)} to ingest, {skipped} unchanged")
+    logger.info(f"\nSummary: {ingested} ingested, {skipped} unchanged")
 
-    if not documents:
+    if rag is None:
         logger.info("Nothing to do.")
         return
 
-    if args.dry_run:
-        logger.info("Dry run — skipping DB write")
-        for doc in documents:
-            logger.info(f"  Would ingest: {doc['metadata']['source']} ({len(doc['text']):,} chars)")
-        return
-
-    logger.info("Loading RAG system and embedding model…")
-    from src.rag_system import RegulatoryRAGSystem
-    rag = RegulatoryRAGSystem()
-
-    logger.info(f"Indexing {len(documents)} documents…")
-    total_chunks = rag.procesar_documentos(documents)
-    logger.info(f"Done — {total_chunks} chunks indexed")
+    if args.skip_bm25:
+        logger.info("Skipping BM25 rebuild (--skip-bm25 set).")
+    else:
+        logger.info("Rebuilding BM25 index…")
+        rag._build_bm25_index()
+        logger.info(f"Done — {total_chunks} chunks indexed")
 
     _save_checksums(checksums)
     logger.info(f"Checksums saved to {CHECKSUMS_FILE}")

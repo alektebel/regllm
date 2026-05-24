@@ -38,4 +38,4 @@ temp/
 tmp/
 
 # Launch scripts — not needed inside the container
-launch_*.sh
+scripts/launch_*.sh

@@ -8,7 +8,7 @@
 #   ./launch_ollama.sh --port 8080   # custom port
 
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 PORT=7860
 

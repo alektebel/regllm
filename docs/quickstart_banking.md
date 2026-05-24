@@ -36,7 +36,7 @@ regllm/
 ### 1. Configurar entorno
 
 ```bash
-./scripts/setup_banking.sh
+./scripts/deploy/setup_banking.sh
 ```
 
 O manualmente:

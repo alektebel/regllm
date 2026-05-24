@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Launch the chat interface
-./launch_ui.sh
+./scripts/launch_ui.sh
 
 # 2. Open browser - Go to: http://localhost:7860
 
@@ -32,7 +32,7 @@ huggingface-cli login
 
 ```bash
 # Web interface (recommended)
-./launch_ui.sh
+./scripts/launch_ui.sh
 
 # CLI interface
 python src/ui/chat_interface.py \
@@ -112,7 +112,7 @@ python src/ui/chat_interface.py --port 8080
 ```bash
 # Use CPU (slower)
 export CUDA_VISIBLE_DEVICES=""
-./launch_ui.sh
+./scripts/launch_ui.sh
 
 # Or reduce batch size during training
 python src/training/train.py --batch-size 2

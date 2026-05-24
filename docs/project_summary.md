@@ -26,7 +26,7 @@ ARCHIVOS CREADOS:
   ✓ scripts/use_banking_model.py              - Usa modelo entrenado
 
 🔧 Configuración:
-  ✓ scripts/setup_banking.sh                  - Setup automatizado
+  ✓ scripts/deploy/setup_banking.sh                  - Setup automatizado
   ✓ requirements-banking.txt                  - Dependencias Python
 
 📚 Documentación:
@@ -60,7 +60,7 @@ COMANDOS PRINCIPALES:
 ---------------------
 
 1. Configurar entorno:
-   $ ./scripts/setup_banking.sh
+   $ ./scripts/deploy/setup_banking.sh
 
 2. Generar datos de ejemplo:
    $ python3 scripts/generate_example_data.py

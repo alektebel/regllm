@@ -90,3 +90,17 @@ regllm.env/
 
 # Don't ignore Next.js source library
 !frontend/lib/
+
+# Personal Obsidian vault (local only)
+regllm.notas/
+
+# Stale build artifacts
+*.deb
+
+# Ephemeral planning scratch files
+PLAN.md
+
+# Stale data directories
+data/backups/
+data/preferences/
+data/processed/old/

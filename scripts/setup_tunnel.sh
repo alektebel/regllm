@@ -5,7 +5,7 @@
 # Usage: ./setup_tunnel.sh
 
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 TUNNEL_NAME="regllm"
 DOMAIN="regllm.xyz"
@@ -85,5 +85,5 @@ echo "  Domain  : https://$DOMAIN"
 echo "  Config  : $CONFIG_FILE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Run the app:  ./launch_ui.sh"
+echo "  Run the app:  ./scripts/launch_ui.sh"
 echo ""

@@ -1,5 +1,5 @@
 #!/bin/bash
-# scripts/build_ollama_model.sh — Build regllm Ollama model from LoRA adapter
+# scripts/deploy/build_ollama_model.sh — Build regllm Ollama model from LoRA adapter
 #
 # Pipeline:
 #   1. Merge LoRA adapter → full HF weights  (models/merged/, ~14 GB)
@@ -9,9 +9,9 @@
 #   5. Write Modelfile and run: ollama create regllm
 #
 # Usage:
-#   ./scripts/build_ollama_model.sh
-#   ./scripts/build_ollama_model.sh --skip-merge      # models/merged/ already exists
-#   ./scripts/build_ollama_model.sh --skip-convert    # GGUF already built
+#   ./scripts/deploy/build_ollama_model.sh
+#   ./scripts/deploy/build_ollama_model.sh --skip-merge      # models/merged/ already exists
+#   ./scripts/deploy/build_ollama_model.sh --skip-convert    # GGUF already built
 #
 # Requirements:
 #   - ~20 GB free disk  (14 GB merged + 4 GB GGUF; F16 temp is deleted after quant)
@@ -239,5 +239,5 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  Build complete!"
 echo ""
 echo "  Quick test : ollama run regllm"
-echo "  Full UI    : ./launch_ollama.sh"
+echo "  Full UI    : ./scripts/launch_ollama.sh"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

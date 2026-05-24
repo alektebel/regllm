@@ -389,7 +389,7 @@ ChromaDB has been removed. All vectors are stored in PostgreSQL.
 
 ```bash
 # SFT
-python scripts/train_combined.py --epochs 3 --lr 1e-4
+python scripts/training/train_combined.py --epochs 3 --lr 1e-4
 
 # GRPO (reward from keyword/citation/format quality)
 python -m src.rlhf.grpo_trainer --epochs 2
