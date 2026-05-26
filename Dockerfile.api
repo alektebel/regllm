@@ -4,7 +4,7 @@ WORKDIR /app
 
 # System deps for asyncpg + chromadb
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl && \
+    gcc libpq-dev curl postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements-api.txt .
