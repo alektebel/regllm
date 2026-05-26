@@ -82,22 +82,21 @@ services:
       context: .
       dockerfile: Dockerfile.api
     image: regllm-api:latest
+    network_mode: host
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - REGLLM_BACKEND=${REGLLM_BACKEND:-groq}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://127.0.0.1:11434}
+      - POSTGRES_HOST=127.0.0.1
+      - POSTGRES_PORT=5433
       - POSTGRES_DB=${POSTGRES_DB:-regllm}
       - POSTGRES_USER=${POSTGRES_USER:-regllm}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-168}
       - CORS_ORIGINS=http://localhost:3000
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,7 +109,7 @@ services:
     image: regllm-frontend:latest
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      - INTERNAL_API_URL=http://fastapi:8000
+      - INTERNAL_API_URL=http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:

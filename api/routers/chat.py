@@ -37,6 +37,44 @@ def _sse(payload: dict) -> str:
 # ─── Per-backend streaming generators ─────────────────────────────────────────
 
 
+async def _stream_ollama(messages: list) -> AsyncGenerator[str, None]:
+    """Yield tokens from local Ollama (OpenAI-compatible /v1/chat/completions)."""
+    import httpx
+
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5:14b-instruct-q4_K_M")
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "temperature": 0.2,
+        "options": {"num_predict": 2048},
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        async with client.stream(
+            "POST", f"{host}/api/chat", json=payload
+        ) as response:
+            if response.status_code != 200:
+                body = await response.aread()
+                raise RuntimeError(
+                    f"Ollama returned {response.status_code}: {body.decode()[:300]}"
+                )
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    delta = data.get("message", {}).get("content", "")
+                    if delta:
+                        yield delta
+                    if data.get("done"):
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+
 async def _stream_vllm(messages: list) -> AsyncGenerator[str, None]:
     """Yield tokens from vLLM / HF Inference Endpoint (OpenAI-compatible API).
 
@@ -222,7 +260,11 @@ async def chat_stream(
         yield _sse({"type": "sources", "sources": source_list})
 
         try:
-            gen = _stream_vllm(messages)
+            backend = os.getenv("REGLLM_BACKEND", "vllm")
+            if backend == "ollama":
+                gen = _stream_ollama(messages)
+            else:
+                gen = _stream_vllm(messages)
 
             async for token in gen:
                 full_response.append(token)
@@ -232,8 +274,27 @@ async def chat_stream(
             logger.error(f"Streaming error: {exc}")
             yield _sse({"type": "error", "message": str(exc)})
 
-        # Save assistant message to DB + populate cache
+        # Parse + ground citations (anti-hallucination) and emit structured event
         full_text = "".join(full_response)
+        try:
+            parsed = await loop.run_in_executor(
+                None,
+                lambda: chat_engine.parse_response(full_text, rag_context=context),
+            )
+            parsed = await loop.run_in_executor(
+                None,
+                lambda: chat_engine.enrich_references(parsed, body.question),
+            )
+            yield _sse({
+                "type": "structured",
+                "articulos": parsed.get("articulos", []),
+                "referencias": parsed.get("referencias", []),
+                "confianza": parsed.get("confianza"),
+                "advertencias": parsed.get("advertencias"),
+            })
+        except Exception as exc:
+            logger.warning(f"Post-parse grounding failed: {exc}")
+
         try:
             async with db.begin_nested():
                 assistant_msg = ConversationMessage(

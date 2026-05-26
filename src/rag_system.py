@@ -4,12 +4,14 @@ Provides semantic search and hybrid search using PostgreSQL + pgvector.
 
 ChromaDB has been replaced with pgvector stored in the same PostgreSQL instance,
 eliminating the need for a separate EFS volume in production.
+
+Full-text search uses PostgreSQL tsvector/ts_rank (Spanish dictionary) instead of
+an in-process BM25 index, eliminating the 1-2 GB RAM spike during ingestion.
 """
 
 import json
 import logging
 import os
-import pickle
 import re
 import threading
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,7 +20,6 @@ import numpy as np
 import psycopg2
 from psycopg2.extras import execute_values
 from pgvector.psycopg2 import register_vector
-from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
@@ -29,9 +30,6 @@ logger = logging.getLogger(__name__)
 _RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 _reranker = None
 _reranker_lock = threading.Lock()
-
-# RAG-4: BM25 disk cache path (avoids full DB scan on every restart)
-_BM25_CACHE_PATH = os.getenv("BM25_CACHE_PATH", "/tmp/regllm_bm25.pkl")
 
 
 def _get_reranker(model_name: str = _RERANKER_MODEL):
@@ -45,28 +43,12 @@ def _get_reranker(model_name: str = _RERANKER_MODEL):
     return _reranker
 
 
-def _load_bm25_cache(path: str) -> dict | None:
-    try:
-        with open(path, "rb") as f:
-            return pickle.load(f)
-    except Exception:
-        return None
-
-
-def _save_bm25_cache(path: str, data: dict) -> None:
-    try:
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
-        logger.debug("BM25 cache saved to %s (%d docs)", path, data.get("count", 0))
-    except Exception as e:
-        logger.warning("Could not save BM25 cache: %s", e)
-
 # ── Hierarchy detection patterns (module-level) ───────────────────────────────
 
-_TITULO_PAT = re.compile(r"(T[ií]tulo\s+[IVXLCDM\d]+[.\s][^\n]*)", re.IGNORECASE)
-_CAPITULO_PAT = re.compile(r"(Cap[ií]tulo\s+[IVXLCDM\d]+[.\s][^\n]*)", re.IGNORECASE)
-_SECCION_PAT = re.compile(r"(Secci[oó]n\s+\d+[.\s][^\n]*)", re.IGNORECASE)
-_ARTICULO_PAT = re.compile(r"(Art[ií]culo\s+\d+[a-z]?(?:\s+bis)?[.\s])", re.IGNORECASE)
+_TITULO_PAT = re.compile(r"(T[ií]tulo\s+[IVXLCDM\d]+[.\s][^\n]*|Title\s+[IVXLCDM\d]+[.\s][^\n]*)", re.IGNORECASE)
+_CAPITULO_PAT = re.compile(r"(Cap[ií]tulo\s+[IVXLCDM\d]+[.\s][^\n]*|Chapter\s+[IVXLCDM\d]+[.\s][^\n]*)", re.IGNORECASE)
+_SECCION_PAT = re.compile(r"(Secci[oó]n\s+\d+[.\s][^\n]*|Section\s+\d+[.\s][^\n]*)", re.IGNORECASE)
+_ARTICULO_PAT = re.compile(r"(Art[ií]culo\s+\d+[a-z]?(?:\s+bis)?[.\s]|Article\s+\d+[a-z]?[.\s])", re.IGNORECASE)
 
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -114,26 +96,18 @@ class RegulatoryRAGSystem:
         self,
         embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
         persist_directory: str = None,  # kept for API compat, ignored
-        bm25_cache_path: str = _BM25_CACHE_PATH,
-        build_bm25_on_init: bool = True,
+        # Deprecated — kept only for call-site compatibility, has no effect.
+        bm25_cache_path: str = None,
+        build_bm25_on_init: bool = None,
     ):
         logger.info(f"Initializing RAG system — model: {embedding_model_name}")
         self.embedder = SentenceTransformer(embedding_model_name, device="cpu")
         self.collection = _CollectionProxy()
-        self._bm25_cache_path = bm25_cache_path
-
-        self.bm25: Optional[BM25Okapi] = None
-        self.corpus_ids: List[str] = []
-        self.corpus_id_to_idx: Dict[str, int] = {}
-
-        if not build_bm25_on_init:
-            logger.info("Skipping BM25 build at init (will rebuild explicitly after ingestion)")
-            return
 
         try:
-            self._build_bm25_index()
+            self._ensure_fts_index()
         except Exception as e:
-            logger.warning(f"BM25 index not built at startup: {e}")
+            logger.warning("Could not ensure FTS index: %s", e)
 
         logger.info(f"RAG system ready — {self.collection.count()} document chunks in DB")
 
@@ -143,89 +117,108 @@ class RegulatoryRAGSystem:
         self,
         documentos: List[Dict[str, Any]],
         embed_batch_size: int = 32,
-        rebuild_bm25: bool = True,
+        rebuild_bm25: bool = None,  # deprecated, ignored
+        ram_limit_pct: float = 80.0,
     ) -> int:
         """Ingest documents into pgvector with RAM-bounded batched embedding.
 
-        Chunks are encoded and inserted in batches of `embed_batch_size` so that
-        peak RAM is O(batch) rather than O(total_chunks).
+        Chunks are streamed from the segmenter and embedded in batches of
+        `embed_batch_size` so that peak RAM is O(batch) rather than O(total_chunks).
+
+        If system RAM usage exceeds `ram_limit_pct` (default 90 %), the current
+        batch is flushed, the batch size is halved, and a GC pass is forced.
+        If RAM is still above the limit after halving to 1, ingestion stops early
+        and raises MemoryError so the caller can decide what to do.
         """
+        import gc
+        import torch
+        import psutil
+        torch.set_num_threads(1)
+
+        def _ram_pct() -> float:
+            return psutil.virtual_memory().percent
+
+        def _check_ram(current_batch_size: int) -> int:
+            """Return (possibly reduced) batch size, or raise MemoryError."""
+            pct = _ram_pct()
+            if pct < ram_limit_pct:
+                return current_batch_size
+            logger.warning("RAM at %.1f%% (limit %.1f%%) — flushing and halving batch size", pct, ram_limit_pct)
+            gc.collect()
+            new_size = max(1, current_batch_size // 2)
+            pct_after = _ram_pct()
+            logger.warning("After GC: RAM at %.1f%%, new batch size: %d", pct_after, new_size)
+            if pct_after >= ram_limit_pct and new_size == 1:
+                raise MemoryError(
+                    f"RAM at {pct_after:.1f}% with batch_size=1 — aborting ingestion to avoid OOM"
+                )
+            return new_size
+
         total_upserted = 0
         seen_ids: set = set()
+        current_batch_size = embed_batch_size
 
         for doc_i, doc in enumerate(documentos):
-            chunks = self._segmentar_documento(
+            doc_id = doc.get("metadata", doc).get("documento_id", doc.get("source", f"doc_{doc_i}"))
+
+            batch: list = []
+            chunk_index = 0
+
+            # Accept pre-chunked docs (e.g. from llm_chunker) to skip internal segmentation
+            pre_chunks = doc.get("chunks")
+            chunk_iter = iter(pre_chunks) if pre_chunks is not None else self._iter_chunks(
                 doc.get("text", doc.get("texto", "")),
                 doc.get("metadata", doc),
             )
-            if not chunks:
-                continue
 
-            # Build (chunk_id, texto, metadata) triples, deduplicating
-            triples = []
-            for j, chunk in enumerate(chunks):
-                chunk_id = (
-                    f"{doc.get('metadata', doc).get('documento_id', doc.get('source', f'doc_{doc_i}'))}_{j}"
-                )
-                if chunk_id not in seen_ids:
-                    seen_ids.add(chunk_id)
-                    triples.append((chunk_id, chunk["texto"], chunk["metadata"]))
+            for chunk in chunk_iter:
+                chunk_id = f"{doc_id}_{chunk_index}"
+                chunk_index += 1
+                if chunk_id in seen_ids:
+                    continue
+                seen_ids.add(chunk_id)
+                batch.append((chunk_id, chunk["texto"], chunk["metadata"]))
 
-            if not triples:
-                continue
+                if len(batch) < current_batch_size:
+                    continue
 
-            # Encode + insert in bounded batches to cap RAM usage
-            for batch_start in range(0, len(triples), embed_batch_size):
-                batch = triples[batch_start: batch_start + embed_batch_size]
-                batch_texts = [t[1] for t in batch]
-
+                # Flush full batch
                 logger.info(
-                    "Embedding batch %d-%d / %d  (doc %d/%d)",
-                    batch_start + 1,
-                    batch_start + len(batch),
-                    len(triples),
-                    doc_i + 1,
-                    len(documentos),
+                    "Embedding batch of %d chunks  (doc %d/%d, chunk ~%d)  RAM=%.1f%%",
+                    len(batch), doc_i + 1, len(documentos), chunk_index, _ram_pct(),
                 )
-                import torch
-                import gc
-                torch.set_num_threads(1)
                 with torch.inference_mode():
                     embeddings = self.embedder.encode(
-                        batch_texts, show_progress_bar=False, batch_size=embed_batch_size
+                        [t[1] for t in batch], show_progress_bar=False, batch_size=current_batch_size
                     )
                 gc.collect()
-
-                rows = [
-                    (batch[i][0], batch[i][1], json.dumps(batch[i][2]), embeddings[i].tolist())
-                    for i in range(len(batch))
-                ]
-
-                with _get_conn() as conn:
-                    with conn.cursor() as cur:
-                        execute_values(
-                            cur,
-                            """
-                            INSERT INTO document_chunks (chunk_id, texto, metadata, embedding)
-                            VALUES %s
-                            ON CONFLICT (chunk_id) DO UPDATE
-                              SET texto     = EXCLUDED.texto,
-                                  metadata  = EXCLUDED.metadata,
-                                  embedding = EXCLUDED.embedding
-                            """,
-                            rows,
-                            template="(%s, %s, %s::jsonb, %s::vector)",
-                        )
-                    conn.commit()
-
+                self._insert_batch(batch, embeddings)
                 total_upserted += len(batch)
+                del embeddings
+                batch = []
 
-                # Explicitly release the embedding array so GC can reclaim RAM
-                del embeddings, rows
+                current_batch_size = _check_ram(current_batch_size)
+
+            # Flush remainder
+            if batch:
+                logger.info(
+                    "Embedding final batch of %d chunks  (doc %d/%d)  RAM=%.1f%%",
+                    len(batch), doc_i + 1, len(documentos), _ram_pct(),
+                )
+                with torch.inference_mode():
+                    embeddings = self.embedder.encode(
+                        [t[1] for t in batch], show_progress_bar=False, batch_size=current_batch_size
+                    )
+                gc.collect()
+                self._insert_batch(batch, embeddings)
+                total_upserted += len(batch)
+                del embeddings
+
+                current_batch_size = _check_ram(current_batch_size)
 
             logger.info(
-                "Doc %d/%d done — %d chunks upserted so far",
-                doc_i + 1, len(documentos), total_upserted,
+                "Doc %d/%d done — %d chunks upserted so far  (batch_size=%d)",
+                doc_i + 1, len(documentos), total_upserted, current_batch_size,
             )
 
         if total_upserted == 0:
@@ -233,9 +226,193 @@ class RegulatoryRAGSystem:
             return 0
 
         logger.info("Total upserted: %d chunks from %d documents", total_upserted, len(documentos))
-        if rebuild_bm25:
-            self._build_bm25_index()
         return total_upserted
+
+    def _insert_batch(self, batch: list, embeddings) -> None:
+        rows = [
+            (batch[i][0], batch[i][1], json.dumps(batch[i][2]), embeddings[i].tolist())
+            for i in range(len(batch))
+        ]
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO document_chunks (chunk_id, texto, metadata, embedding)
+                    VALUES %s
+                    ON CONFLICT (chunk_id) DO UPDATE
+                      SET texto     = EXCLUDED.texto,
+                          metadata  = EXCLUDED.metadata,
+                          embedding = EXCLUDED.embedding
+                    """,
+                    rows,
+                    template="(%s, %s, %s::jsonb, %s::vector)",
+                )
+            conn.commit()
+
+    def _insert_chunks_no_embed(self, batch: list) -> None:
+        """Insert chunks without embeddings (embedding stays NULL).
+
+        On conflict, updates texto/metadata but leaves any existing embedding intact.
+        """
+        rows = [(item[0], item[1], json.dumps(item[2])) for item in batch]
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO document_chunks (chunk_id, texto, metadata)
+                    VALUES %s
+                    ON CONFLICT (chunk_id) DO UPDATE
+                      SET texto    = EXCLUDED.texto,
+                          metadata = EXCLUDED.metadata
+                    """,
+                    rows,
+                    template="(%s, %s, %s::jsonb)",
+                )
+            conn.commit()
+
+    def insert_chunks_only(self, documentos: List[Dict[str, Any]], insert_batch_size: int = 100) -> int:
+        """Chunk documents and insert into DB with embedding=NULL.
+
+        Use embed_pending() afterwards to fill in the embeddings.
+        """
+        total = 0
+        seen_ids: set = set()
+
+        for doc_i, doc in enumerate(documentos):
+            doc_id = doc.get("metadata", doc).get("documento_id", doc.get("source", f"doc_{doc_i}"))
+
+            batch: list = []
+            chunk_index = 0
+
+            pre_chunks = doc.get("chunks")
+            chunk_iter = iter(pre_chunks) if pre_chunks is not None else self._iter_chunks(
+                doc.get("text", doc.get("texto", "")),
+                doc.get("metadata", doc),
+            )
+
+            for chunk in chunk_iter:
+                chunk_id = f"{doc_id}_{chunk_index}"
+                chunk_index += 1
+                if chunk_id in seen_ids:
+                    continue
+                seen_ids.add(chunk_id)
+                batch.append((chunk_id, chunk["texto"], chunk["metadata"]))
+
+                if len(batch) >= insert_batch_size:
+                    self._insert_chunks_no_embed(batch)
+                    total += len(batch)
+                    batch = []
+
+            if batch:
+                self._insert_chunks_no_embed(batch)
+                total += len(batch)
+
+            logger.info("insert_chunks_only: doc %d/%d — %d chunks inserted (total: %d)",
+                        doc_i + 1, len(documentos), chunk_index, total)
+
+        return total
+
+    def embed_pending(self, batch_size: int = 8, ram_limit_pct: float = 80.0) -> int:
+        """Embed all document_chunks rows where embedding IS NULL.
+
+        Reads in batches of `batch_size`, embeds with the loaded model, and
+        UPDATEs the rows in place. Safe to interrupt and resume — already-embedded
+        rows are skipped automatically on the next run.
+
+        Returns the number of rows embedded.
+        """
+        import gc
+        import torch
+        import psutil
+        torch.set_num_threads(1)
+
+        total = 0
+        current_batch_size = batch_size
+
+        while True:
+            with _get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT chunk_id, texto
+                        FROM document_chunks
+                        WHERE embedding IS NULL
+                        ORDER BY id
+                        LIMIT %s
+                        """,
+                        (current_batch_size,),
+                    )
+                    rows = cur.fetchall()
+
+            if not rows:
+                break
+
+            chunk_ids = [r[0] for r in rows]
+            texts = [r[1] for r in rows]
+
+            ram = psutil.virtual_memory().percent
+            logger.info("embed_pending: embedding %d chunks  RAM=%.1f%%", len(rows), ram)
+
+            with torch.inference_mode():
+                embeddings = self.embedder.encode(texts, show_progress_bar=False, batch_size=current_batch_size)
+            gc.collect()
+
+            with _get_conn() as conn:
+                with conn.cursor() as cur:
+                    for chunk_id, emb in zip(chunk_ids, embeddings):
+                        cur.execute(
+                            "UPDATE document_chunks SET embedding = %s::vector WHERE chunk_id = %s",
+                            (emb.tolist(), chunk_id),
+                        )
+                conn.commit()
+
+            total += len(rows)
+            logger.info("embed_pending: %d embedded so far", total)
+
+            ram_after = psutil.virtual_memory().percent
+            if ram_after >= ram_limit_pct:
+                logger.warning("RAM at %.1f%% — halving batch size", ram_after)
+                current_batch_size = max(1, current_batch_size // 2)
+
+        logger.info("embed_pending: done — %d chunks embedded", total)
+        return total
+
+    def _iter_chunks(self, texto: str, metadata: Dict[str, Any]):
+        """Yield chunks one at a time — peak RAM is O(one article), not O(document)."""
+        if not texto or len(texto.strip()) < 100:
+            return
+
+        hier = self._extract_hierarchy(texto)
+        partes = _ARTICULO_PAT.split(texto)
+
+        articulo_actual = None
+        hier_actual = dict(hier)
+        chunk_index = 0
+        had_any = False
+
+        for parte in partes:
+            if _ARTICULO_PAT.match(parte):
+                articulo_actual = parte.strip()
+            else:
+                for m in _TITULO_PAT.finditer(parte):
+                    hier_actual["titulo"] = m.group(1).strip()[:80]
+                for m in _CAPITULO_PAT.finditer(parte):
+                    hier_actual["capitulo"] = m.group(1).strip()[:80]
+                for m in _SECCION_PAT.finditer(parte):
+                    hier_actual["seccion"] = m.group(1).strip()[:80]
+
+                if articulo_actual and parte.strip():
+                    for chunk in self._add_article_chunks(
+                        articulo_actual, parte, metadata, dict(hier_actual), chunk_index
+                    ):
+                        yield chunk
+                        chunk_index += 1
+                        had_any = True
+
+        if not had_any:
+            yield from self._chunk_by_paragraphs(texto, metadata)
 
     # ── Segmentation ──────────────────────────────────────────────────────────
 
@@ -286,25 +463,25 @@ class RegulatoryRAGSystem:
         hier_actual = dict(hier)
         chunk_index = 0
 
+        # Scan parts sequentially to update hierarchy — avoids O(n²) ctx slicing
         for parte in partes:
             if _ARTICULO_PAT.match(parte):
-                # Update hierarchy context up to this article
-                pos = texto.find(parte)
-                if pos >= 0:
-                    ctx = texto[:pos]
-                    for m in _TITULO_PAT.finditer(ctx):
-                        hier_actual["titulo"] = m.group(1).strip()[:80]
-                    for m in _CAPITULO_PAT.finditer(ctx):
-                        hier_actual["capitulo"] = m.group(1).strip()[:80]
-                    for m in _SECCION_PAT.finditer(ctx):
-                        hier_actual["seccion"] = m.group(1).strip()[:80]
                 articulo_actual = parte.strip()
-            elif articulo_actual and parte.strip():
-                new_chunks = self._add_article_chunks(
-                    articulo_actual, parte, metadata, dict(hier_actual), chunk_index
-                )
-                chunks.extend(new_chunks)
-                chunk_index += len(new_chunks)
+            else:
+                # Update hierarchy from non-article text seen so far
+                for m in _TITULO_PAT.finditer(parte):
+                    hier_actual["titulo"] = m.group(1).strip()[:80]
+                for m in _CAPITULO_PAT.finditer(parte):
+                    hier_actual["capitulo"] = m.group(1).strip()[:80]
+                for m in _SECCION_PAT.finditer(parte):
+                    hier_actual["seccion"] = m.group(1).strip()[:80]
+
+                if articulo_actual and parte.strip():
+                    new_chunks = self._add_article_chunks(
+                        articulo_actual, parte, metadata, dict(hier_actual), chunk_index
+                    )
+                    chunks.extend(new_chunks)
+                    chunk_index += len(new_chunks)
 
         if not chunks:
             chunks = self._chunk_by_paragraphs(texto, metadata)
@@ -322,9 +499,8 @@ class RegulatoryRAGSystem:
         sub_chunks = self._sliding_window(contenido.strip(), max_size=800, overlap=150)
 
         # RAG-2: if the article produces multiple sub-chunks, store the full article
-        # text as parent_text in each child's metadata. Retrieval with
-        # expand_to_parent=True replaces the child snippet with the richer full text,
-        # giving the LLM complete article context without sacrificing retrieval precision.
+        # text as parent_text — but only in the FIRST sub-chunk to avoid duplicating
+        # large strings N times in RAM and in the DB rows.
         full_article_text = (
             (f"{prefix}\n\n{contenido.strip()}" if prefix else contenido.strip())
             if len(sub_chunks) > 1
@@ -343,66 +519,45 @@ class RegulatoryRAGSystem:
                 "chunk_index": base_index + i,
                 "longitud": len(text_with_context),
             })
-            if full_article_text:
+            if full_article_text and i == 0:
                 meta["parent_text"] = full_article_text
             result.append({"texto": text_with_context.strip(), "metadata": meta})
         return result
 
-    def _chunk_by_paragraphs(self, texto: str, metadata: Dict) -> List[Dict]:
-        chunks = []
-        source = metadata.get("source", "")
+    def _chunk_by_paragraphs(self, texto: str, metadata: Dict):
         sub_chunks = self._sliding_window(texto, max_size=600, overlap=100)
         for i, sub in enumerate(sub_chunks):
             meta = (metadata.copy() if isinstance(metadata, dict) else {})
             meta.update({"chunk_index": i, "longitud": len(sub)})
-            chunks.append({"texto": sub, "metadata": meta})
-        return chunks
+            yield {"texto": sub, "metadata": meta}
 
-    # ── BM25 ─────────────────────────────────────────────────────────────────
+    # ── Full-text search (Postgres tsvector) ─────────────────────────────────
 
-    def _build_bm25_index(self):
-        # RAG-4: try loading from disk cache first; rebuild if stale or missing
-        db_count = self.collection.count()
-        cache = _load_bm25_cache(self._bm25_cache_path)
-        if (cache and cache.get("count") == db_count and db_count > 0
-                and "corpus_id_to_idx" in cache and "bm25" in cache):
-            self.corpus_ids = cache["corpus_ids"]
-            self.corpus_id_to_idx = cache["corpus_id_to_idx"]
-            self.bm25 = cache["bm25"]
-            logger.info("BM25 index loaded from cache (%d docs)", len(self.corpus_ids))
-            return
+    def _ensure_fts_index(self):
+        """Add texto_tsv column + GIN index if not already present.
 
-        ids = []
-        tokenized = []
-        # Server-side cursor streams rows in batches — avoids fetchall() loading
-        # the entire corpus into RAM at once.
-        conn = _get_conn()
-        try:
-            with conn.cursor("bm25_stream") as cur:
-                cur.itersize = 500
-                cur.execute("SELECT chunk_id, texto FROM document_chunks ORDER BY id")
-                for chunk_id, texto in cur:
-                    ids.append(chunk_id)
-                    tokenized.append(texto.lower().split())
-        finally:
-            conn.close()
-
-        if not ids:
-            logger.warning("No documents in DB for BM25 indexing")
-            return
-
-        self.corpus_ids = ids
-        self.corpus_id_to_idx = {cid: i for i, cid in enumerate(ids)}
-        self.bm25 = BM25Okapi(tokenized)
-        del tokenized  # release tokenized list — BM25 model has what it needs
-        logger.info("BM25 index built with %d documents", len(self.corpus_ids))
-
-        _save_bm25_cache(self._bm25_cache_path, {
-            "count": len(ids),
-            "corpus_ids": self.corpus_ids,
-            "corpus_id_to_idx": self.corpus_id_to_idx,
-            "bm25": self.bm25,
-        })
+        Idempotent — safe to call on every startup.  The column is a STORED
+        generated column so Postgres keeps it in sync automatically on every
+        INSERT/UPDATE; no manual rebuild step is needed after ingestion.
+        """
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    ALTER TABLE document_chunks
+                        ADD COLUMN IF NOT EXISTS texto_tsv tsvector
+                            GENERATED ALWAYS AS
+                            (to_tsvector('spanish', coalesce(texto, ''))) STORED
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_document_chunks_tsv
+                        ON document_chunks USING GIN (texto_tsv)
+                    """
+                )
+            conn.commit()
+        logger.info("FTS index (tsvector/GIN) verified")
 
     # ── Search ────────────────────────────────────────────────────────────────
 
@@ -442,7 +597,10 @@ class RegulatoryRAGSystem:
         rerank: bool = False,
         expand_to_parent: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Hybrid BM25 + semantic search.
+        """Hybrid full-text (ts_rank) + semantic search.
+
+        The keyword leg uses Postgres tsvector/ts_rank (Spanish dictionary)
+        instead of an in-process BM25 index, so no extra RAM is consumed.
 
         Args:
             rerank: If True, retrieve 4× candidates and rerank with a cross-encoder
@@ -451,39 +609,63 @@ class RegulatoryRAGSystem:
                 full parent article text when available (RAG-2). Gives the LLM
                 richer context without sacrificing retrieval precision.
         """
-        # Fetch more candidates when reranking so the reranker has material to work with
         fetch_n = n_resultados * 4 if rerank else n_resultados * 2
 
-        if not self.bm25 or not self.corpus:
-            logger.warning("BM25 index not available, falling back to semantic search")
-            candidates = self.buscar_contexto(pregunta, fetch_n if rerank else n_resultados)
-        else:
-            resultados_semanticos = self.buscar_contexto(pregunta, n_resultados=fetch_n)
+        q_emb = self.embedder.encode([pregunta])[0].tolist()
+        tsquery = " & ".join(
+            w for w in re.sub(r"[^\w\s]", " ", pregunta).split() if len(w) > 2
+        ) or pregunta
 
-            tokenized_query = pregunta.lower().split()
-            scores_bm25 = self.bm25.get_scores(tokenized_query)
-            max_bm25 = max(scores_bm25) if max(scores_bm25) > 0 else 1
-
-            max_dist = (
-                max((c["distancia"] for c in resultados_semanticos if c["distancia"]), default=1)
-            )
-            scores_combinados = []
-            for chunk in resultados_semanticos:
-                idx = self.corpus_id_to_idx.get(chunk["id"])
-                if idx is None:
-                    scores_combinados.append({"chunk": chunk, "score": 0.5})
-                    continue
-                score_sem = (
-                    1 - (chunk["distancia"] / max_dist)
-                    if chunk["distancia"] and max_dist > 0
-                    else 0.5
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    WITH semantic AS (
+                        SELECT chunk_id, texto, metadata,
+                               1 - (embedding <=> %s::vector) AS score_sem
+                        FROM document_chunks
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> %s::vector
+                        LIMIT %s
+                    ),
+                    fts AS (
+                        SELECT chunk_id,
+                               ts_rank(texto_tsv, query) AS score_fts
+                        FROM document_chunks,
+                             to_tsquery('spanish', %s) AS query
+                        WHERE texto_tsv @@ query
+                    )
+                    SELECT s.chunk_id,
+                           s.texto,
+                           s.metadata,
+                           s.score_sem,
+                           coalesce(f.score_fts, 0) AS score_fts
+                    FROM semantic s
+                    LEFT JOIN fts f USING (chunk_id)
+                    """,
+                    (q_emb, q_emb, fetch_n, tsquery),
                 )
-                score_bm25_norm = scores_bm25[idx] / max_bm25
-                score_final = peso_semantico * score_sem + (1 - peso_semantico) * score_bm25_norm
-                scores_combinados.append({"chunk": chunk, "score": score_final})
+                rows = cur.fetchall()
 
-            scores_combinados.sort(key=lambda x: x["score"], reverse=True)
-            candidates = [s["chunk"] for s in scores_combinados]
+        if not rows:
+            return []
+
+        max_fts = max(r[4] for r in rows) or 1.0
+        candidates = []
+        for chunk_id, texto, metadata, score_sem, score_fts in rows:
+            score = (
+                peso_semantico * score_sem
+                + (1 - peso_semantico) * (score_fts / max_fts)
+            )
+            candidates.append({
+                "texto": texto,
+                "metadata": metadata if metadata else {},
+                "distancia": float(1 - score_sem) if score_sem is not None else None,
+                "id": chunk_id,
+                "_score": score,
+            })
+
+        candidates.sort(key=lambda x: x["_score"], reverse=True)
 
         # RAG-1: cross-encoder reranking
         if rerank and candidates:
@@ -623,8 +805,7 @@ class RegulatoryRAGSystem:
         return {
             "total_documents": self.collection.count(),
             "embedding_model": str(self.embedder),
-            "bm25_indexed": self.bm25 is not None,
-            "corpus_size": len(self.corpus_id_to_idx),
+            "fts_backend": "postgres_tsvector",
         }
 
     def clear_collection(self):
@@ -632,9 +813,6 @@ class RegulatoryRAGSystem:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM document_chunks")
             conn.commit()
-        self.bm25 = None
-        self.corpus = []
-        self.corpus_ids = []
         logger.info("document_chunks table cleared")
 
 

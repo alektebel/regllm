@@ -109,6 +109,23 @@ resource "aws_lb_listener_rule" "api_http_2" {
   }
 }
 
+resource "aws_lb_listener_rule" "api_http_3" {
+  count        = var.enable_https ? 0 : 1
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 12
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/pipeline/*", "/compliance/*", "/admin/*"]
+    }
+  }
+}
+
 # ── HTTPS Listener ─────────────────────────────────────────────────────────────
 
 resource "aws_lb_listener" "https" {
@@ -155,6 +172,23 @@ resource "aws_lb_listener_rule" "api_https_2" {
   condition {
     path_pattern {
       values = ["/chat/*", "/docs", "/docs/*", "/openapi.json", "/redoc"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "api_https_3" {
+  count        = var.enable_https ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 12
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/pipeline/*", "/compliance/*", "/admin/*"]
     }
   }
 }

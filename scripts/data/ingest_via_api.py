@@ -85,13 +85,6 @@ def main():
         total += n
         logger.info("  -> %d chunks (total: %d)", n, total)
 
-    logger.info("Rebuilding BM25...")
-    resp = session.post(f"{API_URL}/admin/bm25-rebuild", timeout=120)
-    if resp.status_code == 200:
-        logger.info("BM25 rebuilt: %s", resp.json())
-    else:
-        logger.error("BM25 rebuild failed: %s", resp.text[:200])
-
     logger.info("Done — %d chunks indexed", total)
 
 

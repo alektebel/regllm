@@ -32,10 +32,15 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[])
 # ─── Globals ──────────────────────────────────────────────────────────────────
 
 _chat_engine = None
+_rag = None
 
 
 def get_engine_instance():
     return _chat_engine
+
+
+def get_rag_instance():
+    return _rag
 
 
 # ─── Lifespan ─────────────────────────────────────────────────────────────────
@@ -43,13 +48,27 @@ def get_engine_instance():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _chat_engine
+    global _chat_engine, _rag
 
     logging.basicConfig(
         level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
         format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
         force=True,
     )
+
+    # Run Alembic migrations (idempotent — safe on every startup)
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            capture_output=True, text=True, cwd=str(Path(__file__).parent.parent)
+        )
+        if result.returncode == 0:
+            logger.info("Alembic migrations: %s", result.stdout.strip() or "up to date")
+        else:
+            logger.warning("Alembic migration warning: %s", result.stderr.strip())
+    except Exception as e:
+        logger.warning("Alembic migration skipped: %s", e)
 
     # Init DB tables
     try:
@@ -66,6 +85,7 @@ async def lifespan(app: FastAPI):
         from src.chat_engine import ChatEngine
 
         rag = RegulatoryRAGSystem()
+        _rag = rag
         logger.info(f"RAG ready — {rag.collection.count()} document chunks")
 
         try:
@@ -105,11 +125,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import auth, conversations, chat  # noqa: E402
+from api.routers import auth, conversations, chat, compliance, admin, pipeline  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(conversations.router)
 app.include_router(chat.router)
+app.include_router(compliance.router)
+app.include_router(admin.router)
+app.include_router(pipeline.router)
 
 
 @app.get("/health")

@@ -179,8 +179,7 @@ class RegulatoryCLI:
             print("\n--- Estadisticas del Sistema ---")
             print(f"Total documentos: {stats['total_documents']}")
             print(f"Modelo embeddings: {stats['embedding_model']}")
-            print(f"BM25 indexado: {'Si' if stats['bm25_indexed'] else 'No'}")
-            print(f"Tamano corpus: {stats['corpus_size']}")
+            print(f"Busqueda de texto: {stats.get('fts_backend', 'postgres_tsvector')}")
 
         elif cmd[0] == '/help':
             print("\nComandos disponibles:")

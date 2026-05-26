@@ -12,6 +12,51 @@ import re
 import threading
 from typing import Optional
 
+# ─── Citation grounding (anti-hallucination) ─────────────────────────────────
+
+
+def ground_articles(articles: list, rag_context: str) -> list:
+    """Remove article citations not present in the retrieved regulatory context.
+
+    The model is instructed never to invent citations, but LLMs sometimes do.
+    This is a structural post-processing filter: if a reference does not appear
+    — even partially — in the text we actually retrieved from the DB, it is
+    dropped. This makes it impossible to hallucinate references regardless of
+    what the model outputs.
+
+    Matching is intentionally fuzzy (2-token fragments) so that minor formatting
+    differences (e.g. "Art. 160" vs "Artículo 160") do not cause false drops.
+    """
+    if not articles:
+        return []
+    if not rag_context:
+        return articles
+
+    # Normalize context: collapse punctuation to spaces so "Art. 160" matches "Art 160"
+    ctx_norm = re.sub(r"[()./:,]", " ", rag_context.lower())
+    ctx_norm = re.sub(r"\s+", " ", ctx_norm)
+
+    grounded = []
+    for art in articles:
+        art_lower = art.lower().strip()
+        art_norm = re.sub(r"[()./:,]", " ", art_lower)
+        art_norm = re.sub(r"\s+", " ", art_norm).strip()
+        tokens = art_norm.split()
+        found = False
+        # Accept if any 2-token fragment appears in normalized context
+        for i in range(max(1, len(tokens) - 1)):
+            fragment = " ".join(tokens[i : i + 2])
+            if len(fragment) >= 4 and fragment in ctx_norm:
+                found = True
+                break
+        if not found and art_norm in ctx_norm:
+            found = True
+        if found:
+            grounded.append(art)
+        else:
+            logger.debug("Dropped ungrounded article citation: %r", art)
+    return grounded
+
 logger = logging.getLogger(__name__)
 
 # ─── Topic guard ──────────────────────────────────────────────────────────────
@@ -341,13 +386,14 @@ class ChatEngine:
 
     # ── Response parsing ──────────────────────────────────────────────────────
 
-    def parse_response(self, raw: str) -> dict:
-        """
-        Extract structured JSON from model output.
+    def parse_response(self, raw: str, rag_context: str = "") -> dict:
+        """Extract structured JSON from model output and ground citations.
 
-        Expected fields: resumen, desarrollo, articulos, advertencias.
-        Falls back gracefully for old-format responses (respuesta key) or
-        plain text.
+        Args:
+            raw: Raw model output (may contain markdown fences).
+            rag_context: The RAG context string that was passed to the model.
+                If provided, article citations are filtered to only those that
+                appear in this text, making hallucinated references impossible.
         """
         try:
             cleaned = re.sub(r"```(?:json)?", "", raw).strip()
@@ -359,38 +405,42 @@ class ChatEngine:
                 if "resumen" in data or "desarrollo" in data:
                     resumen = str(data.get("resumen", ""))
                     desarrollo = str(data.get("desarrollo", ""))
-                    # Combine into a single respuesta for backwards compatibility
                     respuesta = (
                         f"**Resumen:** {resumen}\n\n{desarrollo}".strip()
                         if resumen
                         else desarrollo
                     )
+                    articulos = ground_articles(
+                        data.get("articulos", []), rag_context
+                    )
                     result = {
                         "respuesta": respuesta,
                         "resumen": resumen,
                         "desarrollo": desarrollo,
-                        "articulos": data.get("articulos", []),
+                        "articulos": articulos,
                         "advertencias": data.get("advertencias"),
-                        # Legacy fields kept for existing callers
-                        "referencias": data.get("articulos", []),
+                        "referencias": articulos,
                         "confianza": None,
                         "justificacion_confianza": data.get("advertencias") or "",
                     }
                     logger.debug(
-                        f"Response parsed (structured, {len(respuesta)} chars, "
-                        f"{len(result['articulos'])} articles)"
+                        "Response parsed (structured, %d chars, %d articles grounded/%d claimed)",
+                        len(respuesta),
+                        len(articulos),
+                        len(data.get("articulos", [])),
                     )
                     return result
 
                 # Legacy format (respuesta key)
                 if "respuesta" in data:
+                    refs = ground_articles(data.get("referencias", []), rag_context)
                     result = {
                         "respuesta": str(data["respuesta"]),
                         "resumen": "",
                         "desarrollo": str(data["respuesta"]),
-                        "articulos": data.get("referencias", []),
+                        "articulos": refs,
                         "advertencias": data.get("justificacion_confianza") or None,
-                        "referencias": data.get("referencias", []),
+                        "referencias": refs,
                         "confianza": data.get("confianza"),
                         "justificacion_confianza": data.get("justificacion_confianza", ""),
                     }

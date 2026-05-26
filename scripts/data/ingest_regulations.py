@@ -30,7 +30,7 @@ from pathlib import Path
 
 import requests
 
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)-8s %(message)s")
@@ -162,27 +162,84 @@ SOURCES: list[dict] = [
         "framework": "MiFID2",
         "tags": ["mercados", "gobierno", "mejor_ejecucion", "idoneidad"],
     },
+    # ── Local PDFs ────────────────────────────────────────────────────────────
+    {
+        "id": "ecb_ssm_guide_2025",
+        "name": "ECB SSM Supervisory Guide 2025",
+        "url": "local:data/raw/ssm.supervisory_guide202507.en.pdf",
+        "type": "local_pdf",
+        "framework": "ECB_SSM",
+        "tags": ["supervision", "srep", "icaap", "ilaap", "ssm"],
+    },
+    {
+        "id": "eba_gl_2016_07",
+        "name": "EBA/GL/2016/07 — Directrices sobre definición de default (IRB)",
+        "url": "local:data/raw/pdf/EBA-GL-2016-07-ES.pdf",
+        "type": "local_pdf",
+        "framework": "EBA_GL",
+        "tags": ["irb", "default", "definicion_impago", "riesgo_credito"],
+    },
+    {
+        "id": "eba_report_irb_modelling",
+        "name": "EBA Report on IRB Modelling Practices",
+        "url": "local:data/raw/pdf/EBA Report on IRB modelling practices.pdf",
+        "type": "local_pdf",
+        "framework": "EBA_GL",
+        "tags": ["irb", "modelos", "pd", "lgd", "ead", "validacion"],
+    },
+    {
+        "id": "eba_irb_survey_instructions",
+        "name": "EBA Instructions for Qualitative Survey on IRB Models (Dec 2016)",
+        "url": "local:data/raw/pdf/Instructions for the EBA qualitative survey on IRB models (Dec 2016).pdf",
+        "type": "local_pdf",
+        "framework": "EBA_GL",
+        "tags": ["irb", "modelos", "survey", "validacion"],
+    },
+    {
+        "id": "crr_delegated_529_2014",
+        "name": "Reglamento Delegado (UE) 529/2014 — Umbrales de materialidad para enfoques internos (CRR)",
+        "url": "local:data/raw/CELEX_32014R0529_ES_TXT.pdf",
+        "type": "local_pdf",
+        "framework": "CRR",
+        "tags": ["irb", "materialidad", "crr", "enfoques_internos"],
+    },
+    {
+        "id": "eba_rts_irb_assessment",
+        "name": "EBA Final Draft RTS on Assessment Methodology for IRB",
+        "url": "local:data/raw/Final Draft RTS on Assessment Methodology for IRB.pdf",
+        "type": "local_pdf",
+        "framework": "EBA_GL",
+        "tags": ["irb", "assessment_methodology", "validacion", "rts"],
+    },
+    {
+        "id": "eba_irb_validation_handbook",
+        "name": "EBA Supervisory Handbook on Validation of IRB Rating Systems",
+        "url": "local:data/raw/Supervisory handbook on the validation of IRB rating systems revised.pdf",
+        "type": "local_pdf",
+        "framework": "EBA_GL",
+        "tags": ["irb", "validacion", "rating_systems", "supervision"],
+    },
     # ── EBA Guidelines (PDFs) ─────────────────────────────────────────────────
     {
         "id": "eba_gl_2017_16",
-        "name": "EBA/GL/2017/16 Rev2 — Estimación de PD, LGD y tratamiento de exposiciones en default (IRB)",
-        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2017/EBA-GL-2017-16/EBA-GL-2017-16-Guidelines-on-PD-LGD-estimation-and-treatment-of-defaulted-exposures.pdf",
+        "name": "EBA/GL/2017/16 — Estimación de PD, LGD y tratamiento de exposiciones en default (IRB)",
+        "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2033363/6b062012-45d6-4655-af04-801d26493ed0/Guidelines%20on%20PD%20and%20LGD%20estimation%20%28EBA-GL-2017-16%29.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
         "tags": ["irb", "pd", "lgd", "ead", "riesgo_credito", "default"],
     },
     {
         "id": "eba_gl_2020_06",
-        "name": "EBA/GL/2020/06 — Directrices ICAAP e ILAAP",
-        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2020/EBA-GL-2020-06/872842/EBA%20GL%202020%2006%20Final%20Report%20on%20GL%20on%20ICAAP%20and%20ILAAP.pdf",
+        "name": "EBA/GL/2020/06 — Directrices sobre originación y seguimiento de préstamos",
+        "url": "https://www.eba.europa.eu/sites/default/files/document_library/Publications/Guidelines/2020/Guidelines%20on%20loan%20origination%20and%20monitoring/884283/EBA%20GL%202020%2006%20Final%20Report%20on%20GL%20on%20loan%20origination%20and%20monitoring.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
-        "tags": ["icaap", "ilaap", "capital_interno", "pilar2"],
+        "tags": ["originacion", "credito", "gobierno", "underwriting"],
     },
     {
-        "id": "eba_gl_2022_12",
-        "name": "EBA/GL/2022/12 — Directrices IRRBB y CSRBB",
-        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2022/EBA-GL-2022-12/1051744/Final%20Report%20on%20Guidelines%20on%20IRRBB%20and%20CSRBB.pdf",
+        "id": "eba_gl_2022_14",
+        "name": "EBA/GL/2022/14 — Directrices IRRBB y CSRBB",
+        "url": "https://www.eba.europa.eu/sites/default/files/document_library/Publications/Guidelines/2022/EBA-GL-2022-14%20GL%20on%20IRRBB%20and%20CSRBB/1041754/Guidelines%20on%20IRRBB%20and%20CSRBB.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
         "tags": ["irrbb", "csrbb", "riesgo_tipo_interes", "pilar2"],
@@ -190,26 +247,18 @@ SOURCES: list[dict] = [
     {
         "id": "eba_gl_2018_10",
         "name": "EBA/GL/2018/10 — Directrices sobre créditos dudosos (NPE/NPL)",
-        "url": "https://www.eba.europa.eu/sites/default/documents/files/documents/10180/2425705/b4bcf67f-5b41-4e4e-8d91-4b18e7c2a900/EBA_GL_2018_10_Final_Guidelines_on_NPEs.pdf",
+        "url": "https://www.eba.europa.eu/sites/default/files/documents/10180/2425705/371ff4ba-d7db-4fa9-a3c7-231cb9c2a26a/Final%20Guidelines%20on%20management%20of%20non-performing%20and%20forborne%20exposures.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
         "tags": ["npe", "npl", "creditos_dudosos", "stage3", "ifrs9"],
     },
     {
-        "id": "eba_gl_2020_05",
-        "name": "EBA/GL/2020/05 — Directrices sobre originación y seguimiento de préstamos",
-        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2020/EBA-GL-2020-05/872841/EBA%20GL%202020%2005%20Final%20Report%20on%20GL%20on%20loan%20origination%20and%20monitoring.pdf",
-        "type": "pdf",
-        "framework": "EBA_GL",
-        "tags": ["originacion", "credito", "gobierno", "underwriting"],
-    },
-    {
         "id": "eba_gl_2021_07",
-        "name": "EBA/GL/2021/07 — Directrices sobre el método estándar de riesgo de crédito",
-        "url": "https://www.eba.europa.eu/sites/default/documents/files/document_library/Publications/Guidelines/2021/EBA-GL-2021-07/1015613/EBA%20GL%202021%2007%20Guidelines%20on%20STA%20credit%20risk.pdf",
+        "name": "EBA/GL/2021/07 — Directrices sobre criterios para datos de entrada del IMA (FRTB)",
+        "url": "https://www.eba.europa.eu/sites/default/files/document_library/Publications/Guidelines/2021/1017268/Guidelines%20on%20use%20of%20data%20inputs%20in%20the%20IMA.pdf",
         "type": "pdf",
         "framework": "EBA_GL",
-        "tags": ["sa_cr", "riesgo_credito", "ponderacion", "estandar"],
+        "tags": ["frtb", "ima", "riesgo_mercado", "datos_entrada"],
     },
 ]
 
@@ -281,6 +330,7 @@ def _parse_eurlex_html(content: bytes) -> str:
             lines.append(line)
 
     text = "\n".join(lines)
+    del soup  # free lxml DOM (C extension memory) as early as possible
 
     # Collapse excessive blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -291,14 +341,19 @@ def _parse_pdf(content: bytes) -> str:
     import io
     import pdfplumber
 
-    text_parts = []
+    buf = io.StringIO()
+    first = True
     with pdfplumber.open(io.BytesIO(content)) as pdf:
         for page in pdf.pages:
             page_text = page.extract_text(x_tolerance=2, y_tolerance=2)
             if page_text:
-                text_parts.append(page_text)
+                if not first:
+                    buf.write("\n\n")
+                buf.write(page_text)
+                first = False
 
-    text = "\n\n".join(text_parts)
+    text = buf.getvalue()
+    buf.close()
     # Clean up common PDF artifacts
     text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)   # dehyphenate
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -310,6 +365,22 @@ def fetch_source(source: dict) -> str | None:
     url = source["url"]
     logger.info(f"Fetching: {source['name']}")
     logger.info(f"  URL: {url}")
+
+    if source["type"] == "local_pdf":
+        local_path = PROJECT_ROOT / url.removeprefix("local:")
+        if not local_path.exists():
+            logger.error(f"  Local file not found: {local_path}")
+            return None
+        try:
+            text = _parse_pdf(local_path.read_bytes())
+        except Exception as e:
+            logger.error(f"  FAILED to parse local PDF: {e}")
+            return None
+        if len(text) < 500:
+            logger.warning(f"  Very short text ({len(text)} chars) — skipping")
+            return None
+        logger.info(f"  Parsed {len(text):,} chars from local file")
+        return text
 
     try:
         content = _download(url)
@@ -349,10 +420,91 @@ def main():
         help="Chunks per embedding batch (lower = less RAM, default: 8)",
     )
     parser.add_argument(
-        "--skip-bm25", action="store_true",
-        help="Skip BM25 index rebuild after ingestion (saves ~0.5-2 GB RAM)",
+        "--from-file", metavar="PATH",
+        help="Ingest from a local JSON snapshot (list of {text, source, url, ...}) instead of fetching",
+    )
+    parser.add_argument(
+        "--llm-chunk", action="store_true",
+        help="Use local Ollama model to chunk articles (cleaner, one chunk per article, no sliding window)",
+    )
+    parser.add_argument(
+        "--chunk-model", default="qwen2.5:14b-instruct-q4_K_M",
+        help="Ollama model for LLM chunking (default: qwen2.5:14b-instruct-q4_K_M)",
+    )
+    parser.add_argument(
+        "--no-embed", action="store_true",
+        help="Insert chunks with embedding=NULL; run --embed-pending separately to fill embeddings",
+    )
+    parser.add_argument(
+        "--embed-pending", action="store_true",
+        help="Embed all document_chunks rows where embedding IS NULL, then exit",
     )
     args = parser.parse_args()
+
+    # ── Embed-pending shortcut (no ingestion) ─────────────────────────────────
+    if args.embed_pending:
+        logger.info("Loading RAG system and embedding model…")
+        from src.rag_system import RegulatoryRAGSystem
+        rag = RegulatoryRAGSystem()
+        n = rag.embed_pending(batch_size=args.embed_batch_size)
+        logger.info("Done — %d chunks embedded", n)
+        return
+
+    # ── Local file ingestion path ──────────────────────────────────────────────
+    if args.from_file:
+        import json as _json
+        path = Path(args.from_file)
+        if not path.exists():
+            logger.error(f"File not found: {path}")
+            sys.exit(1)
+        raw_docs = _json.loads(path.read_text())
+        logger.info(f"Loaded {len(raw_docs)} docs from {path}")
+
+        if args.source:
+            raw_docs = [d for d in raw_docs if args.source.lower() in d.get("source", "").lower()
+                        or args.source.lower() in d.get("url", "").lower()]
+            logger.info(f"  Filtered to {len(raw_docs)} docs matching --source={args.source!r}")
+
+        if not raw_docs:
+            logger.error("No docs to ingest.")
+            sys.exit(1)
+
+        if args.dry_run:
+            for d in raw_docs:
+                logger.info(f"  Would ingest: {d.get('source','?')} — {len(d.get('text',''))} chars")
+            return
+
+        logger.info("Loading RAG system and embedding model…")
+        from src.rag_system import RegulatoryRAGSystem
+        rag = RegulatoryRAGSystem()
+
+        total_chunks = 0
+        for i, d in enumerate(raw_docs, 1):
+            text = d.get("text", "")
+            if len(text) < 500:
+                logger.warning(f"  [{i}] Too short ({len(text)} chars), skipping")
+                continue
+            doc = {
+                "text": text,
+                "metadata": {
+                    "documento_id": d.get("url", f"local_{i}"),
+                    "source": d.get("source", d.get("title", f"doc_{i}")),
+                    "framework": d.get("type", "scraped"),
+                    "tags": d.get("keywords", []),
+                    "url": d.get("url", ""),
+                },
+            }
+            logger.info(f"[{i}/{len(raw_docs)}] Ingesting: {doc['metadata']['source']} ({len(text):,} chars)")
+            if args.no_embed:
+                n = rag.insert_chunks_only([doc])
+            else:
+                n = rag.procesar_documentos([doc], embed_batch_size=args.embed_batch_size)
+            total_chunks += n
+            del text
+            logger.info(f"  → {n} chunks (running total: {total_chunks})")
+
+        logger.info(f"Done — {total_chunks} total chunks ingested from {path.name}")
+        return
 
     sources = SOURCES
     if args.source:
@@ -385,25 +537,41 @@ def main():
             del text
             continue
 
-        # Lazy-load RAG on first doc that needs ingesting
+        # Force GC to release BeautifulSoup/lxml DOM before loading the 1 GB model.
+        # lxml uses C extensions that don't free via refcounting alone.
+        import gc
+        gc.collect()
+
+        # Lazy-load RAG on first doc that needs ingesting.
+        # With --no-embed we skip loading the embedding model (much faster startup).
         if rag is None:
-            logger.info("Loading RAG system and embedding model…")
+            logger.info("Loading RAG system%s…", "" if args.no_embed else " and embedding model")
             from src.rag_system import RegulatoryRAGSystem
-            rag = RegulatoryRAGSystem(build_bm25_on_init=False)
+            rag = RegulatoryRAGSystem()
 
         ingested += 1
         logger.info(f"[{ingested}] Ingesting: {source['name']}")
-        doc = {
-            "text": text,
-            "metadata": {
-                "documento_id": source["id"],
-                "source": source["name"],
-                "framework": source["framework"],
-                "tags": source["tags"],
-                "url": source["url"],
-            },
+        source_meta = {
+            "documento_id": source["id"],
+            "source": source["name"],
+            "framework": source["framework"],
+            "tags": source["tags"],
+            "url": source["url"],
         }
-        n = rag.procesar_documentos([doc], rebuild_bm25=False, embed_batch_size=args.embed_batch_size)
+
+        if args.llm_chunk:
+            from src.chunking.llm_chunker import chunk_regulation
+            logger.info("  LLM chunking with %s…", args.chunk_model)
+            chunks = chunk_regulation(text, source_meta, model=args.chunk_model)
+            logger.info("  → %d article chunks", len(chunks))
+            doc = {"chunks": chunks, "metadata": source_meta}
+        else:
+            doc = {"text": text, "metadata": source_meta}
+
+        if args.no_embed:
+            n = rag.insert_chunks_only([doc])
+        else:
+            n = rag.procesar_documentos([doc], embed_batch_size=args.embed_batch_size)
         total_chunks += n
         checksums[source["id"]] = checksum
         del text  # release parsed text before fetching next doc
@@ -415,13 +583,7 @@ def main():
         logger.info("Nothing to do.")
         return
 
-    if args.skip_bm25:
-        logger.info("Skipping BM25 rebuild (--skip-bm25 set).")
-    else:
-        logger.info("Rebuilding BM25 index…")
-        rag._build_bm25_index()
-        logger.info(f"Done — {total_chunks} chunks indexed")
-
+    logger.info(f"Done — {total_chunks} chunks ingested")
     _save_checksums(checksums)
     logger.info(f"Checksums saved to {CHECKSUMS_FILE}")
 
