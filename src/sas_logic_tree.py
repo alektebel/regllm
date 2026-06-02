@@ -507,6 +507,10 @@ _LINEAGE_SKIP = {
     'COALESCE', 'IFN', 'IFC',
     # Library/dataset name prefixes
     'WORK', 'MYLIB',
+    # FIRST./LAST. group markers and common loop vars
+    'FIRST', 'LAST', 'I', 'J', 'K',
+    # ARRAY pseudo-variables
+    'TEMPORARY',
 }
 
 
