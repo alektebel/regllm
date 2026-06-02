@@ -125,7 +125,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import auth, conversations, chat, compliance, admin, pipeline  # noqa: E402
+from api.routers import auth, conversations, chat, compliance, admin, pipeline, sas  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(conversations.router)
@@ -133,6 +133,7 @@ app.include_router(chat.router)
 app.include_router(compliance.router)
 app.include_router(admin.router)
 app.include_router(pipeline.router)
+app.include_router(sas.router)
 
 
 @app.get("/health")

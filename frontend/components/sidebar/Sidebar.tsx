@@ -1,15 +1,13 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { MessageSquarePlus, ShieldCheck, GitBranch, Trash2, LogOut } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+import { MessageSquarePlus, ShieldCheck, GitBranch, Code2, Trash2 } from "lucide-react";
 import { useConversations } from "@/hooks/useConversations";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { logout } = useAuth();
   const { conversations, loading, createConversation, deleteConversation } =
     useConversations();
 
@@ -76,6 +74,18 @@ export function Sidebar() {
           <GitBranch size={14} />
           Audit Pipeline
         </button>
+        <button
+          onClick={() => router.push("/sas")}
+          className={cn(
+            "w-full flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            pathname.startsWith("/sas")
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+          )}
+        >
+          <Code2 size={14} />
+          SAS Compiler
+        </button>
       </div>
 
       <div className="h-px bg-border mx-2 mb-1" />
@@ -118,16 +128,6 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-border px-4 py-3">
-        <button
-          onClick={logout}
-          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <LogOut size={13} />
-          Sign out
-        </button>
-      </div>
     </aside>
   );
 }
