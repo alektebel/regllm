@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+WORKDIR /app
+
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart
+
+COPY src/sas_logic_tree.py ./src/sas_logic_tree.py
+COPY src/sas_parser.py     ./src/sas_parser.py
+COPY src/__init__.py       ./src/__init__.py
+COPY api/routers/sas.py    ./api/routers/sas.py
+COPY api/__init__.py       ./api/__init__.py
+COPY api/main_sas.py       ./api/main_sas.py
+COPY data/samples/         ./data/samples/
+
+EXPOSE 8000
+CMD ["uvicorn", "api.main_sas:app", "--host", "0.0.0.0", "--port", "8000"]
