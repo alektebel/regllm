@@ -5,6 +5,8 @@ const internalApiUrl = process.env.INTERNAL_API_URL || "http://localhost:8000";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  // Allow access from any host on the local network during development
+  allowedDevOrigins: ["*"],
   async rewrites() {
     return [
       {
