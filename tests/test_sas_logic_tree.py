@@ -8,6 +8,7 @@ import pytest
 from src.sas_logic_tree import (
     SASLogicTree,
     AssignNode, IfNode, FilterNode, DataStepNode, ProcNode,
+    trace_field_ancestors,
 )
 
 tree = SASLogicTree()
@@ -288,3 +289,55 @@ class TestEvaluation:
         assert "PD" in summary
         assert "0.0001" in summary
         assert "0.0003" in summary
+
+
+class TestTraceFieldAncestors:
+
+    def test_ecl_backward_deps(self):
+        code = """
+        DATA work.ecl_calc;
+            SET work.inputs;
+            ECL = PD_ESTIMADA * LGD_ESTIMADA * EAD;
+        RUN;
+        """
+        nodes = tree.parse(code)
+        lg = tree.lineage(nodes)
+        trace = trace_field_ancestors(lg, "ECL")
+        assert trace["found"] is True
+        assert {"PD_ESTIMADA", "LGD_ESTIMADA", "EAD"}.issubset(set(trace["ancestors"]))
+        assert trace["depth"]["ECL"] == 0
+        assert trace["depth"]["EAD"] == 1
+        assert len(trace["layers"]) >= 2
+
+    def test_intermediate_field_trace(self):
+        code = """
+        DATA work.step1;
+            SET work.inputs;
+            X = A + B;
+        RUN;
+        DATA work.step2;
+            SET work.step1;
+            Y = X * C;
+        RUN;
+        """
+        nodes = tree.parse(code)
+        lg = tree.lineage(nodes)
+        trace = trace_field_ancestors(lg, "Y")
+        assert "X" in trace["ancestors"]
+        assert {"A", "B", "C"}.issubset(set(trace["ancestors"]))
+        assert len(trace["nodes"]) == len(trace["depth"])
+
+    def test_api_lineage_with_target(self):
+        from fastapi.testclient import TestClient
+        from api.main import app
+        code = "DATA w.o; SET w.i; ECL = PD * LGD * EAD; RUN;"
+        client = TestClient(app)
+        r = client.post("/sas/lineage", json={
+            "code": code,
+            "target": "ECL",
+            "ancestors_only": True,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["target"] == "ECL"
+        assert {"PD", "LGD", "EAD"}.issubset(set(data["ancestors"]))

@@ -5,8 +5,10 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "RegLLM — Spanish Banking Regulation AI",
-  description: "AI assistant for EBA, CRR/CRD IV, and Basel III/IV",
+  title: "RegLLM — SAS Diff Explainer",
+  description:
+    "Why does this field differ between table V2 and V3? Path-integrated " +
+    "gradients + Shapley values, grounded by a change-log GraphRAG.",
 };
 
 export default function RootLayout({
@@ -15,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className="dark">
+    <html lang="en" className="dark">
       <body className={inter.className}>{children}</body>
     </html>
   );

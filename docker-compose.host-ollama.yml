@@ -1,0 +1,30 @@
+# Override: use the host machine's Ollama instead of the dockerised one.
+#
+# This skips downloading the model into the container's volume. Useful if
+# you already have Ollama installed on the host with the model pulled
+# (verify: `ollama list`).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.host-ollama.yml up -d
+#
+# Prerequisites:
+#   - Ollama running on the host with the configured model pulled.
+#   - On Windows / macOS: Docker Desktop exposes `host.docker.internal`
+#     out of the box.
+#   - On Linux: Docker daemon ≥ 20.10 supports `host-gateway` (already
+#     wired in the base compose file).
+#
+# Note: the Linux Ollama default binds to 127.0.0.1 only. Either:
+#   - export OLLAMA_HOST=0.0.0.0:11434 before `ollama serve`, or
+#   - just use the dockerised Ollama (delete this override).
+
+services:
+  ollama:
+    profiles: ["disabled"]
+  ollama-init:
+    profiles: ["disabled"]
+
+  api:
+    depends_on: !reset []
+    environment:
+      OLLAMA_URL: "http://host.docker.internal:11434"

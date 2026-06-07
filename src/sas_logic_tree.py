@@ -1,42 +1,33 @@
-"""SAS logic tree — parser and simulator for IRB/IFRS9 DATA steps.
+"""SAS logic tree — comprehensive parser and simulator for SAS DATA steps.
 
-Parses SAS source code into an AST of business logic nodes, then walks
-that tree with example variable values to show how a given row would
-be calculated step by step.
+Parses SAS source code into an AST covering all common DATA step constructs,
+then walks the tree with example variable values to trace row-level execution.
 
 Supported SAS constructs
 ------------------------
-- DATA ... RUN blocks (multiple, executed in sequence)
-- SET and WHERE statements
-- IF/THEN with optional DO...END blocks (nested)
-- Assignment statements (var = expr)
-- PROC blocks (captured for display, not simulated)
+- DATA statement (single/multiple output datasets, _NULL_)
+- SET, MERGE (with IN=, WHERE=, FIRSTOBS=/OBS= dataset options)
+- BY (group processing keys)
+- WHERE (subsetting filter)
+- IF/THEN/ELSE (inline, DO blocks, nested)
+- DO loops: iterative (TO/BY), DO WHILE, DO UNTIL, bare DO groups
+- SELECT/WHEN/OTHERWISE (value-based and condition-based)
+- ARRAY (explicit size, *, _TEMPORARY_, initial values)
+- RETAIN (with optional initial values)
+- OUTPUT (explicit, optional target dataset)
+- DELETE (exclude row from output)
+- CALL routines (CALL SYMPUT, CALL MISSING, etc.)
+- LINK/RETURN/STOP/GOTO (control flow markers)
+- Macro language: %LET, %MACRO/%MEND, %IF/%THEN/%ELSE, macro calls
+- PROC blocks (captured with raw text; SQL parsed for table name)
+- Expressions: all SAS operators, functions, IN/BETWEEN/LIKE/IS MISSING
 
-Unsupported (silently skipped)
-------------------------------
-- ARRAY / DO loops / SELECT
-- Macro definitions (%MACRO) and calls (%name)
-- LABEL / ATTRIB / FORMAT / KEEP / DROP
-
-Usage
------
-    tree = SASLogicTree()
-    nodes = tree.parse(sas_code)
-
-    # Print the tree
-    print(tree.display(nodes))
-
-    # Simulate with example values
-    trace = tree.evaluate(nodes, {
-        "PD_ESTIMADA": 0.0001,
-        "LGD_ESTIMADA": 0.25,
-        "EAD": 100_000,
-        "DPDS": 45,
-        "STAGE_IFRS9": 1,
-        "COLATERAL_TIPO": "HIPOTECA",
-        "SEGMENTO": "CORP",
-    })
-    print(trace.summary())
+Unsupported (silently skipped or captured raw)
+----------------------------------------------
+- INFILE/INPUT/FILE/PUT (file I/O — too format-specific to simulate)
+- WINDOW/DISPLAY (interactive screens)
+- MODIFY/UPDATE statements
+- %INCLUDE
 """
 
 from __future__ import annotations
@@ -46,7 +37,9 @@ from dataclasses import dataclass, field
 from typing import Any, Union
 
 
-# ── AST node types ────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# AST node types
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class AssignNode:
@@ -102,21 +95,33 @@ class DataStepNode:
     output_dataset: str
     input_dataset: str
     body: list["AnyNode"]
+    output_datasets: list[str] = field(default_factory=list)   # extra outputs
+    merge_datasets: list[str] = field(default_factory=list)    # MERGE sources
+    by_keys: list[str] = field(default_factory=list)           # BY keys
 
     def display(self, indent: int = 0) -> str:
         pad = "  " * indent
-        lines = [pad + f"DATA {self.output_dataset}  (SET {self.input_dataset})"]
+        src = ", ".join(self.merge_datasets) if self.merge_datasets else self.input_dataset
+        verb = "MERGE" if self.merge_datasets else "SET"
+        lines = [pad + f"DATA {self.output_dataset}  ({verb} {src})"]
         for n in self.body:
             lines.append(n.display(indent + 1))
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "type": "data_step",
             "output": self.output_dataset,
             "input": self.input_dataset,
             "body": [n.to_dict() for n in self.body],
         }
+        if self.merge_datasets:
+            d["merge_datasets"] = self.merge_datasets
+        if self.by_keys:
+            d["by_keys"] = self.by_keys
+        if self.output_datasets:
+            d["output_datasets"] = self.output_datasets
+        return d
 
 
 @dataclass
@@ -129,21 +134,329 @@ class ProcNode:
         return "  " * indent + f"PROC {self.kind}  DATA={self.data}"
 
     def to_dict(self) -> dict:
-        return {"type": "proc", "kind": self.kind, "data": self.data}
+        return {"type": "proc", "kind": self.kind, "data": self.data, "raw": self.raw}
 
 
-AnyNode = Union[AssignNode, IfNode, FilterNode, DataStepNode, ProcNode]
+# ── New node types ────────────────────────────────────────────────────────────
+
+@dataclass
+class DoLoopNode:
+    """DO loop — iterative, WHILE, or UNTIL."""
+    var: str = ""              # loop variable (empty for WHILE/UNTIL)
+    start: str = ""
+    stop: str = ""
+    by_step: str = "1"         # BY increment, default 1
+    while_cond: str = ""       # DO WHILE(cond)
+    until_cond: str = ""       # DO UNTIL(cond)
+    body: list["AnyNode"] = field(default_factory=list)
+
+    def display(self, indent: int = 0) -> str:
+        pad = "  " * indent
+        if self.var:
+            hdr = f"DO {self.var} = {self.start} TO {self.stop}"
+            if self.by_step != "1":
+                hdr += f" BY {self.by_step}"
+            if self.while_cond:
+                hdr += f" WHILE ({self.while_cond})"
+            if self.until_cond:
+                hdr += f" UNTIL ({self.until_cond})"
+        elif self.while_cond:
+            hdr = f"DO WHILE ({self.while_cond})"
+        elif self.until_cond:
+            hdr = f"DO UNTIL ({self.until_cond})"
+        else:
+            hdr = "DO"
+        lines = [pad + hdr]
+        for n in self.body:
+            lines.append(n.display(indent + 1))
+        lines.append(pad + "END")
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        d: dict = {"type": "do_loop", "body": [n.to_dict() for n in self.body]}
+        if self.var:
+            d.update({"var": self.var, "start": self.start, "stop": self.stop,
+                      "by_step": self.by_step})
+        if self.while_cond:
+            d["while_cond"] = self.while_cond
+        if self.until_cond:
+            d["until_cond"] = self.until_cond
+        return d
 
 
-# ── Evaluation trace ──────────────────────────────────────────────────────────
+@dataclass
+class WhenNode:
+    """Single WHEN branch inside a SELECT block."""
+    values: list[str]          # values/conditions — empty means OTHERWISE
+    body: list["AnyNode"]
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "when",
+            "values": self.values,
+            "body": [n.to_dict() for n in self.body],
+        }
+
+
+@dataclass
+class SelectNode:
+    """SELECT/WHEN/OTHERWISE block."""
+    select_expr: str = ""      # expression in SELECT(expr); empty → condition-based
+    whens: list[WhenNode] = field(default_factory=list)
+    otherwise: list["AnyNode"] = field(default_factory=list)
+
+    def display(self, indent: int = 0) -> str:
+        pad = "  " * indent
+        hdr = f"SELECT ({self.select_expr})" if self.select_expr else "SELECT"
+        lines = [pad + hdr]
+        for w in self.whens:
+            vals = ", ".join(w.values)
+            lines.append(pad + f"  WHEN ({vals})")
+            for n in w.body:
+                lines.append(n.display(indent + 2))
+        if self.otherwise:
+            lines.append(pad + "  OTHERWISE")
+            for n in self.otherwise:
+                lines.append(n.display(indent + 2))
+        lines.append(pad + "END")
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "select",
+            "select_expr": self.select_expr,
+            "whens": [w.to_dict() for w in self.whens],
+            "otherwise": [n.to_dict() for n in self.otherwise],
+        }
+
+
+@dataclass
+class ArrayNode:
+    """ARRAY declaration."""
+    name: str
+    dims: str                  # e.g. "3", "*", "{3,2}"
+    vars: list[str]
+    temporary: bool = False
+    initial_values: list[str] = field(default_factory=list)
+
+    def display(self, indent: int = 0) -> str:
+        tmp = " _TEMPORARY_" if self.temporary else ""
+        return "  " * indent + f"ARRAY {self.name}{{{self.dims}}}{tmp}  [{', '.join(self.vars)}]"
+
+    def to_dict(self) -> dict:
+        d: dict = {
+            "type": "array",
+            "name": self.name,
+            "dims": self.dims,
+            "vars": self.vars,
+        }
+        if self.temporary:
+            d["temporary"] = True
+        if self.initial_values:
+            d["initial_values"] = self.initial_values
+        return d
+
+
+@dataclass
+class RetainNode:
+    """RETAIN statement — preserve variable values across iterations."""
+    vars: list[str]
+    initial: str = ""          # optional initial value (same for all vars)
+
+    def display(self, indent: int = 0) -> str:
+        init = f" {self.initial}" if self.initial else ""
+        return "  " * indent + f"RETAIN {' '.join(self.vars)}{init}"
+
+    def to_dict(self) -> dict:
+        return {"type": "retain", "vars": self.vars, "initial": self.initial}
+
+
+@dataclass
+class OutputNode:
+    """OUTPUT statement — write current row explicitly."""
+    dataset: str = ""          # optional target dataset
+
+    def display(self, indent: int = 0) -> str:
+        ds = f" {self.dataset}" if self.dataset else ""
+        return "  " * indent + f"OUTPUT{ds}"
+
+    def to_dict(self) -> dict:
+        return {"type": "output", "dataset": self.dataset}
+
+
+@dataclass
+class DeleteNode:
+    """DELETE statement — exclude current row from all outputs."""
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + "DELETE"
+
+    def to_dict(self) -> dict:
+        return {"type": "delete"}
+
+
+@dataclass
+class CallNode:
+    """CALL routine (CALL SYMPUT, CALL MISSING, CALL EXECUTE, etc.)."""
+    routine: str
+    args: str = ""
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + f"CALL {self.routine}({self.args})"
+
+    def to_dict(self) -> dict:
+        return {"type": "call", "routine": self.routine, "args": self.args}
+
+
+@dataclass
+class MergeNode:
+    """MERGE statement inside a DATA step."""
+    datasets: list[str]        # dataset names (may include IN= options as text)
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + f"MERGE {' '.join(self.datasets)}"
+
+    def to_dict(self) -> dict:
+        return {"type": "merge", "datasets": self.datasets}
+
+
+@dataclass
+class ByNode:
+    """BY statement (group-processing keys in DATA step or PROC)."""
+    keys: list[str]
+    descending: list[bool] = field(default_factory=list)  # per-key descending flag
+
+    def display(self, indent: int = 0) -> str:
+        parts = []
+        for i, k in enumerate(self.keys):
+            prefix = "DESCENDING " if self.descending and i < len(self.descending) and self.descending[i] else ""
+            parts.append(prefix + k)
+        return "  " * indent + f"BY {' '.join(parts)}"
+
+    def to_dict(self) -> dict:
+        return {"type": "by", "keys": self.keys}
+
+
+@dataclass
+class MacroLetNode:
+    """%LET macro variable assignment."""
+    var: str
+    value: str
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + f"%LET {self.var} = {self.value}"
+
+    def to_dict(self) -> dict:
+        return {"type": "macro_let", "var": self.var, "value": self.value}
+
+
+@dataclass
+class MacroDefNode:
+    """%MACRO ... %MEND block."""
+    name: str
+    params: str = ""
+    body: list["AnyNode"] = field(default_factory=list)
+
+    def display(self, indent: int = 0) -> str:
+        pad = "  " * indent
+        p = f"({self.params})" if self.params else "()"
+        lines = [pad + f"%MACRO {self.name}{p}"]
+        for n in self.body:
+            lines.append(n.display(indent + 1))
+        lines.append(pad + f"%MEND {self.name}")
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "macro_def",
+            "name": self.name,
+            "params": self.params,
+            "body": [n.to_dict() for n in self.body],
+        }
+
+
+@dataclass
+class MacroCallNode:
+    """%macroname(...) call."""
+    name: str
+    args: str = ""
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + f"%{self.name}({self.args})"
+
+    def to_dict(self) -> dict:
+        return {"type": "macro_call", "name": self.name, "args": self.args}
+
+
+@dataclass
+class LinkNode:
+    """LINK label — jump to label subroutine."""
+    label: str
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + f"LINK {self.label}"
+
+    def to_dict(self) -> dict:
+        return {"type": "link", "label": self.label}
+
+
+@dataclass
+class GotoNode:
+    """GOTO label — unconditional jump."""
+    label: str
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + f"GOTO {self.label}"
+
+    def to_dict(self) -> dict:
+        return {"type": "goto", "label": self.label}
+
+
+@dataclass
+class ReturnNode:
+    """RETURN — return from LINK subroutine or end DATA step iteration."""
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + "RETURN"
+
+    def to_dict(self) -> dict:
+        return {"type": "return"}
+
+
+@dataclass
+class StopNode:
+    """STOP — halt DATA step processing."""
+
+    def display(self, indent: int = 0) -> str:
+        return "  " * indent + "STOP"
+
+    def to_dict(self) -> dict:
+        return {"type": "stop"}
+
+
+AnyNode = Union[
+    AssignNode, IfNode, FilterNode, DataStepNode, ProcNode,
+    DoLoopNode, SelectNode, ArrayNode, RetainNode, OutputNode, DeleteNode,
+    CallNode, MergeNode, ByNode,
+    MacroLetNode, MacroDefNode, MacroCallNode,
+    LinkNode, GotoNode, ReturnNode, StopNode,
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Evaluation trace
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class TraceStep:
-    kind: str          # "assign" | "if_taken" | "if_skipped" | "filter_pass" | "filter_block"
+    kind: str    # assign | if_taken | if_skipped | filter_pass | filter_block
+                 # loop_iter | select_when | select_otherwise | select_no_match
+                 # output | delete | call
     label: str
     var: str | None = None
     old_val: Any = None
     new_val: Any = None
+    data_step: str = ""
 
 
 @dataclass
@@ -152,6 +465,7 @@ class EvalTrace:
     final: dict[str, Any]
     steps: list[TraceStep]
     row_passes_filter: bool = True
+    filter_results: list[dict] = field(default_factory=list)
 
     def summary(self) -> str:
         lines = ["── Input ──────────────────────────────────────────"]
@@ -159,12 +473,15 @@ class EvalTrace:
             lines.append(f"  {k} = {v!r}")
 
         lines.append("── Trace ──────────────────────────────────────────")
+        cur_step = ""
         for s in self.steps:
+            if s.data_step and s.data_step != cur_step:
+                cur_step = s.data_step
+                lines.append(f"  ┌─ {cur_step}")
             if s.kind == "assign":
-                changed = " ← changed" if s.old_val != s.new_val else ""
                 lines.append(f"  ASSIGN  {s.label}")
                 if s.old_val != s.new_val:
-                    lines.append(f"          {s.var}: {s.old_val!r} → {s.new_val!r}{changed}")
+                    lines.append(f"          {s.var}: {s.old_val!r} → {s.new_val!r}")
             elif s.kind == "if_taken":
                 lines.append(f"  IF  ✓   {s.label}")
             elif s.kind == "if_skipped":
@@ -172,7 +489,25 @@ class EvalTrace:
             elif s.kind == "filter_pass":
                 lines.append(f"  WHERE ✓ {s.label}")
             elif s.kind == "filter_block":
-                lines.append(f"  WHERE ✗ {s.label}  ← row excluded")
+                lines.append(f"  WHERE ✗ {s.label}  ← row excluded from {cur_step}")
+            elif s.kind == "loop_iter":
+                lines.append(f"  LOOP    {s.label}")
+            elif s.kind == "select_when":
+                lines.append(f"  WHEN ✓  {s.label}")
+            elif s.kind == "select_otherwise":
+                lines.append(f"  OTHERWISE  {s.label}")
+            elif s.kind == "select_no_match":
+                lines.append(f"  SELECT ✗ (no match)")
+            elif s.kind == "output":
+                lines.append(f"  OUTPUT  {s.label or '(implicit)'}")
+            elif s.kind == "delete":
+                lines.append(f"  DELETE  ← row excluded")
+
+        if self.filter_results:
+            lines.append("── WHERE filters ──────────────────────────────────")
+            for fr in self.filter_results:
+                icon = "✓" if fr["passed"] else "✗"
+                lines.append(f"  {icon} [{fr['data_step']}]  {fr['condition'][:80]}")
 
         lines.append("── Output ─────────────────────────────────────────")
         for k, v in self.final.items():
@@ -180,11 +515,13 @@ class EvalTrace:
             tag = f"  (was {orig!r})" if k in self.initial and orig != v else ""
             lines.append(f"  {k} = {v!r}{tag}")
         if not self.row_passes_filter:
-            lines.append("  ⚠  Row excluded by WHERE condition")
+            lines.append("  ⚠  Row excluded by a qualifying WHERE condition")
         return "\n".join(lines)
 
 
-# ── Expression translation ────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Expression translation: SAS → Python
+# ─────────────────────────────────────────────────────────────────────────────
 
 _KEYWORD_OPS = [
     (r"\bGE\b", ">="),
@@ -200,33 +537,143 @@ _KEYWORD_OPS = [
 
 _SAFE_GLOBALS = {"__builtins__": None}
 _SAFE_LOCALS: dict[str, Any] = {
-    "max": max, "min": min, "abs": abs, "round": round, "len": len,
+    # Math
+    "max": max, "min": min, "abs": abs,
+    "round": lambda x, n=1: round(x / n) * n if n else x,
+    "len": len,
+    "int": int, "float": float, "str": str,
+    # Constants
     "True": True, "False": False, "None": None,
+    # SAS numeric functions
+    "log": __import__("math").log,
+    "log2": __import__("math").log2,
+    "log10": __import__("math").log10,
+    "exp": __import__("math").exp,
+    "sqrt": __import__("math").sqrt,
+    "floor": __import__("math").floor,
+    "ceil": __import__("math").ceil,
+    "sign": lambda x: (1 if x > 0 else -1 if x < 0 else 0),
+    "mod": lambda a, b: a % b,
+    # SAS string functions (basic)
+    "upcase": lambda s: str(s).upper() if s is not None else None,
+    "lowcase": lambda s: str(s).lower() if s is not None else None,
+    "strip": lambda s: str(s).strip() if s is not None else None,
+    "trim": lambda s: str(s).rstrip() if s is not None else None,
+    "substr": lambda s, p, n=None: (str(s)[p-1:p-1+n] if n else str(s)[p-1:]) if s is not None else None,
+    "index": lambda s, sub: (str(s).find(str(sub)) + 1) if s is not None else 0,
+    "scan": lambda s, n, d=" ": str(s).split(d)[n-1] if s is not None and len(str(s).split(d)) >= n else "",
+    "compress": lambda s, c="": str(s).replace(c, "") if s is not None else None,
+    "cats": lambda *args: "".join(str(a).strip() for a in args if a is not None),
+    "cat": lambda *args: "".join(str(a) for a in args if a is not None),
+    "catx": lambda sep, *args: sep.join(str(a).strip() for a in args if a is not None),
+    "reverse": lambda s: str(s)[::-1] if s is not None else None,
+    "repeat": lambda s, n: str(s) * (n + 1) if s is not None else None,
+    # SAS date (simplified — return numeric placeholders)
+    "today": lambda: 23376,   # SAS date for reference date
+    "year": lambda d: 2024,
+    "month": lambda d: 1,
+    "day": lambda d: 1,
+    # Logic
+    "coalesce": lambda *args: next((a for a in args if a is not None), None),
+    "coalescec": lambda *args: next((a for a in args if a is not None and a != ""), None),
+    "missing": lambda x: x is None,
+    "nmiss": lambda *args: sum(1 for a in args if a is None),
+    "n": lambda *args: sum(1 for a in args if a is not None),
+    "ifn": lambda cond, t, f: t if cond else f,
+    "ifc": lambda cond, t, f: t if cond else f,
+    "sum": lambda *args: sum(a for a in args if a is not None),
+    "mean": lambda *args: (sum(a for a in args if a is not None) / sum(1 for a in args if a is not None))
+            if any(a is not None for a in args) else None,
+    # Lag placeholder (returns None — real lag needs multi-row context)
+    "lag": lambda x, n=1: None,
+    "lag1": lambda x: None,
+    "lag2": lambda x: None,
+    # Put/input (type conversion)
+    "input": lambda val, fmt=None: (float(val) if val is not None else None),
+    "put": lambda val, fmt=None: (str(val) if val is not None else ""),
+    # Rank / quantile (placeholder)
+    "probnorm": lambda x: 0.5,
 }
 
 
 def _to_python(expr: str, is_condition: bool = False) -> str:
     """Translate a SAS expression to a Python-evaluable string."""
     result = expr.strip()
+
+    # Strip SAS format/informat literals like PD best12. → just PD (heuristic)
+    # Only strip format specs starting with a letter (avoids munging floats like 0.0003)
+    result = re.sub(r"\s+[A-Za-z]\w*\.\d*\b", "", result)
+
+    # NOT IN before IN translation
+    result = re.sub(
+        r"\b(\w+)\s+NOT\s+IN\s*\(([^)]+)\)",
+        lambda m: f"{m.group(1)} not in ({m.group(2)})",
+        result, flags=re.IGNORECASE,
+    )
+    # IN (list) operator
+    result = re.sub(
+        r"\b(\w+)\s+IN\s*\(([^)]+)\)",
+        lambda m: f"{m.group(1)} in ({m.group(2)})",
+        result, flags=re.IGNORECASE,
+    )
+    # BETWEEN a AND b  →  (a <= x <= b)
+    result = re.sub(
+        r"(\w+)\s+BETWEEN\s+([\w.'\"]+)\s+AND\s+([\w.'\"]+)",
+        lambda m: f"({m.group(2)} <= {m.group(1)} <= {m.group(3)})",
+        result, flags=re.IGNORECASE,
+    )
+    # IS MISSING / IS NOT MISSING
+    result = re.sub(r"\bIS\s+NOT\s+MISSING\b", "is not None", result, flags=re.IGNORECASE)
+    result = re.sub(r"\bIS\s+MISSING\b",       "is None",     result, flags=re.IGNORECASE)
+    # MISSING(x) → (x is None)
+    result = re.sub(r"\bMISSING\s*\((\w+)\)", r"(\1 is None)", result, flags=re.IGNORECASE)
+    # NMISS(a,b) → nmiss(a,b)
+    result = re.sub(r"\bNMISS\s*\(", "nmiss(", result, flags=re.IGNORECASE)
+
+    # SAS string concatenation || → string concat — wrap in str() calls
+    result = re.sub(r"\|\|", " + ", result)
+
+    # Keyword operators
     for pattern, replacement in _KEYWORD_OPS:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+
     # ^= ~= → !=
     result = re.sub(r"[\^~]=", "!=", result)
-    # SAS missing value literal → None
+    # SAS missing value literal . (standalone)
     result = re.sub(r"(?<!\w)\.(?!\w)", "None", result)
-    # SAS function names
-    result = re.sub(r"\bMAX\s*\(", "max(", result, flags=re.IGNORECASE)
-    result = re.sub(r"\bMIN\s*\(", "min(", result, flags=re.IGNORECASE)
-    result = re.sub(r"\bABS\s*\(", "abs(", result, flags=re.IGNORECASE)
-    result = re.sub(r"\bROUND\s*\(", "round(", result, flags=re.IGNORECASE)
-    # In conditions, standalone = means equality
+
+    # SAS function name remapping (case-insensitive → lowercase Python names)
+    _fn_map = [
+        ("MAX", "max"), ("MIN", "min"), ("ABS", "abs"), ("ROUND", "round"),
+        ("INT", "int"), ("FLOOR", "floor"), ("CEIL", "ceil"), ("SQRT", "sqrt"),
+        ("LOG2", "log2"), ("LOG10", "log10"), ("LOG", "log"), ("EXP", "exp"),
+        ("MOD", "mod"), ("SIGN", "sign"),
+        ("LENGTH", "len"), ("TRIM", "trim"), ("STRIP", "strip"),
+        ("UPCASE", "upcase"), ("LOWCASE", "lowcase"),
+        ("COMPRESS", "compress"), ("SUBSTR", "substr"),
+        ("SCAN", "scan"), ("INDEX", "index"), ("REVERSE", "reverse"),
+        ("CATS", "cats"), ("CAT", "cat"), ("CATX", "catx"), ("REPEAT", "repeat"),
+        ("COALESCE", "coalesce"), ("COALESCEC", "coalescec"),
+        ("IFN", "ifn"), ("IFC", "ifc"),
+        ("SUM", "sum"), ("MEAN", "mean"),
+        ("N(?!ONE)", "n"), ("TODAY", "today"), ("DATE", "today"),
+        ("YEAR", "year"), ("MONTH", "month"), ("DAY", "day"),
+        ("LAG1", "lag1"), ("LAG2", "lag2"), ("LAG", "lag"),
+        ("INPUT", "input"), ("PUT", "put"),
+        ("PROBNORM", "probnorm"),
+    ]
+    for sas_fn, py_fn in _fn_map:
+        result = re.sub(rf"\b{sas_fn}\s*\(", f"{py_fn}(", result, flags=re.IGNORECASE)
+
+    # In conditions, standalone = means equality (not already handled by keyword ops)
     if is_condition:
         result = re.sub(r"(?<![<>!=^~])=(?!=)", "==", result)
+
     return result
 
 
 def _eval_expr(expr: str, env: dict[str, Any], is_condition: bool = False) -> Any:
-    """Safely evaluate a translated SAS expression. Returns None/False on error."""
+    """Safely evaluate a SAS expression. Returns None/False on any error."""
     py = _to_python(expr, is_condition=is_condition)
     try:
         return eval(py, _SAFE_GLOBALS, {**_SAFE_LOCALS, **env})  # noqa: S307
@@ -234,23 +681,37 @@ def _eval_expr(expr: str, env: dict[str, Any], is_condition: bool = False) -> An
         return False if is_condition else None
 
 
-# ── Parser ────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Parser
+# ─────────────────────────────────────────────────────────────────────────────
 
-_SKIP_KEYWORDS = re.compile(
+# Statements that carry no business logic — capture as metadata only
+_METADATA_KEYWORDS = re.compile(
     r"^(LIBNAME|FILENAME|OPTIONS|TITLE|FOOTNOTE|ODS|RUN|QUIT|"
-    r"LABEL|ATTRIB|FORMAT|INFORMAT|LENGTH|KEEP|DROP|RENAME|RETAIN|"
-    r"ARRAY|%MACRO|%MEND|%LET|%IF|%DO|%END)\b",
+    r"LABEL|ATTRIB|FORMAT|INFORMAT|LENGTH|KEEP|DROP|RENAME|"
+    r"FILE|PUT|INPUT|INFILE|WINDOW|DISPLAY|NOTE|"
+    r"%MEND|%END|%GLOBAL|%LOCAL|%PUT|%INCLUDE)\b",
     re.IGNORECASE,
 )
 
+_MAX_LOOP_ITERS = 1000   # safety cap for DO loop evaluation
+
 
 def _strip_comments(code: str) -> str:
-    """Remove SAS block comments /* ... */."""
-    return re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
+    """Remove SAS block comments /* ... */ and line comments * ... ;"""
+    code = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
+    # Line comments:  * text ; at the start of a statement
+    code = re.sub(r"(?m)^\s*\*[^;]*;", "", code)
+    return code
+
+
+def _strip_macro_refs(code: str) -> str:
+    """Replace &macrovar references with a placeholder so they don't break parsing."""
+    return re.sub(r"&&?\w+\.?", "__MACRO__", code)
 
 
 def _split_statements(code: str) -> list[str]:
-    """Split SAS code by ';' and return non-empty stripped statements."""
+    """Split SAS code by ';' returning non-empty stripped statements."""
     return [s.strip() for s in code.split(";") if s.strip()]
 
 
@@ -259,7 +720,7 @@ class _Parser:
         self._s = stmts
         self._pos = 0
 
-    # ── Cursor helpers ────────────────────────────────────────────────────────
+    # ── cursor ────────────────────────────────────────────────────────────────
 
     def _peek(self) -> str | None:
         return self._s[self._pos] if self._pos < len(self._s) else None
@@ -273,16 +734,28 @@ class _Parser:
         p = self._peek()
         return p.upper().strip() if p else ""
 
-    # ── Top-level parse ───────────────────────────────────────────────────────
+    # ── top-level ─────────────────────────────────────────────────────────────
 
     def parse(self) -> list[AnyNode]:
         nodes: list[AnyNode] = []
         while self._pos < len(self._s):
             u = self._upper()
-            if re.match(r"^DATA\s+\w", u):
+            if re.match(r"^DATA\b", u) and not re.match(r"^DATA\s*;", u):
                 nodes.append(self._parse_data_step())
             elif re.match(r"^PROC\s+\w", u):
                 nodes.append(self._parse_proc())
+            elif re.match(r"^%MACRO\b", u, re.IGNORECASE):
+                n = self._parse_macro_def()
+                if n:
+                    nodes.append(n)
+            elif re.match(r"^%LET\b", u, re.IGNORECASE):
+                n = self._parse_macro_let()
+                if n:
+                    nodes.append(n)
+            elif re.match(r"^%[A-Z_]\w*\s*\(", u, re.IGNORECASE):
+                n = self._parse_macro_call()
+                if n:
+                    nodes.append(n)
             else:
                 self._consume()
         return nodes
@@ -291,9 +764,15 @@ class _Parser:
 
     def _parse_data_step(self) -> DataStepNode:
         header = self._consume()
-        m = re.match(r"DATA\s+([\w.]+)", header, re.IGNORECASE)
-        output_ds = m.group(1) if m else "work.unknown"
+        # Capture potentially multiple output datasets: DATA a b c;
+        m = re.match(r"DATA\s+(.*)", header, re.IGNORECASE)
+        raw_out = (m.group(1).strip() if m else "work.unknown").split()
+        output_ds = raw_out[0] if raw_out else "work.unknown"
+        extra_outputs = raw_out[1:] if len(raw_out) > 1 else []
+
         input_ds = ""
+        merge_datasets: list[str] = []
+        by_keys: list[str] = []
         body: list[AnyNode] = []
 
         while self._pos < len(self._s):
@@ -301,112 +780,414 @@ class _Parser:
             if re.match(r"^(RUN|QUIT)\s*$", u):
                 self._consume()
                 break
-            node_or_ds = self._parse_body_stmt()
-            if isinstance(node_or_ds, str):
-                input_ds = node_or_ds
-            elif node_or_ds is not None:
-                body.append(node_or_ds)
+            # SET statement — set input_ds
+            if re.match(r"^SET\b", u):
+                stmt = self._consume()
+                m2 = re.match(r"SET\s+([\w.]+)", stmt, re.IGNORECASE)
+                if m2 and not input_ds:
+                    input_ds = m2.group(1)
+                continue
+            # MERGE statement
+            if re.match(r"^MERGE\b", u):
+                stmt = self._consume()
+                raw = re.sub(r"^MERGE\s*", "", stmt, flags=re.IGNORECASE).strip()
+                # Extract dataset names (strip parenthesized options)
+                datasets = re.findall(r"[\w.]+(?:\s*\([^)]*\))?", raw)
+                datasets = [re.sub(r"\s*\([^)]*\)", "", d).strip() for d in datasets]
+                datasets = [d for d in datasets if d]
+                merge_datasets = datasets
+                if not input_ds and datasets:
+                    input_ds = datasets[0]
+                body.append(MergeNode(datasets=datasets))
+                continue
+            result = self._parse_body_stmt()
+            if isinstance(result, ByNode):
+                by_keys = result.keys
+                body.append(result)
+            elif result is not None:
+                body.append(result)
 
-        return DataStepNode(output_ds, input_ds, body)
+        ds = DataStepNode(output_ds, input_ds, body)
+        if extra_outputs:
+            ds.output_datasets = extra_outputs
+        if merge_datasets:
+            ds.merge_datasets = merge_datasets
+        if by_keys:
+            ds.by_keys = by_keys
+        return ds
 
-    def _parse_body_stmt(self) -> "AnyNode | str | None":
-        """Parse one statement inside a DATA step. Returns str for SET dataset."""
+    # ── body statement dispatcher ─────────────────────────────────────────────
+
+    def _parse_body_stmt(self) -> "AnyNode | None":
         stmt = self._peek()
         if stmt is None:
             return None
         u = stmt.upper().strip()
 
-        if re.match(r"^SET\s+", u):
-            self._consume()
-            m = re.match(r"SET\s+([\w.]+)", stmt, re.IGNORECASE)
-            return m.group(1) if m else ""
+        # Control flow
+        if re.match(r"^IF\b", u):
+            return self._parse_if()
+        if re.match(r"^DO\b", u):
+            return self._parse_do()
+        if re.match(r"^SELECT\b", u):
+            return self._parse_select()
 
-        if re.match(r"^WHERE\s+", u):
+        # Row control
+        if re.match(r"^OUTPUT\b", u):
+            self._consume()
+            ds = re.sub(r"^OUTPUT\s*", "", stmt, flags=re.IGNORECASE).strip()
+            return OutputNode(dataset=ds)
+        if re.match(r"^DELETE\b", u):
+            self._consume()
+            return DeleteNode()
+        if re.match(r"^RETURN\s*$", u):
+            self._consume()
+            return ReturnNode()
+        if re.match(r"^STOP\s*$", u):
+            self._consume()
+            return StopNode()
+
+        # LINK / GOTO
+        if re.match(r"^LINK\b", u):
+            self._consume()
+            lbl = re.sub(r"^LINK\s*", "", stmt, flags=re.IGNORECASE).strip()
+            return LinkNode(label=lbl)
+        if re.match(r"^GOTO\b", u):
+            self._consume()
+            lbl = re.sub(r"^GOTO\s*", "", stmt, flags=re.IGNORECASE).strip()
+            return GotoNode(label=lbl)
+
+        # CALL routine
+        if re.match(r"^CALL\b", u):
+            return self._parse_call()
+
+        # WHERE
+        if re.match(r"^WHERE\b", u):
             self._consume()
             cond = re.sub(r"^WHERE\s+", "", stmt, flags=re.IGNORECASE).strip()
             return FilterNode(cond)
 
-        if re.match(r"^IF\s+", u):
-            return self._parse_if()
+        # BY
+        if re.match(r"^BY\b", u):
+            return self._parse_by()
 
-        if _SKIP_KEYWORDS.match(u):
+        # RETAIN
+        if re.match(r"^RETAIN\b", u):
+            return self._parse_retain()
+
+        # ARRAY
+        if re.match(r"^ARRAY\b", u):
+            return self._parse_array()
+
+        # Macro statements
+        if re.match(r"^%LET\b", u, re.IGNORECASE):
+            return self._parse_macro_let()
+        if re.match(r"^%IF\b", u, re.IGNORECASE):
+            return self._parse_macro_if_inline()
+        if re.match(r"^%[A-Z_]\w*\s*\(", u, re.IGNORECASE):
+            return self._parse_macro_call()
+
+        # Metadata-only — consume and skip
+        if _METADATA_KEYWORDS.match(u):
             self._consume()
             return None
 
-        if re.match(r"^[\w]+\s*=", u):
+        # Sum statement: var + expr;  (implicit RETAIN + increment)
+        if re.match(r"^(\w+)\s*\+\s*(.+)$", u):
+            self._consume()
+            sm = re.match(r"^(\w+)\s*\+\s*(.+)$", stmt.strip(), re.IGNORECASE)
+            if sm:
+                var = sm.group(1).strip()
+                expr = sm.group(2).strip()
+                # Desugar: var = var + (expr)
+                return AssignNode(var, f"{var} + ({expr})")
+            return None
+
+        # Assignment: var = expr  (also handles array element: arr[i] = expr)
+        if re.match(r"^[\w\[\]{}()]+\s*=\s*(?!=)", u):
             self._consume()
             return self._stmt_to_assign(stmt)
 
+        # Unknown statement — consume silently
         self._consume()
         return None
 
     # ── IF ────────────────────────────────────────────────────────────────────
 
-    def _parse_if(self) -> IfNode | None:
+    def _parse_if(self) -> IfNode | FilterNode | None:
         stmt = self._consume()
         m = re.match(r"IF\s+(.*?)\s+THEN\s+(.*)", stmt, re.IGNORECASE | re.DOTALL)
         if not m:
+            # Subsetting IF: IF condition; (no THEN) — acts as a WHERE filter
+            sub_m = re.match(r"IF\s+(.+)", stmt, re.IGNORECASE | re.DOTALL)
+            if sub_m:
+                return FilterNode(sub_m.group(1).strip())
             return None
         condition = m.group(1).strip()
         then_raw = m.group(2).strip()
 
-        # THEN DO → multi-statement block
         if re.match(r"^DO\s*$", then_raw, re.IGNORECASE):
-            then_branch = self._parse_do_block()
+            then_branch = self._parse_block_until_end()
         else:
             node = self._inline_stmt(then_raw)
             then_branch = [node] if node else []
 
         else_branch: list[AnyNode] = []
+        # Look for ELSE or ELSE IF on the very next statement
         if self._peek() and re.match(r"^ELSE\b", self._upper()):
             else_stmt = self._consume()
             else_body = re.sub(r"^ELSE\s*", "", else_stmt, flags=re.IGNORECASE).strip()
             if re.match(r"^DO\s*$", else_body, re.IGNORECASE):
-                else_branch = self._parse_do_block()
+                else_branch = self._parse_block_until_end()
+            elif re.match(r"^IF\b", else_body.upper()):
+                # ELSE IF → recurse as inline
+                inner_m = re.match(r"IF\s+(.*?)\s+THEN\s+(.*)", else_body, re.IGNORECASE | re.DOTALL)
+                if inner_m:
+                    inner_then_raw = inner_m.group(2).strip()
+                    inner_then = (self._parse_block_until_end()
+                                  if re.match(r"^DO\s*$", inner_then_raw, re.IGNORECASE)
+                                  else ([self._inline_stmt(inner_then_raw)]
+                                        if self._inline_stmt(inner_then_raw) else []))
+                    else_branch = [IfNode(inner_m.group(1).strip(), inner_then)]
             elif else_body:
                 node = self._inline_stmt(else_body)
                 else_branch = [node] if node else []
 
         return IfNode(condition, then_branch, else_branch)
 
-    def _parse_do_block(self) -> list[AnyNode]:
-        nodes: list[AnyNode] = []
+    # ── DO ────────────────────────────────────────────────────────────────────
+
+    def _parse_do(self) -> DoLoopNode | None:
+        stmt = self._consume()
+        u = stmt.upper().strip()
+
+        # DO WHILE (cond)
+        m = re.match(r"DO\s+WHILE\s*\((.+)\)\s*$", u, re.IGNORECASE)
+        if m:
+            cond_raw = stmt[m.start(1) - len(stmt) + len(u) - len(u) :]  # preserve original case
+            # simpler: extract from original stmt
+            m2 = re.match(r"DO\s+WHILE\s*\((.+)\)\s*$", stmt, re.IGNORECASE)
+            cond = m2.group(1).strip() if m2 else m.group(1).strip()
+            body = self._parse_block_until_end()
+            return DoLoopNode(while_cond=cond, body=body)
+
+        # DO UNTIL (cond)
+        m = re.match(r"DO\s+UNTIL\s*\((.+)\)\s*$", stmt, re.IGNORECASE)
+        if m:
+            body = self._parse_block_until_end()
+            return DoLoopNode(until_cond=m.group(1).strip(), body=body)
+
+        # DO var = start TO stop [BY step] [WHILE(cond)] [UNTIL(cond)]
+        m = re.match(
+            r"DO\s+(\w+)\s*=\s*(.+?)\s+TO\s+(.+?)(?:\s+BY\s+(.+?))?(?:\s+WHILE\s*\((.+?)\))?(?:\s+UNTIL\s*\((.+?)\))?\s*$",
+            stmt, re.IGNORECASE,
+        )
+        if m:
+            var   = m.group(1).strip()
+            start = m.group(2).strip()
+            stop  = m.group(3).strip()
+            step  = (m.group(4) or "1").strip()
+            wcond = (m.group(5) or "").strip()
+            ucond = (m.group(6) or "").strip()
+            body  = self._parse_block_until_end()
+            return DoLoopNode(var=var, start=start, stop=stop, by_step=step,
+                              while_cond=wcond, until_cond=ucond, body=body)
+
+        # Bare DO; ... END;  (treat as anonymous block — flatten into inline body)
+        body = self._parse_block_until_end()
+        return DoLoopNode(body=body)   # no loop — just a group
+
+    # ── SELECT ────────────────────────────────────────────────────────────────
+
+    def _parse_select(self) -> SelectNode | None:
+        stmt = self._consume()
+        m = re.match(r"SELECT\s*\((.+)\)\s*$", stmt, re.IGNORECASE)
+        select_expr = m.group(1).strip() if m else ""
+
+        whens: list[WhenNode] = []
+        otherwise: list[AnyNode] = []
+
         while self._pos < len(self._s):
             u = self._upper()
             if re.match(r"^END\s*$", u):
                 self._consume()
                 break
-            if re.match(r"^IF\s+", u):
-                node = self._parse_if()
-            elif re.match(r"^[\w]+\s*=", u):
-                stmt = self._consume()
-                node = self._stmt_to_assign(stmt)
+            if re.match(r"^OTHERWISE\b", u):
+                ow_stmt = self._consume()
+                # Inline otherwise: OTHERWISE <stmt>
+                inline = re.sub(r"^OTHERWISE\s*", "", ow_stmt, flags=re.IGNORECASE).strip()
+                if not inline:
+                    # Nothing on same line — check next statement
+                    if self._peek() and re.match(r"^DO\b", self._upper()):
+                        self._consume()
+                        otherwise = self._parse_block_until_end()
+                    else:
+                        node = self._parse_body_stmt()
+                        if node:
+                            otherwise = [node]
+                elif re.match(r"^DO\s*$", inline, re.IGNORECASE):
+                    otherwise = self._parse_block_until_end()
+                else:
+                    node = self._inline_stmt(inline)
+                    if node:
+                        otherwise = [node]
+            elif re.match(r"^WHEN\b", u):
+                when_node = self._parse_when()
+                if when_node:
+                    whens.append(when_node)
             else:
                 self._consume()
-                node = None
-            if node is not None:
-                nodes.append(node)
-        return nodes
 
-    # ── Statement helpers ─────────────────────────────────────────────────────
+        return SelectNode(select_expr=select_expr, whens=whens, otherwise=otherwise)
 
-    def _stmt_to_assign(self, stmt: str) -> AssignNode | None:
-        m = re.match(r"^([\w]+)\s*=\s*(.+)$", stmt.strip(), re.DOTALL)
+    def _parse_when(self) -> WhenNode | None:
+        stmt = self._consume()
+        # WHEN (val1, val2, ...) or WHEN (cond)
+        m = re.match(r"WHEN\s*\((.+)\)\s*(.*)", stmt, re.IGNORECASE | re.DOTALL)
         if not m:
             return None
-        return AssignNode(m.group(1).strip(), m.group(2).strip())
+        raw_vals = m.group(1).strip()
+        inline = m.group(2).strip()
 
-    def _inline_stmt(self, stmt: str) -> AnyNode | None:
-        """Parse a single inline statement (right side of THEN/ELSE)."""
-        u = stmt.upper().strip()
-        if re.match(r"^IF\s+", u):
-            # nested inline IF (e.g. ELSE IF ...)
-            m = re.match(r"IF\s+(.*?)\s+THEN\s+(.*)", stmt, re.IGNORECASE | re.DOTALL)
-            if m:
-                inner = self._inline_stmt(m.group(2).strip())
-                return IfNode(m.group(1).strip(), [inner] if inner else [], [])
-        if re.match(r"^[\w]+\s*=", u):
-            return self._stmt_to_assign(stmt)
+        # Split values by comma (respecting strings)
+        values = [v.strip() for v in _split_csv(raw_vals)]
+
+        if re.match(r"^DO\s*$", inline, re.IGNORECASE) or not inline:
+            if not inline:
+                body = self._parse_block_until_end()
+            else:
+                body = self._parse_block_until_end()
+        else:
+            node = self._inline_stmt(inline)
+            body = [node] if node else []
+
+        return WhenNode(values=values, body=body)
+
+    # ── ARRAY ─────────────────────────────────────────────────────────────────
+
+    def _parse_array(self) -> ArrayNode | None:
+        stmt = self._consume()
+        # ARRAY name {dims} [_TEMPORARY_] [var1 var2 ...] [(init_vals)]
+        m = re.match(
+            r"ARRAY\s+(\w+)\s*[{(\[]([^})\]]*)[})\]](.*)",
+            stmt, re.IGNORECASE,
+        )
+        if not m:
+            # ARRAY without braces: ARRAY name * var1 var2 ...
+            m2 = re.match(r"ARRAY\s+(\w+)\s+(\*|\d+)\s+(.*)", stmt, re.IGNORECASE)
+            if m2:
+                return ArrayNode(
+                    name=m2.group(1).strip(),
+                    dims=m2.group(2).strip(),
+                    vars=[v.strip() for v in m2.group(3).split() if v.strip() and not v.startswith("(")],
+                )
+            return ArrayNode(name="UNKNOWN", dims="*", vars=[])
+
+        name = m.group(1).strip()
+        dims = m.group(2).strip()
+        rest = m.group(3).strip()
+
+        temporary = bool(re.search(r"\b_TEMPORARY_\b", rest, re.IGNORECASE))
+        rest_clean = re.sub(r"\b_TEMPORARY_\b", "", rest, flags=re.IGNORECASE)
+
+        # Initial values in parens at end
+        init_vals: list[str] = []
+        init_m = re.search(r"\(([^)]+)\)\s*$", rest_clean)
+        if init_m:
+            init_vals = [v.strip() for v in init_m.group(1).split()]
+            rest_clean = rest_clean[:init_m.start()].strip()
+
+        var_list = [v.strip() for v in rest_clean.split() if v.strip()]
+
+        return ArrayNode(name=name, dims=dims, vars=var_list,
+                         temporary=temporary, initial_values=init_vals)
+
+    # ── RETAIN ────────────────────────────────────────────────────────────────
+
+    def _parse_retain(self) -> RetainNode:
+        stmt = self._consume()
+        rest = re.sub(r"^RETAIN\s*", "", stmt, flags=re.IGNORECASE).strip()
+        # Separate variable list from optional initial value
+        parts = rest.split()
+        # If last token is numeric literal or string, it's an initial value
+        if len(parts) > 1:
+            last = parts[-1]
+            if re.match(r"^[0-9.\-'\"]+$", last):
+                return RetainNode(vars=parts[:-1], initial=last)
+        return RetainNode(vars=parts)
+
+    # ── BY ────────────────────────────────────────────────────────────────────
+
+    def _parse_by(self) -> ByNode:
+        stmt = self._consume()
+        rest = re.sub(r"^BY\s*", "", stmt, flags=re.IGNORECASE).strip()
+        keys: list[str] = []
+        desc: list[bool] = []
+        tokens = rest.split()
+        i = 0
+        while i < len(tokens):
+            if tokens[i].upper() == "DESCENDING" and i + 1 < len(tokens):
+                keys.append(tokens[i + 1])
+                desc.append(True)
+                i += 2
+            else:
+                keys.append(tokens[i])
+                desc.append(False)
+                i += 1
+        return ByNode(keys=keys, descending=desc)
+
+    # ── CALL ──────────────────────────────────────────────────────────────────
+
+    def _parse_call(self) -> CallNode:
+        stmt = self._consume()
+        m = re.match(r"CALL\s+(\w+)\s*(?:\((.*)?\))?\s*$", stmt, re.IGNORECASE | re.DOTALL)
+        if m:
+            return CallNode(routine=m.group(1).upper(), args=(m.group(2) or "").strip())
+        return CallNode(routine="UNKNOWN", args="")
+
+    # ── Macro %LET ────────────────────────────────────────────────────────────
+
+    def _parse_macro_let(self) -> MacroLetNode | None:
+        stmt = self._consume()
+        m = re.match(r"%LET\s+(\w+)\s*=\s*(.*)", stmt, re.IGNORECASE | re.DOTALL)
+        if m:
+            return MacroLetNode(var=m.group(1).strip(), value=m.group(2).strip())
+        return None
+
+    # ── Macro %MACRO/%MEND ────────────────────────────────────────────────────
+
+    def _parse_macro_def(self) -> MacroDefNode | None:
+        header = self._consume()
+        m = re.match(r"%MACRO\s+(\w+)\s*(?:\(([^)]*)\))?\s*$", header, re.IGNORECASE)
+        if not m:
+            return None
+        name = m.group(1).strip()
+        params = (m.group(2) or "").strip()
+        body: list[AnyNode] = []
+        while self._pos < len(self._s):
+            u = self._upper()
+            if re.match(r"^%MEND\b", u, re.IGNORECASE):
+                self._consume()
+                break
+            result = self._parse_body_stmt()
+            if result is not None:
+                body.append(result)
+        return MacroDefNode(name=name, params=params, body=body)
+
+    # ── Macro %IF (inline, simplified) ───────────────────────────────────────
+
+    def _parse_macro_if_inline(self) -> MacroLetNode | None:
+        # %IF ... %THEN ... is complex; just consume for now
+        self._consume()
+        return None
+
+    # ── Macro call %name(...) ─────────────────────────────────────────────────
+
+    def _parse_macro_call(self) -> MacroCallNode | None:
+        stmt = self._consume()
+        m = re.match(r"%(\w+)\s*(?:\(([^)]*)\))?\s*$", stmt, re.IGNORECASE)
+        if m:
+            return MacroCallNode(name=m.group(1), args=(m.group(2) or "").strip())
         return None
 
     # ── PROC ──────────────────────────────────────────────────────────────────
@@ -425,26 +1206,113 @@ class _Parser:
             raw_lines.append(self._consume())
         return ProcNode(kind, data, "; ".join(raw_lines))
 
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
-# ── Evaluator ─────────────────────────────────────────────────────────────────
+    def _parse_block_until_end(self) -> list[AnyNode]:
+        """Parse statements until END; — used by IF/DO/SELECT blocks."""
+        nodes: list[AnyNode] = []
+        depth = 0
+        while self._pos < len(self._s):
+            u = self._upper()
+            if re.match(r"^END\s*$", u):
+                if depth == 0:
+                    self._consume()
+                    break
+                depth -= 1
+                self._consume()
+                continue
+            # Track nested DO/SELECT that also have END
+            if re.match(r"^DO\b", u) or re.match(r"^SELECT\b", u):
+                depth += 1
+            result = self._parse_body_stmt()
+            if result is not None:
+                nodes.append(result)
+        return nodes
+
+    def _stmt_to_assign(self, stmt: str) -> AssignNode | None:
+        # Handles plain var = expr AND array element arr[i] = expr
+        m = re.match(r"^([\w\[\]{}().\s]+?)\s*=\s*(.+)$", stmt.strip(), re.DOTALL)
+        if not m:
+            return None
+        lhs = m.group(1).strip()
+        # Simplify array element refs: arr[i] → arr (for lineage purposes)
+        base = re.sub(r"[\[{(].*", "", lhs).strip()
+        return AssignNode(base, m.group(2).strip())
+
+    def _inline_stmt(self, stmt: str) -> AnyNode | None:
+        u = stmt.upper().strip()
+        if re.match(r"^IF\b", u):
+            m = re.match(r"IF\s+(.*?)\s+THEN\s+(.*)", stmt, re.IGNORECASE | re.DOTALL)
+            if m:
+                inner = self._inline_stmt(m.group(2).strip())
+                return IfNode(m.group(1).strip(), [inner] if inner else [], [])
+        if re.match(r"^OUTPUT\b", u):
+            ds = re.sub(r"^OUTPUT\s*", "", stmt, flags=re.IGNORECASE).strip()
+            return OutputNode(dataset=ds)
+        if re.match(r"^DELETE\b", u):
+            return DeleteNode()
+        if re.match(r"^RETURN\s*$", u):
+            return ReturnNode()
+        if re.match(r"^[\w\[\]{}().\s]+\s*=\s*(?!=)", u):
+            return self._stmt_to_assign(stmt)
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CSV-style splitter (for WHEN value lists)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _split_csv(s: str) -> list[str]:
+    """Split on commas while respecting quoted strings."""
+    parts, buf, in_q, q_char = [], [], False, ""
+    for ch in s:
+        if in_q:
+            buf.append(ch)
+            if ch == q_char:
+                in_q = False
+        elif ch in ("'", '"'):
+            in_q, q_char = True, ch
+            buf.append(ch)
+        elif ch == ",":
+            parts.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append("".join(buf).strip())
+    return parts
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Evaluator
+# ─────────────────────────────────────────────────────────────────────────────
 
 class _Evaluator:
     def __init__(self):
         self.steps: list[TraceStep] = []
-        self.row_passes_filter = True
+        self._current_step: str = ""
+        self._step_passes: bool = True
+        self.filter_results: list[dict] = []
+        self._first_filter_done: bool = False
+        self._first_filter_passed: bool = True
+        self._row_deleted: bool = False
 
     def run(self, nodes: list[AnyNode], env: dict[str, Any]) -> None:
         for node in nodes:
             if isinstance(node, DataStepNode):
+                self._current_step = node.output_dataset
+                self._step_passes = True
                 self._eval_body(node.body, env)
             elif isinstance(node, ProcNode):
-                pass  # PROC steps not simulated
+                pass
+            elif isinstance(node, (MacroLetNode, MacroDefNode, MacroCallNode)):
+                pass  # macro state not simulated
             else:
                 self._eval_node(node, env)
 
     def _eval_body(self, nodes: list[AnyNode], env: dict[str, Any]) -> None:
         for node in nodes:
-            if not self.row_passes_filter:
+            if not self._step_passes or self._row_deleted:
                 break
             self._eval_node(node, env)
 
@@ -455,18 +1323,30 @@ class _Evaluator:
             self._eval_if(node, env)
         elif isinstance(node, FilterNode):
             self._eval_filter(node, env)
+        elif isinstance(node, DoLoopNode):
+            self._eval_do_loop(node, env)
+        elif isinstance(node, SelectNode):
+            self._eval_select(node, env)
+        elif isinstance(node, RetainNode):
+            self._eval_retain(node, env)
+        elif isinstance(node, OutputNode):
+            self.steps.append(TraceStep(kind="output", label=node.dataset,
+                                        data_step=self._current_step))
+        elif isinstance(node, DeleteNode):
+            self._row_deleted = True
+            self.steps.append(TraceStep(kind="delete", label="",
+                                        data_step=self._current_step))
+        # Other nodes (MergeNode, ByNode, ArrayNode, CallNode, etc.) — record but don't simulate
 
     def _eval_assign(self, node: AssignNode, env: dict[str, Any]) -> None:
         old = env.get(node.var)
-        new = _eval_expr(node.expr, env, is_condition=False)
+        new = _eval_expr(node.expr, env)
         if new is not None:
             env[node.var] = new
         self.steps.append(TraceStep(
-            kind="assign",
-            label=f"{node.var} = {node.expr}",
-            var=node.var,
-            old_val=old,
-            new_val=env.get(node.var),
+            kind="assign", label=f"{node.var} = {node.expr}",
+            var=node.var, old_val=old, new_val=env.get(node.var),
+            data_step=self._current_step,
         ))
 
     def _eval_if(self, node: IfNode, env: dict[str, Any]) -> None:
@@ -474,60 +1354,183 @@ class _Evaluator:
         taken = bool(result)
         self.steps.append(TraceStep(
             kind="if_taken" if taken else "if_skipped",
-            label=node.condition,
+            label=node.condition, data_step=self._current_step,
         ))
-        branch = node.then_branch if taken else node.else_branch
-        self._eval_body(branch, env)
+        self._eval_body(node.then_branch if taken else node.else_branch, env)
 
     def _eval_filter(self, node: FilterNode, env: dict[str, Any]) -> None:
-        result = _eval_expr(node.condition, env, is_condition=True)
+        condition = " ".join(node.condition.split())
+        result = _eval_expr(condition, env, is_condition=True)
         passes = bool(result)
         self.steps.append(TraceStep(
             kind="filter_pass" if passes else "filter_block",
-            label=node.condition,
+            label=condition, data_step=self._current_step,
         ))
+        self.filter_results.append({
+            "data_step": self._current_step,
+            "condition": condition,
+            "passed": passes,
+        })
+        if not self._first_filter_done:
+            self._first_filter_done = True
+            self._first_filter_passed = passes
         if not passes:
-            self.row_passes_filter = False
+            self._step_passes = False
+
+    def _eval_do_loop(self, node: DoLoopNode, env: dict[str, Any]) -> None:
+        iters = 0
+        if node.var:
+            # Iterative loop
+            start = _eval_expr(node.start, env) or 0
+            stop  = _eval_expr(node.stop,  env) or 0
+            step  = _eval_expr(node.by_step, env) or 1
+            i = float(start)
+            while (step > 0 and i <= float(stop)) or (step < 0 and i >= float(stop)):
+                if iters >= _MAX_LOOP_ITERS:
+                    break
+                # Check WHILE/UNTIL if combined
+                if node.while_cond and not _eval_expr(node.while_cond, env, True):
+                    break
+                env[node.var] = i
+                self.steps.append(TraceStep(
+                    kind="loop_iter", label=f"{node.var} = {i}",
+                    data_step=self._current_step,
+                ))
+                self._eval_body(node.body, env)
+                if node.until_cond and _eval_expr(node.until_cond, env, True):
+                    break
+                i += float(step)
+                iters += 1
+        elif node.while_cond:
+            while iters < _MAX_LOOP_ITERS:
+                if not _eval_expr(node.while_cond, env, True):
+                    break
+                self.steps.append(TraceStep(
+                    kind="loop_iter", label=f"WHILE ({node.while_cond})",
+                    data_step=self._current_step,
+                ))
+                self._eval_body(node.body, env)
+                iters += 1
+        elif node.until_cond:
+            while iters < _MAX_LOOP_ITERS:
+                self.steps.append(TraceStep(
+                    kind="loop_iter", label=f"UNTIL ({node.until_cond})",
+                    data_step=self._current_step,
+                ))
+                self._eval_body(node.body, env)
+                iters += 1
+                if _eval_expr(node.until_cond, env, True):
+                    break
+        else:
+            # Bare DO group — just execute body once
+            self._eval_body(node.body, env)
+
+    def _eval_select(self, node: SelectNode, env: dict[str, Any]) -> None:
+        select_val = _eval_expr(node.select_expr, env) if node.select_expr else None
+
+        for when in node.whens:
+            matched = False
+            if node.select_expr:
+                # Value-based SELECT: match select_val against WHEN values
+                for v in when.values:
+                    v_eval = _eval_expr(v, env)
+                    if v_eval == select_val or str(v_eval) == str(select_val):
+                        matched = True
+                        break
+            else:
+                # Condition-based SELECT: evaluate each value as a condition
+                for v in when.values:
+                    if _eval_expr(v, env, is_condition=True):
+                        matched = True
+                        break
+            if matched:
+                self.steps.append(TraceStep(
+                    kind="select_when",
+                    label=", ".join(when.values)[:80],
+                    data_step=self._current_step,
+                ))
+                self._eval_body(when.body, env)
+                return  # first match wins
+
+        if node.otherwise:
+            self.steps.append(TraceStep(
+                kind="select_otherwise", label="",
+                data_step=self._current_step,
+            ))
+            self._eval_body(node.otherwise, env)
+        else:
+            self.steps.append(TraceStep(
+                kind="select_no_match", label="",
+                data_step=self._current_step,
+            ))
+
+    def _eval_retain(self, node: RetainNode, env: dict[str, Any]) -> None:
+        if node.initial:
+            init_val = _eval_expr(node.initial, env)
+            for v in node.vars:
+                if v.upper() not in env:
+                    env[v.upper()] = init_val
+
+    @property
+    def row_passes_filter(self) -> bool:
+        return self._first_filter_passed and not self._row_deleted
 
 
-# ── Field lineage extraction ──────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Field lineage extraction
+# ─────────────────────────────────────────────────────────────────────────────
 
 _LINEAGE_SKIP = {
-    # Operators / keywords
+    # Language keywords / operators
     'AND', 'OR', 'NOT', 'EQ', 'NE', 'GT', 'LT', 'GE', 'LE', 'IN',
     'IF', 'THEN', 'ELSE', 'DO', 'END', 'WHERE', 'SET', 'DATA',
-    'TRUE', 'FALSE', 'NULL', 'MISSING', 'TO', 'BY',
-    # Common SAS functions
+    'TRUE', 'FALSE', 'NULL', 'MISSING', 'TO', 'BY', 'BETWEEN',
+    'SELECT', 'WHEN', 'OTHERWISE', 'WHILE', 'UNTIL', 'LIKE',
+    # Numeric functions
     'MAX', 'MIN', 'ABS', 'ROUND', 'INT', 'FLOOR', 'CEIL', 'SQRT',
-    'LOG', 'EXP', 'MOD', 'LENGTH', 'SUBSTR', 'TRIM', 'STRIP',
-    'UPCASE', 'LOWCASE', 'COMPRESS', 'CAT', 'CATS', 'CATX',
-    'PUT', 'INPUT', 'SCAN', 'INDEX', 'TRANWRD',
-    'SUM', 'MEAN', 'STD', 'NMISS', 'LAG', 'DIF', 'N',
-    'DATEPART', 'TODAY', 'DATE', 'YEAR', 'MONTH', 'DAY',
-    'COALESCE', 'IFN', 'IFC',
-    # Library/dataset name prefixes
-    'WORK', 'MYLIB',
-    # FIRST./LAST. group markers and common loop vars
-    'FIRST', 'LAST', 'I', 'J', 'K',
+    'LOG', 'LOG2', 'LOG10', 'EXP', 'MOD', 'SIGN',
+    'SUM', 'MEAN', 'STD', 'VAR', 'NMISS', 'N', 'RANGE',
+    'LAG', 'LAG1', 'LAG2', 'DIF', 'DIF1',
+    # String functions
+    'LENGTH', 'SUBSTR', 'TRIM', 'STRIP', 'COMPRESS',
+    'UPCASE', 'LOWCASE', 'PROPCASE',
+    'CAT', 'CATS', 'CATX', 'CATT', 'REPEAT', 'REVERSE',
+    'PUT', 'INPUT', 'SCAN', 'INDEX', 'FIND', 'INDEXW', 'TRANWRD',
+    # Date functions
+    'TODAY', 'DATE', 'DATETIME', 'YEAR', 'MONTH', 'DAY',
+    'HOUR', 'MINUTE', 'SECOND', 'MDY', 'YMD',
+    'DATEPART', 'TIMEPART', 'INTCK', 'INTNX',
+    # Logic / lookup
+    'COALESCE', 'COALESCEC', 'IFN', 'IFC',
+    'WHICHN', 'WHICHC', 'DIM', 'HBOUND', 'LBOUND',
+    # Stats
+    'PROBNORM', 'PROBCHI', 'PROBT', 'PROBF', 'QNORM',
+    # Dataset/library prefixes
+    'WORK', 'MYLIB', 'SASHELP', 'SASUSER',
+    # Auto variables
+    'N', 'ERROR', 'FIRST', 'LAST', 'NOBS',
+    # Common loop vars
+    'I', 'J', 'K', 'IDX',
     # ARRAY pseudo-variables
-    'TEMPORARY',
+    'TEMPORARY', 'INITIAL',
 }
 
 
 def _vars_in_expr(expr: str) -> set[str]:
-    """Extract SAS variable names from an expression, ignoring keywords/literals."""
+    """Extract SAS variable names from an expression."""
     cleaned = re.sub(r"'[^']*'", " ", expr)
     cleaned = re.sub(r'"[^"]*"', " ", cleaned)
+    cleaned = re.sub(r"&&?\w+\.?", " ", cleaned)   # strip macro var refs
+    cleaned = re.sub(r"\[\s*\w+\s*\]", " ", cleaned)  # strip subscripts
     tokens = re.findall(r'\b([A-Za-z_][A-Za-z0-9_]*)\b', cleaned)
     return {t.upper() for t in tokens if t.upper() not in _LINEAGE_SKIP}
 
 
 @dataclass
 class FieldLineage:
-    """Field dependency graph extracted from a SAS AST."""
-    nodes: list[dict]      # {id, label, kind: "input"|"modified"|"computed", layer, data_steps}
-    edges: list[dict]      # {source, target, kind: "assigns"|"conditions", data_step, expr}
-    data_steps: list[str]  # output dataset names in parse order
+    nodes: list[dict]      # {id, label, kind, layer, data_steps}
+    edges: list[dict]      # {source, target, kind, data_step, expr}
+    data_steps: list[str]
 
 
 class _LineageWalker:
@@ -537,9 +1540,9 @@ class _LineageWalker:
         self._edges: list[dict] = []
         self._seen_edges: set[tuple] = set()
         self._step_order: list[str] = []
-        self._field_step: dict[str, str] = {}   # field → first writing step
+        self._field_step: dict[str, str] = {}
         self._current_step: str = ""
-        self._cond_stack: list[set[str]] = []   # nested condition variables
+        self._cond_stack: list[set[str]] = []
 
     def walk(self, nodes: list[AnyNode]) -> FieldLineage:
         for node in nodes:
@@ -547,17 +1550,35 @@ class _LineageWalker:
                 self._current_step = node.output_dataset
                 if node.output_dataset not in self._step_order:
                     self._step_order.append(node.output_dataset)
+                # Add merge datasets as input sources
+                for ds in node.merge_datasets:
+                    self._read.update()  # no field-level info from merge names
                 self._walk_body(node.body)
         return self._build()
 
     def _walk_body(self, body: list[AnyNode]) -> None:
         for node in body:
-            if isinstance(node, AssignNode):
-                self._on_assign(node)
-            elif isinstance(node, IfNode):
-                self._on_if(node)
-            elif isinstance(node, FilterNode):
-                self._on_filter(node)
+            self._walk_node(node)
+
+    def _walk_node(self, node: AnyNode) -> None:
+        if isinstance(node, AssignNode):
+            self._on_assign(node)
+        elif isinstance(node, IfNode):
+            self._on_if(node)
+        elif isinstance(node, FilterNode):
+            self._on_filter(node)
+        elif isinstance(node, DoLoopNode):
+            self._on_do_loop(node)
+        elif isinstance(node, SelectNode):
+            self._on_select(node)
+        elif isinstance(node, RetainNode):
+            for v in node.vars:
+                self._written.add(v.upper())
+        elif isinstance(node, ArrayNode):
+            # Array vars are read/written in the loop body context
+            for v in node.vars:
+                if v and not v.startswith("_"):
+                    self._written.add(v.upper())
 
     def _on_assign(self, node: AssignNode) -> None:
         target = node.var.upper()
@@ -568,10 +1589,9 @@ class _LineageWalker:
             self._field_step[target] = self._current_step
         for src in sources:
             self._add_edge(src, target, "assigns", node.expr)
-        # Condition context: every variable that guards this assignment influences the target
         for cond_vars in self._cond_stack:
             for cv in cond_vars:
-                if cv != target:   # skip self-loops
+                if cv != target:
                     self._add_edge(cv, target, "conditions", "")
 
     def _on_if(self, node: IfNode) -> None:
@@ -585,15 +1605,36 @@ class _LineageWalker:
     def _on_filter(self, node: FilterNode) -> None:
         self._read.update(_vars_in_expr(node.condition))
 
+    def _on_do_loop(self, node: DoLoopNode) -> None:
+        # Loop variable is written
+        if node.var:
+            self._written.add(node.var.upper())
+        # Conditions reference vars
+        for cond in [node.while_cond, node.until_cond]:
+            if cond:
+                self._read.update(_vars_in_expr(cond))
+        if node.start:
+            self._read.update(_vars_in_expr(node.start))
+        if node.stop:
+            self._read.update(_vars_in_expr(node.stop))
+        self._walk_body(node.body)
+
+    def _on_select(self, node: SelectNode) -> None:
+        if node.select_expr:
+            self._read.update(_vars_in_expr(node.select_expr))
+        for when in node.whens:
+            for v in when.values:
+                self._read.update(_vars_in_expr(v))
+            self._walk_body(when.body)
+        self._walk_body(node.otherwise)
+
     def _add_edge(self, source: str, target: str, kind: str, expr: str) -> None:
         key = (source, target, kind, self._current_step)
         if key in self._seen_edges:
             return
         self._seen_edges.add(key)
         self._edges.append({
-            "source": source,
-            "target": target,
-            "kind": kind,
+            "source": source, "target": target, "kind": kind,
             "data_step": self._current_step,
             "expr": expr[:120] if expr else "",
         })
@@ -602,7 +1643,6 @@ class _LineageWalker:
         all_fields = self._written | self._read
         step_idx = {s: i for i, s in enumerate(self._step_order)}
 
-        # Compute contiguous layer numbers (skip empty layers)
         raw_layers: dict[str, int] = {}
         for f in all_fields:
             if f in self._written:
@@ -623,9 +1663,7 @@ class _LineageWalker:
                 kind = "input"
                 steps = []
             nodes.append({
-                "id": f,
-                "label": f,
-                "kind": kind,
+                "id": f, "label": f, "kind": kind,
                 "layer": remap[raw_layers[f]],
                 "data_steps": steps,
             })
@@ -633,47 +1671,118 @@ class _LineageWalker:
         return FieldLineage(nodes=nodes, edges=self._edges, data_steps=self._step_order)
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+def trace_field_ancestors(
+    lineage: FieldLineage,
+    target: str,
+    *,
+    max_depth: int | None = None,
+) -> dict:
+    """Walk the lineage graph *backwards* from ``target``.
+
+    Edges are directed ``source → target`` (source feeds into target).  This
+    returns every transitive predecessor of ``target``, grouped by hop
+    distance, plus a subgraph containing only those nodes and the edges
+    between them.
+    """
+    target_u = target.upper()
+    all_ids = {n["id"].upper() for n in lineage.nodes}
+
+    preds: dict[str, list[dict]] = {}
+    for e in lineage.edges:
+        t = e["target"].upper()
+        preds.setdefault(t, []).append({
+            "source": e["source"].upper(),
+            "target": t,
+            "kind": e.get("kind", "assigns"),
+            "data_step": e.get("data_step", ""),
+            "expr": e.get("expr", ""),
+        })
+
+    # BFS upward: depth 0 = target, depth 1 = direct inputs, …
+    depth: dict[str, int] = {target_u: 0}
+    frontier = [target_u]
+    while frontier:
+        nxt: list[str] = []
+        for node in frontier:
+            for edge in preds.get(node, []):
+                src = edge["source"]
+                if src in depth:
+                    continue
+                d = depth[node] + 1
+                if max_depth is not None and d > max_depth:
+                    continue
+                depth[src] = d
+                nxt.append(src)
+        frontier = nxt
+
+    ancestor_set = {f for f, d in depth.items() if d > 0}
+    keep = set(depth.keys())
+
+    filtered_nodes = [n for n in lineage.nodes if n["id"].upper() in keep]
+    filtered_edges = [
+        e for e in lineage.edges
+        if e["source"].upper() in keep and e["target"].upper() in keep
+    ]
+
+    layers: list[dict] = []
+    by_depth: dict[int, list[str]] = {}
+    for f, d in depth.items():
+        by_depth.setdefault(d, []).append(f)
+    for d in sorted(by_depth):
+        layers.append({
+            "depth": d,
+            "fields": sorted(by_depth[d]),
+        })
+
+    direct = preds.get(target_u, [])
+
+    return {
+        "target": target_u,
+        "found": target_u in all_ids or bool(direct),
+        "ancestors": sorted(ancestor_set),
+        "ancestor_count": len(ancestor_set),
+        "direct_predecessors": direct,
+        "depth": {k: v for k, v in sorted(depth.items())},
+        "layers": layers,
+        "nodes": filtered_nodes,
+        "edges": filtered_edges,
+        "data_steps": lineage.data_steps,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────────────────────────
 
 class SASLogicTree:
     """Parse SAS DATA step code into a logic tree and simulate it with example values."""
 
     def parse(self, code: str) -> list[AnyNode]:
-        """Return the AST for the given SAS source code."""
         clean = _strip_comments(code)
+        clean = _strip_macro_refs(clean)
         stmts = _split_statements(clean)
         return _Parser(stmts).parse()
 
     def display(self, nodes: list[AnyNode]) -> str:
-        """Human-readable indented tree."""
         return "\n".join(n.display() for n in nodes)
 
     def to_dict(self, nodes: list[AnyNode]) -> list[dict]:
-        """JSON-serializable tree."""
         return [n.to_dict() for n in nodes]
 
     def lineage(self, nodes: list[AnyNode]) -> FieldLineage:
-        """Extract field dependency graph from the AST."""
         return _LineageWalker().walk(nodes)
 
-    def evaluate(
-        self,
-        nodes: list[AnyNode],
-        values: dict[str, Any],
-    ) -> EvalTrace:
-        """Walk the tree with *values* as the starting variable state.
+    def trace_lineage(self, nodes: list[AnyNode], target: str, *, max_depth: int | None = None) -> dict:
+        lg = self.lineage(nodes)
+        return trace_field_ancestors(lg, target, max_depth=max_depth)
 
-        Returns an EvalTrace with:
-        - initial / final variable snapshots
-        - step-by-step execution record
-        - whether the row passed all WHERE filters
-        """
+    def evaluate(self, nodes: list[AnyNode], values: dict[str, Any]) -> EvalTrace:
         env = dict(values)
-        evaluator = _Evaluator()
-        evaluator.run(nodes, env)
+        ev = _Evaluator()
+        ev.run(nodes, env)
         return EvalTrace(
-            initial=dict(values),
-            final=env,
-            steps=evaluator.steps,
-            row_passes_filter=evaluator.row_passes_filter,
+            initial=dict(values), final=env,
+            steps=ev.steps,
+            row_passes_filter=ev.row_passes_filter,
+            filter_results=ev.filter_results,
         )

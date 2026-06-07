@@ -1,18 +1,23 @@
-# Enforce LF everywhere so Linux containers never get CRLF in scripts/Dockerfiles
+# Default to LF for text files; Windows checkouts must not turn shell
+# scripts into CRLF, otherwise `sh` inside Linux containers fails with
+# "no such file or directory".
 * text=auto eol=lf
 
-# Explicit LF for anything executed inside a container
-*.sh         text eol=lf
-*.py         text eol=lf
-*.ts         text eol=lf
-*.tsx        text eol=lf
-*.js         text eol=lf
-*.json       text eol=lf
-Dockerfile*  text eol=lf
+# Shell / entrypoint scripts: always LF.
+*.sh           text eol=lf
+docker/**      text eol=lf
 
-# Binary / LFS assets
-*.safetensors filter=lfs diff=lfs merge=lfs -text
-*.bin         filter=lfs diff=lfs merge=lfs -text
-*.png         binary
-*.jpg         binary
-*.pdf         binary
+# Windows-only scripts: always CRLF.
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+*.ps1          text eol=crlf
+
+# Binary assets — leave untouched.
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gif          binary
+*.svg          text
+*.ico          binary
+*.pdf          binary
+*.zip          binary

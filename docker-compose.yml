@@ -1,122 +1,128 @@
+# RegLLM — full local stack (Linux / macOS / Windows via Docker Desktop).
+#
+#   docker compose up --build           start everything (Ollama + API + Web)
+#   docker compose down                 stop and remove containers
+#   docker compose down -v              also drop the cached Ollama models (~9 GB)
+#
+# Open http://localhost:3010/diff once `web` is healthy.
+#
+# Configuration via .env (see .env.example):
+#   OLLAMA_MODEL   model tag pulled on first run (default: qwen2.5:14b-instruct-q4_K_M)
+#   API_PORT       host port for the FastAPI service  (default: 8000)
+#   WEB_PORT       host port for the Next.js frontend (default: 3010)
+#   OLLAMA_PORT    host port for the Ollama server    (default: 11434)
+#
+# To use a host-installed Ollama instead of the dockerised one:
+#   docker compose up --build api web         (skip the ollama services)
+#   API picks the host via OLLAMA_URL=http://host.docker.internal:11434
+
+name: regllm
+
 services:
-
-  app:
-    build: .
-    image: regllm:latest
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - REGLLM_BACKEND=${REGLLM_BACKEND:-groq}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB:-regllm}
-      - POSTGRES_USER=${POSTGRES_USER:-regllm}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MLFLOW_MODEL_NAME=${MLFLOW_MODEL_NAME:-regllm-lora-adapter}
-      - MLFLOW_MODEL_STAGE=${MLFLOW_MODEL_STAGE:-Production}
-      - ADAPTER_DIR=/app/models/finetuned/current
+  ollama:
+    image: ollama/ollama:latest
+    container_name: regllm-ollama
     ports:
-      - "7860:7860"
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
-      - ./models/finetuned:/app/models/finetuned:ro
-      - hf_cache:/root/.cache/huggingface
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mlflow:
-        condition: service_healthy
-    restart: unless-stopped
-
-  mlflow:
-    image: python:3.10-slim
-    command: >
-      bash -c "
-        pip install mlflow psycopg2-binary -q &&
-        mlflow server
-          --host 0.0.0.0
-          --port 5000
-          --backend-store-uri postgresql://${POSTGRES_USER:-regllm}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-regllm}_mlflow
-          --default-artifact-root ${MLFLOW_ARTIFACT_ROOT:-/mlflow/artifacts}
-      "
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-regllm}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
-      - POSTGRES_DB=${POSTGRES_DB:-regllm}
-      - MLFLOW_ARTIFACT_ROOT=${MLFLOW_ARTIFACT_ROOT:-/mlflow/artifacts}
-    ports:
-      - "5000:5000"
-    volumes:
-      - mlflow_artifacts:/mlflow/artifacts
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - ollama-models:/root/.ollama
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
-      interval: 15s
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 60s
+      retries: 30
+      start_period: 10s
     restart: unless-stopped
 
-  postgres:
-    image: pgvector/pgvector:pg16
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: regllm-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-regllm}
-      POSTGRES_USER: ${POSTGRES_USER:-regllm}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-regllm} -d ${POSTGRES_DB:-regllm}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
+      OLLAMA_HOST: "http://ollama:11434"
+      MODEL_TAG: "${OLLAMA_MODEL:-qwen2.5:14b-instruct-q4_K_M}"
+    entrypoint: ["/bin/sh", "-c"]
+    # `$$` escapes to a literal `$` so docker-compose doesn't try to interpolate.
+    command:
+      - |
+        set -e
+        if ollama list 2>/dev/null | tail -n +2 | awk '{print $$1}' | grep -qx "$$MODEL_TAG"; then
+          echo "[init] $$MODEL_TAG already present in Ollama cache"
+        else
+          echo "[init] pulling $$MODEL_TAG (this can take a while on first run)…"
+          ollama pull "$$MODEL_TAG"
+          echo "[init] $$MODEL_TAG ready"
+        fi
+    restart: "no"
 
-  fastapi:
+  api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: Dockerfile
     image: regllm-api:latest
-    network_mode: host
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - REGLLM_BACKEND=${REGLLM_BACKEND:-groq}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://127.0.0.1:11434}
-      - POSTGRES_HOST=127.0.0.1
-      - POSTGRES_PORT=5433
-      - POSTGRES_DB=${POSTGRES_DB:-regllm}
-      - POSTGRES_USER=${POSTGRES_USER:-regllm}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
-      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
-      - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-168}
-      - CORS_ORIGINS=http://localhost:3000
+    container_name: regllm-api
     depends_on:
-      postgres:
+      ollama:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: "http://localhost:${WEB_PORT:-3010},http://localhost:3000"
+      REGLLM_LLM: "auto"
+      OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5:14b-instruct-q4_K_M}"
+      LITERT_URL: "http://host.docker.internal:9379/v1"
+      LITERT_MODEL: "gemma4-12b,gpu"
+      REGLLM_LLM_TIMEOUT: "240"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=2).status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     restart: unless-stopped
 
-  frontend:
+  web:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: regllm-frontend:latest
-    environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      - INTERNAL_API_URL=http://localhost:8000
-    ports:
-      - "3000:3000"
+      args:
+        INTERNAL_API_URL: "http://api:8000"
+    image: regllm-web:latest
+    container_name: regllm-web
     depends_on:
-      - fastapi
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3010}:3010"
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_URL: "http://api:8000"
+      PORT: "3010"
+      HOSTNAME: "0.0.0.0"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          node -e "require('http').get('http://localhost:3010',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     restart: unless-stopped
 
 volumes:
-  hf_cache:
-  postgres_data:
-  mlflow_artifacts:
+  ollama-models:

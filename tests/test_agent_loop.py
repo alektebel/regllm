@@ -1,285 +1,161 @@
-"""
-Tests for Agent Loop
+"""Integration test for the SASDiffAgent tool-calling loop.
+
+Uses a deterministic fake LLM that scripts the tool-call sequence — so we
+exercise the dispatcher, message accumulation, loop guard, final-answer
+parsing, and event stream without needing a live model.
 """
 
-import sys
-from pathlib import Path
+from __future__ import annotations
 
-# Add project root to path to allow direct imports
-project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+import asyncio
+from typing import Any
 
 import pytest
 
-# Direct imports to avoid src/__init__.py heavy dependencies
-from src.agents.tool_registry import Tool, ToolRegistry
-from src.agents.agent_loop import (
-    RegulationAgent,
-    MethodologyConsistencyAgent,
-    AgentState,
-    AgentMessage,
-    AgentStep,
-)
+from src.agent import SASDiffAgent
+from src.knowledge.llm_client import ChatResponse, LocalLLMClient
 
 
-class TestAgentMessage:
-    """Tests for AgentMessage dataclass."""
+class _ScriptedLLM(LocalLLMClient):
+    """An LLM whose responses are a hand-written script keyed by call count."""
 
-    def test_message_creation(self):
-        """Test creating an AgentMessage."""
-        msg = AgentMessage(
-            role="user",
-            content="Hello agent",
-        )
+    def __init__(self, script: list[ChatResponse]) -> None:
+        super().__init__(prefer="stub")
+        self.script = list(script)
+        self.calls = 0
 
-        assert msg.role == "user"
-        assert msg.content == "Hello agent"
-        assert msg.timestamp is not None
+    def detect_backend(self) -> str:  # type: ignore[override]
+        return "ollama"  # claim a real backend so the agent uses chat_tools
 
-    def test_message_to_dict(self):
-        """Test converting message to dictionary."""
-        msg = AgentMessage(
-            role="assistant",
-            content="Here is my response",
-            tool_call={"name": "search", "parameters": {"q": "test"}},
-        )
-
-        d = msg.to_dict()
-
-        assert d["role"] == "assistant"
-        assert d["content"] == "Here is my response"
-        assert d["tool_call"]["name"] == "search"
-
-
-class TestAgentStep:
-    """Tests for AgentStep dataclass."""
-
-    def test_step_creation(self):
-        """Test creating an AgentStep."""
-        step = AgentStep(
-            step_number=1,
-            thought="I need to search for information",
-            action="search",
-            action_input={"query": "IRB"},
-        )
-
-        assert step.step_number == 1
-        assert step.action == "search"
-        assert not step.is_final
-
-    def test_final_step(self):
-        """Test creating a final step."""
-        step = AgentStep(
-            step_number=3,
-            thought="I have all the information",
-            is_final=True,
-            observation="Final answer here",
-        )
-
-        assert step.is_final
-        assert step.observation == "Final answer here"
-
-    def test_step_to_dict(self):
-        """Test converting step to dictionary."""
-        step = AgentStep(
-            step_number=1,
-            thought="Thinking...",
-            action="tool_name",
-            action_input={"param": "value"},
-            observation="Result",
-        )
-
-        d = step.to_dict()
-
-        assert d["step"] == 1
-        assert d["thought"] == "Thinking..."
-        assert d["action"] == "tool_name"
+    def chat_tools(  # type: ignore[override]
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
+    ) -> ChatResponse:
+        if self.calls >= len(self.script):
+            # Default: end with a plain answer
+            return ChatResponse(
+                text="```json\n{\"lineage_highlight\": [], \"citations\": []}\n```",
+                backend="ollama", model="scripted", tool_calls=None,
+            )
+        resp = self.script[self.calls]
+        self.calls += 1
+        return resp
 
 
-class TestRegulationAgent:
-    """Tests for RegulationAgent class."""
+def _collect(agent: SASDiffAgent, question: str) -> list[dict[str, Any]]:
+    async def _go() -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        async for ev in agent.run(question):
+            out.append(ev.to_dict())
+        return out
+    return asyncio.run(_go())
 
-    @pytest.fixture
-    def agent_with_tools(self):
-        """Create agent with sample tools."""
-        registry = ToolRegistry()
 
-        def search_docs(query: str) -> list:
-            return [{"title": f"Doc about {query}", "relevance": 0.9}]
+def test_loop_terminates_on_plain_answer() -> None:
+    script = [
+        ChatResponse(
+            text="The answer is 42.",
+            backend="ollama", model="scripted", tool_calls=None,
+        ),
+    ]
+    agent = SASDiffAgent(client=_ScriptedLLM(script), max_iters=4)
+    events = _collect(agent, "What's the meaning?")
+    assert events[0]["type"] == "status"
+    final = next(e for e in events if e["type"] == "final")
+    assert final["answer"] == "The answer is 42."
 
-        def calculate_rwa(pd: float, lgd: float, ead: float) -> dict:
-            k = pd * lgd * 12.5
-            return {"rwa": k * ead}
 
-        tools = [
-            Tool(
-                name="search_docs",
-                description="Search regulatory documents",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string"},
-                    },
-                    "required": ["query"],
-                },
-                function=search_docs,
+def test_dispatches_tool_then_finalises() -> None:
+    script = [
+        ChatResponse(
+            text="",
+            backend="ollama", model="scripted",
+            tool_calls=[{
+                "id": "c0", "name": "inspect_lineage",
+                "arguments": {"target": "ECL", "sas_version": "v3"},
+            }],
+        ),
+        ChatResponse(
+            text=(
+                "ECL depends on PD, LGD, EAD.\n"
+                "```json\n"
+                "{\"lineage_highlight\": [\"PD_ESTIMADA\", \"LGD_ESTIMADA\", \"EAD\"], "
+                "\"citations\": [{\"kind\": \"code\", \"step\": \"work.ecl_calculo\"}]}"
+                "\n```"
             ),
-            Tool(
-                name="calculate_rwa",
-                description="Calculate RWA",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "pd": {"type": "number"},
-                        "lgd": {"type": "number"},
-                        "ead": {"type": "number"},
-                    },
-                    "required": ["pd", "lgd", "ead"],
-                },
-                function=calculate_rwa,
-            ),
-        ]
+            backend="ollama", model="scripted", tool_calls=None,
+        ),
+    ]
+    agent = SASDiffAgent(client=_ScriptedLLM(script), max_iters=4)
+    events = _collect(agent, "Where does ECL come from?")
+    types = [e["type"] for e in events]
+    assert "tool_call" in types
+    assert "tool_result" in types
+    assert types[-1] == "final"
 
-        for t in tools:
-            registry.register(t)
+    tool_call = next(e for e in events if e["type"] == "tool_call")
+    assert tool_call["tool"] == "inspect_lineage"
 
-        return RegulationAgent(registry=registry, max_steps=5)
+    tool_result = next(e for e in events if e["type"] == "tool_result")
+    assert "ancestors" in tool_result["result"]
 
-    def test_agent_initialization(self, agent_with_tools):
-        """Test agent initializes correctly."""
-        assert agent_with_tools.state == AgentState.IDLE
-        assert len(agent_with_tools.conversation) == 0
-        assert len(agent_with_tools.steps) == 0
+    final = next(e for e in events if e["type"] == "final")
+    assert "PD_ESTIMADA" in final["lineage_highlight"]
+    assert final["citations"] and final["citations"][0]["kind"] == "code"
 
-    def test_agent_get_system_prompt(self, agent_with_tools):
-        """Test system prompt generation includes tools."""
-        prompt = agent_with_tools._get_system_prompt()
 
-        assert "experto" in prompt.lower()
-        assert "search_docs" in prompt or "herramienta" in prompt.lower()
+def test_loop_guard_breaks_on_repeated_call() -> None:
+    same_call = ChatResponse(
+        text="",
+        backend="ollama", model="scripted",
+        tool_calls=[{
+            "id": "c", "name": "inspect_lineage",
+            "arguments": {"target": "ECL", "sas_version": "v3"},
+        }],
+    )
+    # Repeat the same tool call indefinitely — agent should detect the loop
+    agent = SASDiffAgent(client=_ScriptedLLM([same_call, same_call, same_call]), max_iters=8)
+    events = _collect(agent, "loop me")
+    statuses = [e for e in events if e["type"] == "status"]
+    assert any(s.get("stage") == "loop_detected" for s in statuses)
 
-    def test_parse_response_with_action(self, agent_with_tools):
-        """Test parsing response with tool action."""
-        response = """PENSAMIENTO: Necesito buscar información sobre IRB.
 
-ACCIÓN: search_docs
-ENTRADA: {"query": "IRB methodology"}"""
-
-        step = agent_with_tools._parse_response(response)
-
-        assert "buscar" in step.thought.lower() or "IRB" in step.thought
-        assert step.action == "search_docs"
-        assert step.action_input["query"] == "IRB methodology"
-        assert not step.is_final
-
-    def test_parse_response_final_answer(self, agent_with_tools):
-        """Test parsing response with final answer."""
-        response = """PENSAMIENTO: Ya tengo toda la información necesaria.
-
-RESPUESTA_FINAL: El método IRB Fundación requiere estimación propia de PD."""
-
-        step = agent_with_tools._parse_response(response)
-
-        assert step.is_final
-        assert "IRB" in step.observation
-
-    def test_execute_step(self, agent_with_tools):
-        """Test executing a step with tool action."""
-        step = AgentStep(
-            step_number=1,
-            thought="Search for docs",
-            action="search_docs",
-            action_input={"query": "capital"},
+def test_max_iters_triggers_synthesis() -> None:
+    # 5 distinct tool calls, never terminates → max_iters reached after 3
+    distinct = [
+        ChatResponse(
+            text="",
+            backend="ollama", model="scripted",
+            tool_calls=[{
+                "id": f"c{i}", "name": "inspect_lineage",
+                "arguments": {"target": "ECL", "sas_version": v},
+            }],
         )
-
-        observation = agent_with_tools._execute_step(step)
-
-        assert "Doc about capital" in observation or "capital" in observation.lower()
-
-    def test_execute_step_no_action(self, agent_with_tools):
-        """Test executing step without action."""
-        step = AgentStep(
-            step_number=1,
-            thought="Just thinking",
-        )
-
-        observation = agent_with_tools._execute_step(step)
-
-        assert "No se especificó" in observation
-
-    def test_run_returns_result(self, agent_with_tools):
-        """Test that run returns a result dict."""
-        result = agent_with_tools.run("¿Qué es IRB?")
-
-        assert "query" in result
-        assert "answer" in result
-        assert "steps" in result
-        assert "state" in result
-        assert result["query"] == "¿Qué es IRB?"
-
-    def test_run_with_context(self, agent_with_tools):
-        """Test running with additional context."""
-        result = agent_with_tools.run(
-            "¿Qué parámetros necesito?",
-            context="Estamos evaluando IRB Fundación para exposiciones corporativas.",
-        )
-
-        assert result["query"] == "¿Qué parámetros necesito?"
-
-    def test_reset_clears_state(self, agent_with_tools):
-        """Test that reset clears agent state."""
-        # Run a query first
-        agent_with_tools.run("Test query")
-
-        # Reset
-        agent_with_tools.reset()
-
-        assert agent_with_tools.state == AgentState.IDLE
-        assert len(agent_with_tools.conversation) == 0
-        assert len(agent_with_tools.steps) == 0
-
-    def test_max_steps_limit(self, agent_with_tools):
-        """Test that agent stops at max steps."""
-        # Set very low max steps
-        agent_with_tools.max_steps = 2
-
-        result = agent_with_tools.run("Complex question")
-
-        assert result["total_steps"] <= 2
+        for i, v in enumerate(["v3", "v2", "v3", "v2", "v3"])
+    ]
+    agent = SASDiffAgent(client=_ScriptedLLM(distinct), max_iters=3)
+    events = _collect(agent, "exhaust me")
+    statuses = [e for e in events if e["type"] == "status"]
+    # We at least see the cap message
+    assert any(
+        s.get("stage") in ("max_iters_reached", "loop_detected")
+        for s in statuses
+    )
 
 
-class TestMethodologyConsistencyAgent:
-    """Tests for MethodologyConsistencyAgent class."""
-
-    @pytest.fixture
-    def consistency_agent(self, registered_registry):
-        """Create consistency agent with all tools."""
-        return MethodologyConsistencyAgent(
-            registry=registered_registry,
-            max_steps=5,
-        )
-
-    def test_consistency_agent_initialization(self, consistency_agent):
-        """Test consistency agent initializes correctly."""
-        assert consistency_agent.state == AgentState.IDLE
-        assert "consistencia" in consistency_agent.SYSTEM_PROMPT.lower()
-
-    def test_check_consistency_returns_result(self, consistency_agent):
-        """Test check_consistency returns proper result."""
-        result = consistency_agent.check_consistency(
-            methodology_path="data/methodology/test.md",
-            code_path="src/implementation.py",
-            aspects=["PD calculation", "LGD values"],
-        )
-
-        assert "query" in result
-        assert "answer" in result or result.get("error") is not None
-
-    def test_system_prompt_includes_format(self, consistency_agent):
-        """Test system prompt includes report format."""
-        prompt = consistency_agent.SYSTEM_PROMPT
-
-        assert "Reporte" in prompt or "reporte" in prompt
-        assert "Consistentes" in prompt or "consistentes" in prompt.lower()
-        assert "Inconsistencias" in prompt or "inconsistencias" in prompt.lower()
+@pytest.mark.parametrize("question,expected_pk", [
+    ("Why does CIC_00031 differ?", "CIC_00031"),
+    ("Investigate cycle CIC_99 please", None),  # too short, won't match
+])
+def test_seed_user_message_extracts_pk(question: str, expected_pk: str | None) -> None:
+    from src.agent.agent import _seed_user_message
+    seeded = _seed_user_message(question)
+    if expected_pk:
+        assert expected_pk in seeded
+        assert "detected primary key" in seeded
+    else:
+        assert "detected primary key" not in seeded

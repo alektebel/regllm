@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "docs_root": "/app/data/docs",
+  "sections": [
+    {
+      "path": "fields/EAD.md",
+      "heading": "Field EAD",
+      "level": 1,
+      "body": "`EAD` (Exposure At Default) is the on-balance exposure used in IRB ECL\nformulas: `ECL = PD × LGD × EAD`. It feeds both `ECL` and `RWA`.",
+      "line_start": 1,
+      "line_end": 5
+    },
+    {
+      "path": "fields/EAD.md",
+      "heading": "Source table",
+      "level": 2,
+      "body": "`mylib.ciclos_recuperacion` — column `EAD`, type NUMERIC (€).",
+      "line_start": 6,
+      "line_end": 9
+    },
+    {
+      "path": "fields/EAD.md",
+      "heading": "Notes",
+      "level": 2,
+      "body": "- V3 of the database refreshed `EAD` for retail mortgages with revised\n  amortisation profiles (see `data/changelog/2025-q1-pd-recalibration.md`).\n- The field is *input* to the SAS pipeline; it is never overwritten.",
+      "line_start": 10,
+      "line_end": 14
+    },
+    {
+      "path": "fields/LGD_ESTIMADA.md",
+      "heading": "Field LGD_ESTIMADA",
+      "level": 1,
+      "body": "Loss Given Default — the proportion of `EAD` expected to be lost net of\nrecoveries.",
+      "line_start": 1,
+      "line_end": 5
+    },
+    {
+      "path": "fields/LGD_ESTIMADA.md",
+      "heading": "Floors",
+      "level": 2,
+      "body": "| Segment / Collateral                | V2 floor | V3 floor |\n|--------------------------------------|---------:|---------:|\n| HIPOTECA (CRR Art. 154(3))           | 0.30     | 0.30     |\n| CORP (CRR Art. 161(1)(b))            | 0.45     | **0.50** |\n| RETAIL no collateral                 | none     | none     |\n\nThe CORP floor was tightened by 5 pp in V3 (data step\n`work.lgd_con_suelos`) per the 2025-Q1 supervisory dialogue.",
+      "line_start": 6,
+      "line_end": 15
+    },
+    {
+      "path": "fields/OR_EAD_TIT.md",
+      "heading": "Field OR_EAD_TIT",
+      "level": 1,
+      "body": "`OR_EAD_TIT` is the **EAD titulizado** — Exposure At Default for tranches\nsold into a securitisation programme. It is derived from the base `EAD`\nby applying a regulatory multiplier that depends on the customer\n`SEGMENTO`.",
+      "line_start": 1,
+      "line_end": 7
+    },
+    {
+      "path": "fields/OR_EAD_TIT.md",
+      "heading": "Definition",
+      "level": 2,
+      "body": "| Segmento | Multiplier | Source |\n|----------|-----------:|--------|\n| CORP     | 2.0        | EBA GL 2020/06 §3.4 |\n| RETAIL   | 1.5        | EBA GL 2020/06 §3.7 |\n| Other    | 1.0        | (fall-through, no multiplier) |",
+      "line_start": 8,
+      "line_end": 15
+    },
+    {
+      "path": "fields/OR_EAD_TIT.md",
+      "heading": "Pipeline",
+      "level": 2,
+      "body": "This field is produced by the SAS data step `work.titulizado`, which\nexists in V3 of the calibration pipeline only. In V2 the field is not\ncomputed at all — downstream consumers fell back to the raw `EAD`.",
+      "line_start": 16,
+      "line_end": 21
+    },
+    {
+      "path": "fields/OR_EAD_TIT.md",
+      "heading": "Common pitfalls",
+      "level": 2,
+      "body": "- Comparing V2 vs V3 directly is misleading because the field did not\n  exist in V2. The agent should treat a V2 row's missing `OR_EAD_TIT`\n  as \"not applicable\" and explain that the V3 multiplier was added by\n  release 2025-Q1.",
+      "line_start": 22,
+      "line_end": 27
+    },
+    {
+      "path": "fields/PD_ESTIMADA.md",
+      "heading": "Field PD_ESTIMADA",
+      "level": 1,
+      "body": "`PD_ESTIMADA` is the 1-year point-in-time probability of default\nestimated by the master scale.",
+      "line_start": 1,
+      "line_end": 5
+    },
+    {
+      "path": "fields/PD_ESTIMADA.md",
+      "heading": "Floors",
+      "level": 2,
+      "body": "CRR Art. 160(1) sets a regulatory floor of **0.03 %**. The V3 pipeline\nraises this floor to **0.05 %** following the 2025-Q1 master-scale\nrecalibration. The change is implemented in the data step\n`work.ecl_calculo`.",
+      "line_start": 6,
+      "line_end": 11
+    },
+    {
+      "path": "fluxes/lgd_pipeline.md",
+      "heading": "LGD calibration pipeline",
+      "level": 1,
+      "body": "",
+      "line_start": 1,
+      "line_end": 2
+    },
+    {
+      "path": "fluxes/lgd_pipeline.md",
+      "heading": "Stages",
+      "level": 2,
+      "body": "1. `work.ciclos` — read raw recovery cycles, filter\n   `PROVISION_PERIOD_MONTHS >= 9`.\n2. `work.lgd_con_suelos` — apply regulatory LGD floors per\n   `COLATERAL_TIPO` × `SEGMENTO`.\n3. `work.ecl_calculo` — apply the PD floor, compute\n   `ECL = PD × LGD × EAD`, reclassify IFRS 9 stage on the 30-DPD\n   backstop.\n4. `work.titulizado` *(V3 only)* — derive `OR_EAD_TIT` from `EAD` and\n   `SEGMENTO`.\n5. `work.no_conformes` — flag rows that fail one of: short calibration\n   window, short observation window, mortgage with LGD < floor, PD <\n   regulatory floor.",
+      "line_start": 3,
+      "line_end": 17
+    },
+    {
+      "path": "fluxes/lgd_pipeline.md",
+      "heading": "V2 → V3 differences",
+      "level": 2,
+      "body": "- The CORP LGD floor was raised from 0.45 to 0.50.\n- The PD floor was raised from 0.0003 to 0.0005.\n- A new step `work.titulizado` was inserted before the descriptive\n  statistics, producing `OR_EAD_TIT`.\n- Downstream `no_conformes` reflects the new PD floor automatically.",
+      "line_start": 18,
+      "line_end": 24
+    },
+    {
+      "path": "fluxes/v2_to_v3_release_notes.md",
+      "heading": "Release notes: V2 → V3 (2025-Q1)",
+      "level": 1,
+      "body": "- **PD master-scale recalibration**: floor lifted to 0.05 %; ratings\n  1–2 multiplied by 1.15. See `data/changelog/2025-q1-pd-recalibration.md`.\n- **CORP LGD floor**: tightened from 45 % to 50 %.\n- **Securitisation EAD**: introduced `OR_EAD_TIT` derived from `EAD` × a\n  segment-dependent multiplier (CORP × 2.0, RETAIL × 1.5, otherwise × 1.0).\n- **Collateral codes**: `FINANCIERO` renamed to `COLATERAL_FIN` per\n  `data/changelog/2025-q2-collateral-codes.md`.",
+      "line_start": 1,
+      "line_end": 9
+    },
+    {
+      "path": "tables/cycles.md",
+      "heading": "Table cycles_v[23]",
+      "level": 1,
+      "body": "Each row is one *recovery cycle* identified by `CICLO_ID`. Pairs across\nversions share the same primary key.",
+      "line_start": 1,
+      "line_end": 5
+    },
+    {
+      "path": "tables/cycles.md",
+      "heading": "Key fields",
+      "level": 2,
+      "body": "- `CICLO_ID` (PK) — e.g. `CIC_00031`\n- `SEGMENTO` — `CORP` | `RETAIL`\n- `COLATERAL_TIPO` — `HIPOTECA` | `PERSONAL` | `NINGUNA` | `FINANCIERO`\n- Numeric: `PD_ESTIMADA`, `LGD_ESTIMADA`, `EAD`, `DPDS`,\n  `STAGE_IFRS9`, `RATING_GRADO`, `PROVISION_PERIOD_MONTHS`,\n  `VENTANA_OBSERVACION_YEARS`, `VENTANA_CALIBRACION_YEARS`,\n  `LGD_FLOOR_APLICADO`, `MOC`, `CURE_FLAG`, `RWA`, `ECL`\n- V3-only: `OR_EAD_TIT` (computed)",
+      "line_start": 6,
+      "line_end": 15
+    },
+    {
+      "path": "uploads/test_upload.md",
+      "heading": "Smoke test field",
+      "level": 1,
+      "body": "Quick test for the docs upload pipeline.",
+      "line_start": 1,
+      "line_end": 3
+    }
+  ]
+}

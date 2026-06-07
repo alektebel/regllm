@@ -9,61 +9,26 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: regllm_test
-          POSTGRES_USER: regllm
-          POSTGRES_PASSWORD: testpass
-        ports:
-          - "5432:5432"
-        options: >-
-          --health-cmd "pg_isready -U regllm -d regllm_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: regllm_test
-      POSTGRES_USER: regllm
-      POSTGRES_PASSWORD: testpass
-      MLFLOW_TRACKING_URI: ""
-      GROQ_API_KEY: ""
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
           cache: pip
 
       - name: Install CPU-only PyTorch
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu --quiet
 
-      - name: Install application dependencies
-        run: |
-          pip install -r requirements-prod.txt
-          pip install -r requirements-api.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - name: Install test dependencies
-        run: pip install pytest pytest-asyncio httpx
+      - name: Generate V2/V3 sample data
+        run: python scripts/generate_v3.py
 
-      - name: Run unit tests (no GPU, no live LLM)
-        run: |
-          pytest -m "not slow and not llm_judge and not integration" \
-            --tb=short -q
-
-      - name: Run DB migrations
-        run: alembic upgrade head
-
-      - name: Run integration tests (DB available)
-        run: |
-          pytest -m "integration" --tb=short -q
+      - name: Run tests
+        run: pytest -q

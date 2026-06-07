@@ -1,500 +1,538 @@
-# RegLLM — Spanish Banking Regulation Assistant
+# RegLLM — SAS Field-Diff Explainer
 
-**A fine-tuned LLM (Qwen2.5-7B + LoRA) for Spanish banking regulations, with a ChatGPT-style web UI, hybrid RAG, and full CI/CD to AWS.**
+> *Why is the value of this field different in V3 versus V2 of the same
+> table?* — answered with a differentiable AST, Shapley values, and a
+> change-log GraphRAG grounded by a local LLM
+> (Qwen 2.5 14B by default; Gemma 4 12B on LiteRT-LM optional).
 
-RegLLM answers questions about EBA guidelines, CRR/CRD IV, and Basel III/IV by combining a fine-tuned language model with hybrid vector + keyword retrieval over real regulatory documents.
+---
+
+## What it does
+
+Given:
+
+- a SAS pipeline (e.g. an IRB / IFRS 9 calibration script),
+- two snapshots of the same row in two table versions (`V2` and `V3`),
+- a chosen target field (`Y`, e.g. `ECL`),
+
+RegLLM tells you **why `Y` differs between V2 and V3**, by combining:
+
+1. **Path-integrated gradients** (Aumann–Shapley) — built on a
+   differentiable evaluator of the SAS AST that uses
+   `torch.tensor(..., requires_grad=True)` for every numeric input.
+2. **Shapley values** (exact for ≤ 12 differing fields, permutation
+   sampling otherwise) — handles categorical / non-smooth fields and
+   branch flips, using the eager Python evaluator as a black box.
+3. **V2-vs-V3 code diff** — the SAS pipeline itself can change between
+   versions. The UI compares the two scripts AST-to-AST, scopes the diff
+   to the target field's lineage, and decomposes the total Δ into a
+   *data Δ* and a *code Δ* component:
+
+   ```
+   ΔY_total ≈  Y(row_v3, code_v3) − Y(row_v2, code_v2)
+              = [Y(row_v3, code_v3) − Y(row_v2, code_v3)]    ← data Δ
+              + [Y(row_v2, code_v3) − Y(row_v2, code_v2)]    ← code Δ
+   ```
+
+4. **GraphRAG over the database change-log** — every documented field
+   change becomes a graph node; for each suspect field we retrieve the
+   relevant subgraph and ask the local LLM whether the delta is
+   *justified by a documented release note*.
+
+Both attribution methods satisfy the *efficiency axiom*
+(`Σᵢ φᵢ ≈ Y(V3) − Y(V2)`), and any residual is reported explicitly,
+along with branch flips that may make the gradient locally undefined.
 
 ---
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    UI["Next.js<br/>diff page"] --> API["FastAPI<br/>/diff /sas /kb"]
+    API --> Compiler["SAS Compiler<br/>src/sas_logic_tree.py"]
+    Compiler --> Eval["Differentiable<br/>tensor evaluator"]
+    Eval --> Grad["Path-integrated<br/>gradient attribution"]
+    Compiler --> Shap["KernelSHAP-style<br/>Shapley attribution"]
+    Grad --> Diff["Discrepancy<br/>report"]
+    Shap --> Diff
+    Diff --> KB["Local LLM<br/>(Qwen 2.5 / Gemma 4)<br/>+ GraphRAG"]
+    KB --> Diff
+    Diff --> UI
+    Changelog["data/changelog/<br/>release notes,<br/>schema diffs"] --> Graph["NetworkX<br/>change-log graph"]
+    Graph --> KB
 ```
-Browser
-  └─► Next.js 14  (port 3000)
-        └─► /api/* rewrite
-              └─► FastAPI  (port 8000)
-                    ├── POST  /auth/register|login   (5 req/min rate limit)
-                    ├── GET/POST/DELETE  /conversations
-                    └── POST  /chat/stream            (Server-Sent Events)
-                          └─► ChatEngine
-                                ├── Topic guard  (reject off-topic)
-                                ├── Semantic query cache  (cosine ≤ 0.08)
-                                ├── Hybrid RAG  (70% pgvector + 30% BM25)
-                                ├── Citation RAG  (per-article vectors)
-                                └── LLM backend
-                                      ├── Groq  llama-3.3-70b  ← default
-                                      ├── Ollama  (local server)
-                                      └── Local LoRA adapter  (QLoRA 4-bit)
 
-PostgreSQL 16 + pgvector  (single instance — no separate vector DB)
-  ├── query_logs            legacy query history
-  ├── qa_interactions       QA pairs + 384-d embeddings (semantic cache)
-  ├── user_feedback         thumbs up / down ratings
-  ├── users                 JWT accounts
-  ├── conversations         chat sessions per user
-  ├── conversation_messages messages + RAG source citations
-  ├── document_chunks       main RAG index  (768-d, HNSW)
-  └── citation_chunks       per-article citation index  (384-d, HNSW)
+### Repository layout
 
-MLflow  (port 5000)
-  ├── Tracks SFT / GRPO / DPO training runs
-  ├── Model Registry: regllm-lora-adapter
-  └── Artifact storage → S3 in production
-```
+| Path                                | Role                                              |
+|-------------------------------------|---------------------------------------------------|
+| `src/sas_parser.py`                 | `.sas` / `.egp` → code blocks                     |
+| `src/sas_logic_tree.py`             | AST + lineage walker + reference Python evaluator |
+| `src/sas_diff/tensor_evaluator.py`  | Torch-based differentiable AST evaluator          |
+| `src/sas_diff/gradient_explainer.py`| Path-integrated (Aumann–Shapley) attribution      |
+| `src/sas_diff/shapley_explainer.py` | KernelSHAP-style Shapley attribution              |
+| `src/sas_diff/discrepancy.py`       | High-level `explain_field_diff` orchestrator      |
+| `src/knowledge/llm_client.py`       | LiteRT-LM / Ollama OpenAI-compatible client       |
+| `src/knowledge/change_log_graph.py` | Markdown + DDL → NetworkX graph                   |
+| `src/knowledge/graph_rag.py`        | Subgraph retrieval + LLM-grounded justification   |
+| `frontend/components/diff/LineageGraph.tsx` | Force-directed lineage graph (Obsidian-style)    |
+| `frontend/components/diff/AskAgent.tsx`     | Agentic Q&A panel (SSE trace + final answer)     |
+| `src/agent/`                        | Tool registry + tool-calling agent loop           |
+| `src/agent/tools.py`                | 8 tools the LLM can call (lineage, attribution …)|
+| `src/agent/code_diff.py`            | V2-vs-V3 SAS comparator scoped to a target field  |
+| `src/agent/docs_index.py`           | BM25 index over `data/docs/**/*.md`               |
+| `api/main.py`                       | FastAPI entry point                               |
+| `api/routers/{sas,diff,kb,agent}.py`| REST endpoints                                    |
+| `frontend/app/diff/page.tsx`        | Single-page diff UI (Manual / Ask tabs)           |
+| `data/samples/`                     | Bundled `sample_lgd.sas`, `cycles_v[23].csv`      |
+| `data/sas/{v2,v3}/`                 | User-supplied SAS scripts compared by the agent   |
+| `data/docs/**/*.md`                 | Markdown corpus indexed for the agent (BM25)      |
+| `data/changelog/`                   | Markdown change notes + persisted graph           |
+| `demo/sas_compiler_demo.py`         | CLI: AST, lineage, simulation, **`--diff`**       |
+| `scripts/seed_docs.py`              | Bootstrap V2/V3 SAS + docs corpus                 |
+| `tests/`                            | Pytest suite (197 tests, ~30 s)                   |
+| `Dockerfile`                        | API container build                               |
+| `frontend/Dockerfile`               | Next.js standalone container build                |
+| `docker/api-entrypoint.sh`          | Auto-seed data + index on first run               |
+| `docker-compose.yml`                | Full stack: ollama + api + web                    |
+| `docker-compose.host-ollama.yml`    | Override that uses a host-installed Ollama        |
+| `start.ps1` / `start.bat`           | Windows one-command launchers                     |
+| `stop.ps1`  / `stop.bat`            | Windows stop / purge scripts                      |
+| `.env.example`                      | Environment template (model tag + ports)          |
 
 ---
 
-## AWS Architecture
+## One-shot quickstart (Docker)
 
-```
-                        ┌──────────────────────────┐
-  Internet ──► Route 53 │  ALB (Application LB)    │
-                        │  HTTPS :443               │
-                        └──────────────┬───────────┘
-                                       │
-               ┌───────────────────────┼──────────────────────────┐
-               ▼                       ▼                           ▼
-   ECS Fargate: frontend     ECS Fargate: fastapi        RDS PostgreSQL 16
-   (Next.js, port 3000)      (FastAPI, port 8000)        + pgvector extension
-                              reads/writes DB ──────────► (all tables + vectors)
-
-   ECR                        S3 (×2)                  Secrets Manager
-   regllm-api:{sha}           mlflow-artifacts         db_password
-   regllm-frontend:{sha}      model-weights            jwt_secret
-                                                        groq_api_key
-```
-
-> **No EFS, no NAT Gateway.** pgvector replaces ChromaDB (eliminates EFS volume). ECS tasks run in public subnets (eliminates NAT Gateway). Both are the biggest cost drivers in a small deployment.
-
-### AWS Cost Estimate — 10 users/month
-
-| Service | Config | $/month |
-|---------|--------|---------|
-| RDS PostgreSQL t3.micro | 20 GB gp2, single-AZ | ~$15 |
-| ECS Fargate — fastapi | 0.5 vCPU / 1 GB RAM, ~8 h/day | ~$5 |
-| ECS Fargate — frontend | 0.25 vCPU / 0.5 GB RAM, ~8 h/day | ~$3 |
-| ALB | 1 instance | ~$16 |
-| ECR | ~2 GB stored | ~$0.20 |
-| S3 | MLflow artifacts | ~$0.10 |
-| Secrets Manager | 3 secrets | ~$0.12 |
-| **Total** | | **~$39/month** |
-
-**Further savings:**
-- Scale ECS to 0 tasks outside business hours → ~$8 off
-- Switch to Aurora Serverless v2 if traffic is bursty → pay per ACU-second
-- Groq free tier comfortably covers 10 users
-
----
-
-## Local Development
+The whole stack — Ollama with the model, FastAPI backend, and Next.js
+frontend — runs from a single command. Works identically on **Windows**,
+**macOS** and **Linux**.
 
 ### Prerequisites
 
-- Docker + Docker Compose  
-- `GROQ_API_KEY` from [console.groq.com](https://console.groq.com)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) on
+  Windows / macOS, or Docker Engine + Compose on Linux.
+- ~12 GB free disk for the default 14 B Qwen model (smaller variants
+  configurable in `.env` — see below).
+- ~16 GB RAM recommended (8 GB works with the 7 B model).
+- First boot is slow because Ollama pulls ~9 GB. Subsequent boots are
+  fast.
 
-### Quick start
+### Windows
+
+```powershell
+# PowerShell (recommended)
+.\start.ps1
+```
+
+```cmd
+:: …or cmd.exe
+start.bat
+```
+
+The PowerShell launcher takes optional flags:
+
+```powershell
+.\start.ps1 -Model qwen2.5:7b-instruct-q4_K_M   # smaller model
+.\start.ps1 -Rebuild                             # force --no-cache build
+.\start.ps1 -NoBrowser                           # don't auto-open the UI
+.\stop.ps1                                       # stop containers
+.\stop.ps1 -Purge                                # also drop the ~9 GB model cache
+```
+
+### macOS / Linux
 
 ```bash
-git clone https://github.com/your-org/regllm.git && cd regllm
-cp .env.example .env          # fill in GROQ_API_KEY and JWT_SECRET
 docker compose up --build
 ```
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| FastAPI docs | http://localhost:8000/docs |
-| MLflow UI | http://localhost:5000 |
-| PostgreSQL | localhost:5433 |
-
-### Create a user
-
-Register at `http://localhost:3000/register`, or:
+…or just open `http://localhost:3010/diff` after running:
 
 ```bash
-curl -s -X POST http://localhost:8000/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"changeme"}' | jq .
+cp .env.example .env
+docker compose up -d --build
 ```
 
-### Load regulation documents
+### What gets started
+
+| Service       | Port    | Image                          | Purpose                               |
+|---------------|--------:|--------------------------------|---------------------------------------|
+| `ollama`      | `11434` | `ollama/ollama:latest`         | Local LLM server                      |
+| `ollama-init` | —       | `ollama/ollama:latest`         | Pulls the model on first run, exits   |
+| `api`         | `8000`  | `regllm-api`     (this repo)   | FastAPI: `/sas`, `/diff`, `/kb`, `/agent` |
+| `web`         | `3010`  | `regllm-web`     (this repo)   | Next.js standalone UI                 |
+
+Healthchecks are wired between them: `web` only starts once `api` is
+healthy, which only starts once `ollama-init` succeeds. The first
+`docker compose up` therefore blocks on the model download — the
+PowerShell / batch launchers tail those logs for you so the progress is
+visible.
+
+`./data` is bind-mounted into the API container, so anything you drop
+into `data/sas/v3/*.sas`, `data/docs/**/*.md` or `data/changelog/*.md`
+on the host shows up immediately inside the running stack — no rebuild
+needed. Reindex on demand:
 
 ```bash
-docker compose exec fastapi python -c "
-from src.rag_system import RegulatoryRAGSystem
-rag = RegulatoryRAGSystem()
-rag.load_from_json('data/raw/regulations.json')
-print(rag.collection.count(), 'chunks indexed')
-"
+curl -X POST http://localhost:8000/agent/docs/reindex
+curl -X POST http://localhost:8000/kb/reindex
+```
+
+### Configuration
+
+Copy `.env.example` to `.env` to customise:
+
+```env
+OLLAMA_MODEL=qwen2.5:14b-instruct-q4_K_M    # default
+# OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M   # ~4.7 GB, 8 GB RAM
+# OLLAMA_MODEL=qwen2.5:3b-instruct-q4_K_M   # ~2 GB,   4 GB RAM
+API_PORT=8000
+WEB_PORT=3010
+OLLAMA_PORT=11434
+```
+
+### Using a host-installed Ollama
+
+If you already run Ollama natively (e.g. for GPU inference on Windows
+with NVIDIA Container Toolkit, or a separate Ollama server elsewhere on
+your network), use the included override to skip the dockerised one:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host-ollama.yml up -d
+```
+
+On Linux, set `OLLAMA_HOST=0.0.0.0:11434` before `ollama serve` so the
+container can reach it.
+
+### Updating
+
+```bash
+git pull
+docker compose build --pull
+docker compose up -d
+```
+
+### What the demo UI shows
+
+Open `http://localhost:3010/diff` and try `CIC_00076` (a CORP cycle). On
+this row, V2 ECL = 66.10 and V3 ECL = 110.18, but the only V3 input
+field that differs from V2 is… none of them. The whole +44.07 swing comes
+from a code change. The UI surfaces the entire story:
+
+- **SAS pipeline panel** — three tabs:
+  - **V3 code** — the active pipeline; drives the lineage graph and the
+    autograd attribution.
+  - **V2 code** — editable; flagged with an amber "V2 ≠ V3 code" badge
+    when it differs.
+  - **Diff** — target-scoped, AST-aware diff. Each modified data step
+    expands into a side-by-side V2/V3 code panel.
+- **Lineage graph** (top-right) — every field that's read or written by a
+  step that changed between V2 and V3 is ringed in fuchsia. The legend
+  shows the colour map.
+- **Δ ECL = data Δ + code Δ bar** — a stacked bar that splits the
+  observed delta into a sky-blue *data* component and a fuchsia *code*
+  component, with the underlying `Y(row_*, code_*)` anchor values
+  printed below for full transparency.
+- **Code changes affecting ECL panel** — a list of the SAS data steps
+  that produce or read fields on the target's lineage and that differ
+  between V2 and V3, each expandable into a V2/V3 code diff.
+- **GraphRAG verdict** — the local LLM's per-field justified/unjustified
+  call, with citation snippets pulled from `data/changelog/*.md`.
+- **Ask tab** — natural-language Q&A. Type *"Why does CIC_00076 have a
+  different ECL in V3 versus V2?"* and Qwen autonomously calls the
+  attribution + code-diff + docs-search tools and writes a Markdown
+  answer with citations and graph highlights.
+
+---
+
+## Manual quickstart (without Docker)
+
+### 1. Install
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+`torch` is the heaviest dependency. The CPU build is sufficient.
+
+### 2. Generate the V2/V3 sample tables
+
+```bash
+python scripts/generate_v3.py
+# → data/samples/cycles_v2.csv  (verbatim copy of cycles_sample.csv)
+# → data/samples/cycles_v3.csv  (with mutated PD / LGD / EAD / COLATERAL_TIPO)
+```
+
+### 3. Try the CLI
+
+```bash
+python demo/sas_compiler_demo.py --diff CIC_00100 --no-ast --no-lineage --no-sim
+```
+
+Output:
+
+```
+ECL  V2 = 86.6435  V3 = 118.4624   Δ = +31.8189
+EAD              +18.47   +18.54
+PD_ESTIMADA      +14.18   +14.23
+LGD_ESTIMADA      -0.79    -0.95
+```
+
+Add `--ask-gemma` to also produce the GraphRAG verdict (stub mode if no
+local LLM backend is reachable). The flag is named for historical
+reasons but works with whichever backend the client auto-detects.
+
+### 4. Run the API
+
+```bash
+uvicorn api.main:app --reload
+# http://localhost:8000/docs
+```
+
+| Endpoint                       | Description                            |
+|--------------------------------|----------------------------------------|
+| `GET  /sas/sample`             | Built-in sample SAS                    |
+| `POST /sas/parse`              | SAS source → AST JSON                  |
+| `POST /sas/lineage`            | SAS source → field-lineage graph       |
+| `GET  /diff/sample-rows`       | Paired V2/V3 rows with target diffs    |
+| `POST /diff/explain`           | Single-row explainer + LLM verdict     |
+| `POST /diff/explain-batch`     | SSE-streamed multi-row explainer       |
+| `GET  /kb/graph`               | Current change-log graph (nodes/edges) |
+| `POST /kb/reindex`             | Re-build the graph from disk           |
+| `POST /kb/changelog/upload`    | Add `.md` / `.sql` files & re-index    |
+| `GET  /kb/llm-status`          | Active LLM backend + model name        |
+| `POST /agent/ask`              | Natural-language Q&A (**SSE** stream)  |
+| `POST /agent/sas/upload`       | Upload `.sas` files into `data/sas/{v2,v3}/` |
+| `POST /agent/docs/upload`      | Upload `.md` files into `data/docs/`   |
+| `POST /agent/docs/reindex`     | Rebuild the BM25 docs index            |
+| `GET  /agent/status`           | SAS/doc counts + active LLM backend    |
+
+### 5. Run the front-end
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:3010
+```
+
+The page at `/diff` shows the SAS code, a paired-row picker, an
+**Obsidian-style force-directed lineage graph** with V2→V3 attribution
+flow overlay (toggle to a waterfall view), branch-flip alerts, and the
+LLM justification panel.
+
+### 6. Run the tests
+
+```bash
+pytest -q
+```
+
+(197 tests; ~30 s on CPU — most of the time is the discrepancy E2E suite.)
+
+---
+
+## Agentic Q&A
+
+The `/diff` page has two modes:
+
+- **Manual** — the existing row picker, target-field selector, and
+  Explain button.
+- **Ask** — a chat-style panel where you ask a natural-language
+  question and the local LLM (Qwen 2.5 by default) autonomously calls
+  tools to answer it.
+
+### Workflow
+
+1. **Drop your SAS into a folder convention**:
+
+   ```
+   data/sas/v2/*.sas      ← old version of the pipeline
+   data/sas/v3/*.sas      ← new version
+   data/docs/**/*.md      ← free-form glossary, table dictionaries,
+                           field semantics, flux explanations
+   ```
+
+   Or use the API: `POST /agent/sas/upload?version=v3` and
+   `POST /agent/docs/upload`.
+
+2. **Bootstrap an example** (creates `data/sas/{v2,v3}/sample_lgd.sas`
+   with a contrived V3 difference, plus 7 `.md` doc sections and the
+   BM25 index):
+
+   ```bash
+   python scripts/seed_docs.py
+   ```
+
+3. **Ask a question**:
+
+   ```
+   Why does CIC_00031 have a different ECL in V3 versus V2?
+   ```
+
+   The agent will (autonomously, in this rough order):
+   - call `compute_attribution(pk, target)` to get gradient + Shapley
+     contributions;
+   - call `inspect_lineage(target, sas_version='v3')` for the data-flow
+     ancestors;
+   - call `compare_sas_versions(target=target)` to see what data steps
+     changed between V2 and V3 (scoped to the target's lineage);
+   - call `search_docs(target)` and `get_field_definition(target)` for
+     semantic context from your markdown corpus;
+   - reply with a Markdown answer plus a `lineage_highlight` sidecar
+     that lights up the relevant nodes in the graph view.
+
+   The streaming pane shows every tool invocation, its arguments and
+   its result so you can audit the chain of reasoning.
+
+### Example questions that work out of the box
+
+After running `python scripts/generate_v3.py && python scripts/seed_docs.py`:
+
+- *"Why does CIC_00031 have a different ECL in V3 versus V2?"*
+- *"Why is OR_EAD_TIT 2× the EAD for corporate cycles in V3 but missing in V2?"*
+- *"What is the floor change for LGD_ESTIMADA between V2 and V3?"*
+- *"Which cycles flipped IFRS-9 stage between V2 and V3?"*
+
+### Tool registry
+
+| Tool                          | Purpose                                          |
+|-------------------------------|--------------------------------------------------|
+| `find_row(pk, version)`       | Fetch a specific cycle's row from V2 or V3       |
+| `find_rows_by_field_value`    | Search cycles by approximate field value         |
+| `inspect_lineage`             | Data-flow ancestors of a target field            |
+| `compute_attribution`         | Gradient + Shapley + branch-flip report          |
+| `compare_sas_versions`        | V2-vs-V3 SAS diff scoped to the target           |
+| `search_docs`                 | BM25 over `data/docs/**/*.md`                    |
+| `get_field_definition`        | Semantic definition for a field                  |
+| `search_changelog`            | GraphRAG over `data/changelog/`                  |
+
+All eight tools are pure read-only Python functions defined in
+`src/agent/tools.py`; the registry exports their JSON schemas to the
+LLM in the OpenAI/Ollama "tools" format.
+
+### Streaming protocol
+
+`POST /agent/ask` returns Server-Sent Events. Each `data:` frame is one
+of:
+
+```json
+{"type": "status",      "stage": "started", "backend": "ollama", "model": "qwen2.5:14b-instruct-q4_K_M", "tools": [...]}
+{"type": "tool_call",   "iter": 0, "tool": "compute_attribution", "args": {"pk":"CIC_00031","target":"ECL"}, "id": "call_0"}
+{"type": "tool_result", "iter": 0, "tool": "compute_attribution", "id": "call_0", "result": {...}}
+{"type": "final",       "answer": "<markdown>", "lineage_highlight": ["EAD","PD_ESTIMADA"], "citations": [...]}
+{"type": "done"}
 ```
 
 ---
 
-## Database Migrations (Alembic)
+## Local LLM integration
 
-`Base.metadata.create_all()` is kept for frictionless local dev. **Production deployments use Alembic exclusively** to avoid accidental schema drift on a persistent RDS instance.
+Any chat-tuned model served by an OpenAI-compatible local endpoint
+works. Two backends are auto-detected (in order):
 
-### Apply all migrations (first deploy)
+1. **LiteRT-LM** — Google's official local serving stack, used for
+   **Gemma 4 12B** if you go that route. Server lives on
+   `http://localhost:9379`.
+   ```bash
+   bash scripts/setup_llm.sh gemma
+   ```
+2. **Ollama** — recommended default. Server on `http://localhost:11434`,
+   model `qwen2.5:14b-instruct-q4_K_M` (~8 GB, excellent at
+   structured-JSON output and fits on a single 24 GB GPU).
+   ```bash
+   bash scripts/setup_llm.sh        # pulls the default Qwen model
+   ```
+   You can use any other Ollama model by exporting
+   `OLLAMA_MODEL=<tag>` (e.g. `gemma2:9b`, `llama3.1:8b-instruct`,
+   `qwen2.5:7b`, …). The client probes for the model on startup and
+   falls back to stub mode if the configured tag isn't pulled.
 
-```bash
-POSTGRES_HOST=your-rds.rds.amazonaws.com \
-POSTGRES_PASSWORD=<from Secrets Manager> \
-alembic upgrade head
-```
+If neither backend is reachable, the client falls back to *stub mode*,
+which returns a deterministic JSON-shaped placeholder. The rest of the
+pipeline (gradient + Shapley + GraphRAG retrieval) keeps working.
 
-### Create a migration after changing `src/db.py`
+The active backend and model are visible in the top-right pill of the
+`/diff` page (green dot = live model, grey = stub).
 
-```bash
-alembic revision --autogenerate -m "add column X to table Y"
-# review the generated file in alembic/versions/
-alembic upgrade head
-```
+Configuration via env vars:
 
-### Rollback
+| Variable             | Default                              |
+|----------------------|--------------------------------------|
+| `REGLLM_LLM`         | `auto` (`litert` \| `ollama` \| `stub`) |
+| `OLLAMA_URL`         | `http://localhost:11434`             |
+| `OLLAMA_MODEL`       | `qwen2.5:14b-instruct-q4_K_M`        |
+| `LITERT_URL`         | `http://localhost:9379/v1`           |
+| `LITERT_MODEL`       | `gemma4-12b,gpu`                     |
+| `REGLLM_LLM_TIMEOUT` | `120` (seconds)                      |
 
-```bash
-alembic downgrade -1     # one revision back
-alembic downgrade base   # full teardown
+---
+
+## Method notes
+
+### Path-integrated gradients
+
+For each numeric input field `xᵢ`,
+
+\[
+\varphi_i \;=\; (x_i^{V3} - x_i^{V2}) \cdot \int_0^1
+\frac{\partial Y}{\partial x_i}\Bigl(X^{V2} + t \,(X^{V3} - X^{V2})\Bigr)\, dt
+\]
+
+is approximated by composite Simpson's rule (`steps=33` by default —
+exact for cubics, which covers the multilinear PD·LGD·EAD pipeline). On
+purely arithmetic sub-paths the *efficiency axiom*
+`Σᵢ φᵢ = Y(V3) − Y(V2)` holds to machine precision.
+
+When a branch flips between V2 and V3 (an `IF`/`SELECT`/`WHERE`
+predicate's truth value changes), the path integral is taken along the
+fixed-V3 branch. The flip is reported as a `BranchFlip` and the
+unexplained residual is computed.
+
+### Shapley values
+
+The eager Python evaluator (`SASLogicTree.evaluate`) is treated as a
+black-box `f: row → Y(row)`. For ≤ 12 differing fields we enumerate all
+2ⁿ coalitions for the exact Shapley computation; otherwise we fall back
+to the permutation-sampling estimator (Castro et al.).
+
+Categorical and string-valued fields are first-class citizens here.
+
+### GraphRAG
+
+The change-log graph is a NetworkX `DiGraph` with node types
+`Document`, `Section`, `TableChange`, `Field` and relation labels
+`CONTAINS`, `MENTIONS_FIELD`, `JUSTIFIES`, `CHANGES_FROM_TO`,
+`HAS_COLUMN`. For each suspect field the explainer retrieves the 1–2
+hop neighbourhood, linearises it as Markdown, and asks the LLM to
+return strict JSON of the form
+
+```json
+{
+  "justified": true,
+  "confidence": 0.87,
+  "rationale": "Q1 2025 PD master-scale recalibration applied to RATING ≤ 2.",
+  "evidence": [{"document": "2025-q1-pd-recalibration.md",
+                "heading": "Affected fields",
+                "quote": "PD_ESTIMADA — multiplied by 1.15 …"}]
+}
 ```
 
 ---
 
-## Security
+## Out of scope
 
-| Concern | Implementation |
-|---------|---------------|
-| Auth rate limiting | 5 req/min per IP on `/auth/login` and `/auth/register` (slowapi) |
-| JWT secret | Secrets Manager in production; never embedded in image or task definition |
-| CORS | Locked to `CORS_ORIGINS` env var (comma-separated); defaults to `http://localhost:3000` |
-| DB passwords | Auto-generated 32-char random by Terraform, injected via Secrets Manager |
-| SQL injection | SQLAlchemy ORM + parameterized queries throughout |
-| TLS | ALB terminates HTTPS; internal container traffic stays in VPC |
+This project is **deliberately small**. The following were intentionally
+removed or not implemented:
 
----
-
-## Building Docker Images
-
-### API image
-
-```bash
-docker build -f Dockerfile.api -t regllm-api:latest .
-```
-
-The build does these things in order:
-
-1. Installs CPU-only PyTorch (prevents sentence-transformers from pulling ~1 GB CUDA packages)
-2. Installs `requirements-api.txt`
-3. **Bakes both embedding models into the image** — `paraphrase-multilingual-mpnet-base-v2` (768-d) and `MiniLM-L12-v2` (384-d). Without this, ECS health checks fail during the 2-minute cold-start model download.
-
-Expected image size: ~3 GB (models take ~1.5 GB).
-
-### Frontend image
-
-```bash
-docker build -f frontend/Dockerfile -t regllm-frontend:latest ./frontend
-```
-
-Multi-stage build: `node:20-alpine` builder → `node:20-alpine` runner with only `.next/standalone/` (~50 MB final image).
+- model fine-tuning (LoRA, GRPO, DPO, SFT)
+- chat history, auth, multi-user, JWT
+- pgvector / Postgres / Alembic / Terraform / AWS deployment
+- regulatory compliance verdict tiers — replaced by the explainer's
+  per-field "justified vs. unjustified" verdict from the local LLM.
 
 ---
 
-## CI/CD Pipeline
+## License
 
-### Overview
-
-```
-Every push / PR
-  └─► test.yml
-        ├── pgvector service container
-        ├── pip install (CPU torch + requirements-api.txt)
-        └── pytest -m "not slow and not llm_judge"
-
-Push to main (or manual trigger)
-  └─► deploy.yml
-        ├── OIDC → assume AWS IAM role (no long-lived keys)
-        ├── docker buildx → ECR (GHA layer cache speeds up rebuild)
-        │     regllm-api:{sha}
-        │     regllm-frontend:{sha}
-        ├── download current ECS task definition JSON
-        ├── swap image digest
-        ├── register new task definition revision
-        └── aws ecs update-service --force-new-deployment
-              └── ECS rolling deploy
-                    ├── new tasks start, pass health check → old tasks drain
-                    └── if health check fails → auto-rollback (circuit breaker)
-```
-
-### Required GitHub Secrets
-
-| Secret | Description |
-|--------|-------------|
-| `AWS_DEPLOY_ROLE_ARN` | IAM role ARN for OIDC — no access keys stored in GitHub |
-| `AWS_REGION` | e.g. `eu-west-1` |
-
-### test.yml
-
-```yaml
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env: { POSTGRES_DB: regllm, POSTGRES_USER: regllm, POSTGRES_PASSWORD: changeme }
-        ports: ["5432:5432"]
-        options: --health-cmd "pg_isready" --health-interval 5s --health-retries 10
-    env:
-      POSTGRES_HOST: localhost
-      POSTGRES_PASSWORD: changeme
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.10" }
-      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu -q
-      - run: pip install -r requirements-api.txt pytest pytest-asyncio -q
-      - run: pytest -m "not slow and not llm_judge" -x
-```
-
-### deploy.yml (key steps)
-
-```yaml
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      environment: { type: choice, options: [dev, prod], default: dev }
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write    # OIDC token
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - uses: aws-actions/amazon-ecr-login@v2
-
-      - uses: docker/setup-buildx-action@v3
-
-      # Build + push API image (GHA layer cache)
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.api
-          push: true
-          tags: ${{ env.ECR_REGISTRY }}/regllm-api:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Build + push frontend image
-      - uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ env.ECR_REGISTRY }}/regllm-frontend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Rolling ECS deploy with circuit-breaker auto-rollback
-      - name: Deploy API to ECS
-        run: |
-          TASK_DEF=$(aws ecs describe-task-definition \
-            --task-definition regllm-api --query taskDefinition)
-          NEW_TASK=$(echo "$TASK_DEF" | jq \
-            --arg img "${{ env.ECR_REGISTRY }}/regllm-api:${{ github.sha }}" \
-            '.containerDefinitions[0].image = $img
-             | del(.taskDefinitionArn,.revision,.status,
-                   .requiresAttributes,.placementConstraints,
-                   .compatibilities,.registeredAt,.registeredBy)')
-          aws ecs register-task-definition --cli-input-json "$NEW_TASK"
-          aws ecs update-service \
-            --cluster regllm \
-            --service regllm-api \
-            --task-definition regllm-api \
-            --deployment-configuration \
-              "deploymentCircuitBreaker={enable=true,rollback=true}" \
-            --force-new-deployment
-          aws ecs wait services-stable \
-            --cluster regllm --services regllm-api
-```
-
----
-
-## Terraform — AWS Infrastructure
-
-```bash
-cd infra
-
-# One-time bootstrap: create S3 state bucket + DynamoDB lock table manually
-# Then:
-terraform init -backend-config=environments/dev.tfvars
-terraform plan  -var-file=environments/dev.tfvars
-terraform apply -var-file=environments/dev.tfvars
-```
-
-### Module map
-
-| Module | Key resources |
-|--------|--------------|
-| `ecr` | Two ECR repos (api + frontend); lifecycle: keep last 10 images |
-| `s3` | `regllm-mlflow-artifacts-{env}` + `regllm-model-weights-{env}` (versioned) |
-| `secrets` | Secrets Manager entries for `db_password`, `jwt_secret`, `groq_api_key` |
-| `rds` | PostgreSQL 16, `shared_preload_libraries=pg_vector`, encrypted, delete-protection on prod |
-| `alb` | ALB + target groups for port 8000 and 3000 |
-| `ecs` | Fargate cluster, task definitions, services; IAM roles for Secrets + S3 |
-
-### Post-apply steps
-
-```bash
-# 1. Run database migrations
-POSTGRES_HOST=$(terraform output -raw rds_endpoint) \
-POSTGRES_PASSWORD=$(aws secretsmanager get-secret-value \
-  --secret-id regllm/dev/db_password \
-  --query SecretString --output text) \
-alembic upgrade head
-
-# 2. Set your Groq API key
-aws secretsmanager put-secret-value \
-  --secret-id regllm/dev/groq_api_key \
-  --secret-string "gsk_..."
-```
-
----
-
-## ChromaDB → pgvector Migration
-
-ChromaDB has been removed. All vectors are stored in PostgreSQL.
-
-| Before | After |
-|--------|-------|
-| `regulacion_bancaria` ChromaDB collection (768-d) | `document_chunks` table + HNSW index |
-| `regulation_citations` ChromaDB collection (384-d) | `citation_chunks` table + HNSW index |
-| EFS volume (ChromaDB persistence on ECS) | Same RDS instance |
-| `./vector_db/chroma_db/` local directory | `postgres_data` Docker volume |
-
-**Benefits:** one fewer service, eliminates EFS cost, transactional consistency with application data, same backup/restore procedure as the rest of the DB.
-
----
-
-## Model Training
-
-```bash
-# SFT
-python scripts/training/train_combined.py --epochs 3 --lr 1e-4
-
-# GRPO (reward from keyword/citation/format quality)
-python -m src.rlhf.grpo_trainer --epochs 2
-
-# DPO (from collected thumbs up/down pairs)
-python scripts/export_dpo_pairs.py    # builds data/finetuning/dpo_pairs.jsonl
-python -m src.rlhf.dpo_trainer
-```
-
-Training runs appear in MLflow at `http://localhost:5000`.
-
-### Promote to production
-
-```bash
-# MLflow CLI:
-mlflow models transition-version \
-  --name regllm-lora-adapter --version 3 --stage Production
-
-# The container's entrypoint will pull this version on next cold start
-# (when REGLLM_BACKEND=local)
-```
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `REGLLM_BACKEND` | `groq` | LLM backend: `groq`, `ollama`, `local` |
-| `GROQ_API_KEY` | — | Required for groq backend |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID |
-| `POSTGRES_HOST` | `localhost` | DB hostname |
-| `POSTGRES_PORT` | `5432` | DB port |
-| `POSTGRES_DB` | `regllm` | Database name |
-| `POSTGRES_USER` | `regllm` | DB user |
-| `POSTGRES_PASSWORD` | `changeme` | **Change in production** |
-| `JWT_SECRET` | `change-me-in-production` | **Change in production** |
-| `JWT_EXPIRE_HOURS` | `168` | Token validity (7 days) |
-| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins |
-| `MLFLOW_TRACKING_URI` | `http://localhost:5000` | MLflow server |
-| `LOG_LEVEL` | `INFO` | Logging verbosity |
-
----
-
-## Project Structure
-
-```
-regllm/
-├── app.py                      Gradio UI entry point (legacy)
-├── config.py                   Central config for all components
-├── api/
-│   ├── main.py                 FastAPI app + lifespan + CORS + rate limiter
-│   ├── auth.py                 JWT signing + bcrypt
-│   ├── deps.py                 FastAPI dependencies (get_db, get_current_user)
-│   ├── models.py               Pydantic request/response schemas
-│   └── routers/
-│       ├── auth.py             POST /auth/register|login, GET /auth/me
-│       ├── conversations.py    CRUD /conversations
-│       └── chat.py             POST /chat/stream  (SSE)
-├── src/
-│   ├── chat_engine.py          Query pipeline: guard → cache → RAG → LLM → parse
-│   ├── rag_system.py           Hybrid RAG using pgvector + BM25 (document_chunks)
-│   ├── citation_rag.py         Per-article citation vectors (citation_chunks)
-│   ├── cache.py                Semantic query cache (cosine similarity on qa_interactions)
-│   ├── db.py                   Async SQLAlchemy ORM + pgvector helpers
-│   ├── verification.py         Hallucination detection + confidence scoring
-│   └── training/ + rlhf/       SFT, GRPO, DPO trainers
-├── alembic/                    Database migrations
-│   ├── env.py                  Reads DB URL from env vars
-│   └── versions/
-│       └── 0001_initial_schema.py
-├── scripts/
-│   ├── train_combined.py       Main training entry point
-│   ├── export_dpo_pairs.py     Export thumbs-up/down pairs for DPO
-│   └── eval_benchmark.py       Keyword-F1 evaluation
-├── frontend/                   Next.js 14 TypeScript app
-│   ├── app/                    App Router pages (auth + chat)
-│   ├── components/             Sidebar, ChatWindow, SourceDrawer, etc.
-│   └── Dockerfile              Multi-stage: builder + minimal runner
-├── infra/                      Terraform modules for AWS
-├── .github/workflows/
-│   ├── test.yml                pytest on every push/PR
-│   └── deploy.yml              ECR push + ECS rolling deploy on main
-├── Dockerfile.api              FastAPI image (models baked in)
-├── docker-compose.yml          Local dev: postgres + mlflow + fastapi + frontend
-├── requirements-api.txt        FastAPI dependencies (no torch for training)
-└── alembic.ini                 Alembic configuration
-```
-
----
-
-## Tests
-
-```bash
-# Fast unit tests (no GPU, no network)
-pytest -m "not slow and not llm_judge" -x
-
-# Integration tests (requires PostgreSQL)
-POSTGRES_HOST=localhost pytest -m integration
-
-# CI runs both automatically on every PR via .github/workflows/test.yml
-```
-
----
-
-## Disclaimer
-
-RegLLM is for research and educational purposes. Do not use it as the sole basis for regulatory compliance decisions. Always consult official documents and qualified compliance professionals.
+See repository.

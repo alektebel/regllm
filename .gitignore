@@ -5,28 +5,15 @@ __pycache__/
 *.so
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
 
 # Virtual environments
 venv/
+.venv/
 ENV/
 env/
-.venv
-*.env/
-regllm.env/
 
 # IDE
 .vscode/
@@ -35,72 +22,31 @@ regllm.env/
 *.swo
 *~
 .DS_Store
+.cursor/
+.claude/
 
-# Data and models (large files)
-data/raw/*.json
-data/raw/**/*.pdf
-data/processed/*.json
-data/processed/**/*.json
-!data/banks_urls.json
-# Ignore all finetuned runs except the latest final_model (tracked via LFS)
-models/finetuned/run_20260117_002605/
-models/finetuned/run_20260118_220204/
-models/finetuned/run_20260215_195521/
-models/finetuned/run_20260220_191334/
-models/finetuned/run_20260222_224503/checkpoint-*/
-models/qwen*/
-*.pth
-*.pt
-*.ckpt
-wandb/
-runs/
+# Pytest / mypy / ruff caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Logs and plots
-logs/*.png
-logs/*.json
-logs/*.log
+# Logs / temp
 *.log
-
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb
+logs/
+tmp/
+*.tmp
 
 # Environment variables
 .env
 .env.local
 
-# Temporary files
-temp/
-tmp/
-*.tmp
-*.pdf
+# Frontend
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
 
-# OS
-Thumbs.db
-.DS_Store
-
-# ChromaDB binary index files (regeneratable)
-vector_db/chroma_db/
-vector_db/
-
-# pynvml binary (installed separately)
-pynvml
-infra/.terraform/
-regllm.env/
-
-# Don't ignore Next.js source library
-!frontend/lib/
-
-# Personal Obsidian vault (local only)
-regllm.notas/
-
-# Stale build artifacts
-*.deb
-
-# Ephemeral planning scratch files
-PLAN.md
-
-# Stale data directories
-data/backups/
-data/preferences/
-data/processed/old/
+# Generated artifacts
+data/changelog/graph.json

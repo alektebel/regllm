@@ -54,35 +54,8 @@
   background: hsl(var(--muted-foreground));
 }
 
-/* Streaming cursor */
-.streaming-cursor::after {
-  content: "▋";
-  animation: blink 0.8s step-end infinite;
-  color: hsl(var(--primary));
+/* Force-directed graph: animated dashed line that flows along edges */
+@keyframes flowmove {
+  to { stroke-dashoffset: -32; }
 }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-/* Prose overrides for dark mode */
-.prose {
-  --tw-prose-body: hsl(var(--foreground));
-  --tw-prose-headings: hsl(var(--foreground));
-  --tw-prose-links: hsl(var(--primary));
-  --tw-prose-bold: hsl(var(--foreground));
-  --tw-prose-counters: hsl(var(--muted-foreground));
-  --tw-prose-bullets: hsl(var(--muted-foreground));
-  --tw-prose-code: hsl(var(--foreground));
-  --tw-prose-pre-bg: hsl(var(--muted));
-  --tw-prose-quotes: hsl(var(--muted-foreground));
-}
-
-.prose pre {
-  @apply bg-muted rounded-lg p-4 overflow-x-auto text-sm;
-}
-
-.prose code:not(pre code) {
-  @apply bg-muted rounded px-1.5 py-0.5 text-sm font-mono;
-}

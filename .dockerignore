@@ -1,41 +1,53 @@
-# Python
-__pycache__/
+# Build context = repository root for the API image only.
+# Keep this lean; the frontend has its own Dockerfile + .dockerignore.
+
+# VCS
+.git
+.github
+.gitattributes
+.gitignore
+
+# Editor / IDE
+.vscode
+.idea
+.cursor
+.claude
+
+# Python caches
+__pycache__
+**/__pycache__
 *.pyc
 *.pyo
-.Python
-*.egg-info/
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+.venv
+venv
 
-# Virtual environments
-regllm.env/
-venv/
-env/
+# Frontend (built separately)
+frontend
+node_modules
 
-# Git
-.git/
-.gitattributes
+# Tests, demos, docs (not needed at runtime)
+tests
+demo
+docs
+README.md
+*.md
 
-# Large model/data files — mounted as volumes at runtime
-vector_db/
-models/finetuned/
-models/merged/
-models/gguf/
-models/qwen*/
-data/raw/
-data/exports/
+# Local OS junk
+.DS_Store
+Thumbs.db
 
-# Secrets — injected via .env at runtime
+# Local env / containers
 .env
+.env.*
+!.env.example
+docker-compose.override.yml
 
-# Dev/test files
-tests/
-*.ipynb
-.ipynb_checkpoints/
-
-# Logs and temp
-*.log
-*.tmp
-temp/
-tmp/
-
-# Launch scripts — not needed inside the container
-scripts/launch_*.sh
+# Windows launchers (not needed inside the container)
+*.bat
+*.cmd
+*.ps1

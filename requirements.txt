@@ -1,64 +1,22 @@
-# Core ML Libraries
-torch>=2.0.0
-transformers>=4.40.0
-peft>=0.10.0
-accelerate>=0.28.0
-bitsandbytes>=0.43.0
-trl>=0.7.0
+# Core API
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+python-multipart>=0.0.9
 
-# Data Processing
-numpy>=1.24.0
-pandas>=2.0.0
-datasets>=2.16.0
+# SAS diff engine (autograd + Shapley)
+torch>=2.4              # CPU build is fine
+numpy>=1.26
+pandas>=2.2
 
-# Web Scraping
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-PyPDF2>=3.0.0
-selenium>=4.15.0
-webdriver-manager>=4.0.0
+# Knowledge graph
+networkx>=3.3
 
-# RAG and Embeddings
-sentence-transformers>=2.3.0
-chromadb>=0.4.22
-langchain>=0.1.0
-rank-bm25>=0.2.2
+# LLM transport (litert-lm OpenAI-compatible API + Ollama fallback)
+httpx>=0.27
 
-# Language Detection
-langdetect>=1.0.9
+# Demo / CLI
+rich>=13.7
 
-# Visualization
-matplotlib>=3.7.0
-seaborn>=0.12.0
-
-# UI
-gradio>=4.0.0
-ollama>=0.3.0
-
-# API
-fastapi>=0.109.0
-uvicorn>=0.27.0
-pydantic>=2.0.0
-
-# Development Tools
-jupyter>=1.0.0
-ipython>=8.12.0
-
-# Utilities
-tqdm>=4.65.0
-python-dotenv>=1.0.0
-
-# Database
-sqlalchemy[asyncio]>=2.0.0
-asyncpg>=0.29.0
-pgvector>=0.3.0
-psycopg2-binary>=2.9.0
-
-# Testing
-pytest>=7.0.0
-pytest-asyncio>=0.23.0
-httpx>=0.27.0
-
-# Optional: For better performance
-# sentencepiece>=0.1.99
-# protobuf>=4.23.0
+# Tests
+pytest>=8.0
