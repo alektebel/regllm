@@ -4,7 +4,7 @@
 #   docker compose down                 stop and remove containers
 #   docker compose down -v              also drop the cached Ollama models (~9 GB)
 #
-# Open http://localhost:3010/diff once `web` is healthy.
+# Open http://localhost:3010/diff (diff explainer) or /trace (field lineage) once `web` is healthy.
 #
 # Configuration via .env (see .env.example):
 #   OLLAMA_MODEL   model tag pulled on first run (default: qwen2.5:14b-instruct-q4_K_M)

@@ -32,19 +32,72 @@ DATA work.lgd_con_suelos;
 
 RUN;
 
+/* Agregar métricas de cartera por segmento (PROC SQL) */
+PROC SQL;
+    CREATE TABLE work.metricas_segmento AS
+    SELECT
+        SEGMENTO,
+        COUNT(*)               AS N_OPERACIONES,
+        SUM(EAD)               AS EAD_TOTAL,
+        AVG(LGD_ESTIMADA)      AS LGD_MEDIA,
+        AVG(PD_ESTIMADA)       AS PD_MEDIA,
+        SUM(EAD * LGD_ESTIMADA * PD_ESTIMADA) AS ECL_ESPERADO_SEGMENTO
+    FROM work.lgd_con_suelos
+    GROUP BY SEGMENTO;
+QUIT;
+
+/* Enriquecer con métricas de segmento via join */
+DATA work.lgd_enriquecida;
+    MERGE work.lgd_con_suelos (IN=a) work.metricas_segmento (IN=b);
+    BY SEGMENTO;
+    IF a;
+
+    /* Peso relativo del EAD de esta operación en su segmento */
+    IF EAD_TOTAL > 0 THEN PESO_EAD = EAD / EAD_TOTAL;
+    ELSE PESO_EAD = 0;
+
+    /* MOC (Margin of Conservatism) según desviación de LGD del segmento */
+    LGD_DESVIACION = LGD_ESTIMADA - LGD_MEDIA;
+    IF LGD_DESVIACION > 0 THEN
+        MOC = 0.10 * LGD_DESVIACION;
+    ELSE
+        MOC = 0;
+
+    /* LGD ajustada con MOC */
+    LGD_CON_MOC = LGD_ESTIMADA + MOC;
+
+RUN;
+
 /* Cálculo ECL = PD x LGD x EAD */
 DATA work.ecl_calculo;
-    SET work.lgd_con_suelos;
+    SET work.lgd_enriquecida;
 
     /* Verificar PD mínima (CRR Art. 160(1): suelo 0.03%) */
     IF PD_ESTIMADA < 0.0003 THEN PD_ESTIMADA = 0.0003;
 
-    ECL = PD_ESTIMADA * LGD_ESTIMADA * EAD;
+    /* RWA = EAD * LGD_CON_MOC * 12.5 * K_IRB (simplificado) */
+    K_IRB = SQRT(PD_ESTIMADA) * 0.06 + PD_ESTIMADA * 0.5;
+    RWA = EAD * LGD_CON_MOC * 12.5 * K_IRB;
+
+    /* ECL con LGD ajustada por MOC */
+    ECL = PD_ESTIMADA * LGD_CON_MOC * EAD;
+
+    /* Ajuste de ECL por CURE rate histórico */
+    CURE_RATE_AJUSTE = COALESCE(CURE_FLAG, 0) * 0.15;
+    ECL_AJUSTADO = ECL * (1 - CURE_RATE_AJUSTE);
 
     /* Clasificar STAGE IFRS 9 — Backstop 30 DPD (IFRS 9 B5.5.12) */
     IF DPDS >= 30 AND STAGE_IFRS9 = 1 THEN DO;
         STAGE_IFRS9 = 2;  /* Reclasificar a Stage 2 */
     END;
+
+    /* LGD_FLOOR según tipo de colateral y stage */
+    IF COLATERAL_TIPO = 'HIPOTECA' THEN
+        LGD_FLOOR_APLICADO = MAX(LGD_CON_MOC, 0.30);
+    ELSE IF STAGE_IFRS9 = 3 THEN
+        LGD_FLOOR_APLICADO = MAX(LGD_CON_MOC, 0.45);
+    ELSE
+        LGD_FLOOR_APLICADO = LGD_CON_MOC;
 
 RUN;
 

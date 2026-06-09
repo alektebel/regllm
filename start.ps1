@@ -117,8 +117,9 @@ try {
 
     Write-Host ""
     Write-Host "RegLLM is up." -ForegroundColor Green
-    Write-Host "  UI:   $url/diff"
-    Write-Host "  API:  http://localhost:$apiPort/docs"
+    Write-Host "  Diff Explainer:   $url/diff"
+    Write-Host "  Field Trace:      $url/trace"
+    Write-Host "  API:              http://localhost:$apiPort/docs"
     Write-Host "  Logs: docker compose logs -f"
     Write-Host "  Stop: .\stop.ps1   (or `docker compose down`)"
 

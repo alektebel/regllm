@@ -63,8 +63,9 @@ goto :waitloop
 :ready
 echo.
 echo RegLLM is up.
-echo   UI:   http://localhost:3010/diff
-echo   API:  http://localhost:8000/docs
+echo   Diff Explainer:   http://localhost:3010/diff
+echo   Field Trace:      http://localhost:3010/trace
+echo   API:              http://localhost:8000/docs
 echo   Logs: docker compose logs -f
 echo   Stop: stop.bat   (or: docker compose down)
 
