@@ -38,7 +38,7 @@ def _load_version_sas(version: str) -> str:
     something to chew on."""
     folder = _SAS_ROOT / version
     if folder.exists():
-        files = sorted(folder.glob("*.sas"))
+        files = sorted(folder.rglob("*.sas"))
         if files:
             return "\n\n".join(f.read_text(encoding="utf-8") for f in files)
     if _SAMPLE_SAS.exists():

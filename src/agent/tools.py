@@ -48,7 +48,7 @@ def _load_sas(version: str) -> str:
     bundled sample if the folder is empty/missing."""
     folder = _SAS_ROOT / version
     if folder.exists():
-        files = sorted(folder.glob("*.sas"))
+        files = sorted(folder.rglob("*.sas"))
         if files:
             return "\n\n".join(f.read_text(encoding="utf-8") for f in files)
     sample = _SAMPLES / "sample_lgd.sas"

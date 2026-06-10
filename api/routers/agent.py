@@ -160,7 +160,7 @@ def _count_sas(version: str) -> dict:
     folder = _SAS_ROOT / version
     if not folder.exists():
         return {"folder": str(folder), "count": 0, "files": []}
-    files = sorted(p.name for p in folder.glob("*.sas"))
+    files = sorted(str(p.relative_to(folder)) for p in folder.rglob("*.sas"))
     return {"folder": str(folder), "count": len(files), "files": files}
 
 

@@ -39,7 +39,7 @@ def load_version(version: str, root: Path | None = None) -> str:
     folder = root / version
     if not folder.exists():
         return ""
-    files = sorted(folder.glob("*.sas"))
+    files = sorted(folder.rglob("*.sas"))
     return "\n\n".join(f.read_text(encoding="utf-8") for f in files)
 
 
