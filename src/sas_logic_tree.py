@@ -712,8 +712,9 @@ _MAX_LOOP_ITERS = 1000   # safety cap for DO loop evaluation
 def _strip_comments(code: str) -> str:
     """Remove SAS block comments /* ... */ and line comments * ... ;"""
     code = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
-    # Line comments:  * text ; at the start of a statement
-    code = re.sub(r"(?m)^\s*\*[^;]*;", "", code)
+    # SAS line comment: '*' must START a statement (after ';' or at file start),
+    # NOT appear mid-statement like a SELECT *, clause.
+    code = re.sub(r"(?:(?<=;)|\A)\s*\*[^;]*;", "", code)
     return code
 
 
@@ -1816,6 +1817,7 @@ def _vars_in_expr(expr: str) -> set[str]:
     cleaned = re.sub(r"'[^']*'", " ", expr)
     cleaned = re.sub(r'"[^"]*"', " ", cleaned)
     cleaned = re.sub(r"&&?\w+\.?", " ", cleaned)   # strip macro var refs
+    cleaned = re.sub(r"\bMVAR\s*\[[^\]]*\]", " ", cleaned)  # drop macro-var placeholders
     cleaned = re.sub(r"\[\s*\w+\s*\]", " ", cleaned)  # strip subscripts
     # alias.* (SELECT *) carries no field information — remove whole token
     cleaned = re.sub(r"\b\w+\.\*", " ", cleaned)

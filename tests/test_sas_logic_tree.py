@@ -405,3 +405,75 @@ class TestRealSasPrograms:
         field_ids = {n["id"] for n in lineage_res.json()["nodes"]}
         assert "OR_CONCED" in field_ids
         assert "CAMP_RECUPERAT" in field_ids
+
+
+class TestSelectStarAndMacroPlaceholders:
+    """Regression tests for macro-built table programs (e.g. macro_flujo_I.sas).
+
+    A ``SELECT *,`` clause must not be mistaken for a SAS line comment, and
+    ``&macro.`` placeholders must never leak in as variable nodes.
+    """
+
+    def test_select_star_comma_keeps_computed_field_deps(self):
+        # The "*," begins a line; the old comment stripper deleted everything up
+        # to the next ';', erasing the CASE that defines ID_CASO_CORR.
+        code = """
+        PROC SQL;
+        CREATE TABLE lib.out AS SELECT DISTINCT
+            *,
+            (CASE WHEN OR_EAD < 0.005 THEN 0
+                  WHEN TERMINACION IN ("01. ADJ") AND PV_GA_TOT_SCIC > PV_GR_L1_SCIC THEN 1
+                  ELSE 6 END
+            ) AS ID_CASO_CORR,
+            (CALCULATED ID_CASO_CORR + OR_EAD) AS LGD_OBSERVADA_CORR
+        FROM lib.in AS T1
+        ORDER BY ID_CONTR_CICLO_LGD;
+        QUIT;
+        """
+        nodes = tree.parse(code)
+        lg = tree.lineage(nodes)
+        ic = trace_field_ancestors(lg, "ID_CASO_CORR")
+        assert ic["found"] is True
+        assert {"OR_EAD", "TERMINACION", "PV_GA_TOT_SCIC", "PV_GR_L1_SCIC"}.issubset(
+            set(ic["ancestors"])
+        )
+        # The downstream computed field reads ID_CASO_CORR via CALCULATED.
+        lgd = trace_field_ancestors(lg, "LGD_OBSERVADA_CORR")
+        assert "ID_CASO_CORR" in lgd["ancestors"]
+
+    def test_line_comment_after_statement_still_stripped(self):
+        code = """
+        DATA w.o; SET w.i;
+        * this is a real comment;
+        x = 5;
+        RUN;
+        """
+        nodes = tree.parse(code)
+        assert any(isinstance(n, AssignNode) and n.var == "x" for n in nodes[0].body)
+
+    def test_macro_placeholder_not_a_field(self):
+        code = "DATA w.o; SET w.i; PERIODO = &HITO.; DURATION = (&time_final - &time_inicio) / 60; RUN;"
+        lg = tree.lineage(tree.parse(code))
+        field_ids = {n["id"] for n in lg.nodes}
+        assert "MVAR" not in field_ids
+
+    def test_macro_flujo_lineage_complete(self):
+        path = Path(__file__).resolve().parents[1] / "data/sas/v3/macro_flujo_I.sas"
+        if not path.exists():
+            import pytest
+            pytest.skip("macro_flujo_I.sas not present")
+        lg = tree.lineage(tree.parse(path.read_text(encoding="utf-8")))
+        field_ids = {n["id"] for n in lg.nodes}
+
+        # No macro-table-name fragments or aliases should leak in as fields.
+        assert "MVAR" not in field_ids
+        assert not any(f.startswith("_") for f in field_ids), \
+            sorted(f for f in field_ids if f.startswith("_"))
+        assert {"T1", "T2", "T3"}.isdisjoint(field_ids)
+
+        ic = trace_field_ancestors(lg, "ID_CASO_CORR")
+        assert ic["found"] is True
+        assert {
+            "OR_EAD", "PV_GA_TOT_SCIC", "PV_GR_L1_SCIC",
+            "SW_MARCA_HIPO_PRI", "SW_OP_LGD_DEF", "TERMINACION",
+        }.issubset(set(ic["ancestors"]))
