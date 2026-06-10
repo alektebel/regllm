@@ -1,20 +1,17 @@
 # RegLLM — full local stack (Linux / macOS / Windows via Docker Desktop).
 #
-#   docker compose up --build           start everything (Ollama + API + Web)
-#   docker compose down                 stop and remove containers
-#   docker compose down -v              also drop the cached Ollama models (~9 GB)
+#   docker compose up --build                       start API + Web (no LLM)
+#   docker compose --profile ollama up --build      start everything incl. Ollama + model pull
+#   docker compose down                             stop and remove containers
+#   docker compose down -v                          also drop the cached Ollama models (~9 GB)
 #
 # Open http://localhost:3010/diff (diff explainer) or /trace (field lineage) once `web` is healthy.
 #
 # Configuration via .env (see .env.example):
-#   OLLAMA_MODEL   model tag pulled on first run (default: qwen2.5:14b-instruct-q4_K_M)
+#   OLLAMA_MODEL   model tag pulled when using the ollama profile (default: qwen2.5:14b-instruct-q4_K_M)
 #   API_PORT       host port for the FastAPI service  (default: 8000)
 #   WEB_PORT       host port for the Next.js frontend (default: 3010)
 #   OLLAMA_PORT    host port for the Ollama server    (default: 11434)
-#
-# To use a host-installed Ollama instead of the dockerised one:
-#   docker compose up --build api web         (skip the ollama services)
-#   API picks the host via OLLAMA_URL=http://host.docker.internal:11434
 
 name: regllm
 
@@ -22,6 +19,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: regllm-ollama
+    profiles: [ollama]
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:
@@ -37,21 +35,18 @@ services:
   ollama-init:
     image: ollama/ollama:latest
     container_name: regllm-ollama-init
+    profiles: [ollama]
     depends_on:
       ollama:
         condition: service_healthy
     environment:
       OLLAMA_HOST: "http://ollama:11434"
-      MODEL_TAG: "${OLLAMA_MODEL:-none}"
+      MODEL_TAG: "${OLLAMA_MODEL:-qwen2.5:14b-instruct-q4_K_M}"
     entrypoint: ["/bin/sh", "-c"]
     # `$$` escapes to a literal `$` so docker-compose doesn't try to interpolate.
     command:
       - |
         set -e
-        if [ "$$MODEL_TAG" = "none" ] || [ -z "$$MODEL_TAG" ]; then
-          echo "[init] OLLAMA_MODEL=none — skipping model pull (stub mode)"
-          exit 0
-        fi
         if ollama list 2>/dev/null | tail -n +2 | awk '{print $$1}' | grep -qx "$$MODEL_TAG"; then
           echo "[init] $$MODEL_TAG already present in Ollama cache"
         else
@@ -67,11 +62,6 @@ services:
       dockerfile: Dockerfile
     image: regllm-api:latest
     container_name: regllm-api
-    depends_on:
-      ollama:
-        condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
