@@ -1,0 +1,29 @@
+At C:\Users\drodriguez179\Documents\regllm\start.ps1:101 char:12
++     } else {
++            ~
+Missing closing '}' in statement block or type definition.
+At C:\Users\drodriguez179\Documents\regllm\start.ps1:82 char:5
++ try {
++     ~
+Missing closing '}' in statement block or type definition.
+At C:\Users\drodriguez179\Documents\regllm\start.ps1:102 char:74
++ ...   Write-Stage "Skipping Ollama (no LLM â€” use -WithModel to enable)"
++                                                                        ~
+The Try statement is missing its Catch or Finally block.
+At C:\Users\drodriguez179\Documents\regllm\start.ps1:102 char:74
++ ...   Write-Stage "Skipping Ollama (no LLM â€” use -WithModel to enable)"
++                                                                        ~
+Unexpected token ')' in expression or statement.
+At C:\Users\drodriguez179\Documents\regllm\start.ps1:105 char:18
++     Write-Stage "Starting API and Web"
++                  ~~~~~~~~
+Unexpected token 'Starting' in expression or statement.
+At C:\Users\drodriguez179\Documents\regllm\start.ps1:134 char:33
++         Start-Process "$url/diff"
++                                 ~
+The string is missing the terminator: ".
+At C:\Users\drodriguez179\Documents\regllm\start.ps1:139 char:1
++ 
+Missing closing ')' in expression.
+    + CategoryInfo          : ParserError: (:) [], ParseException
+    + FullyQualifiedErrorId : MissingEndCurlyBrace
