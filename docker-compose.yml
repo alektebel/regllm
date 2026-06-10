@@ -42,7 +42,7 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: "http://ollama:11434"
-      MODEL_TAG: "${OLLAMA_MODEL:-qwen2.5:14b-instruct-q4_K_M}"
+      MODEL_TAG: "${OLLAMA_MODEL:-none}"
     entrypoint: ["/bin/sh", "-c"]
     # `$$` escapes to a literal `$` so docker-compose doesn't try to interpolate.
     command:
@@ -79,7 +79,7 @@ services:
       CORS_ORIGINS: "http://localhost:${WEB_PORT:-3010},http://localhost:3000"
       REGLLM_LLM: "auto"
       OLLAMA_URL: "http://ollama:11434"
-      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5:14b-instruct-q4_K_M}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-none}"
       LITERT_URL: "http://host.docker.internal:9379/v1"
       LITERT_MODEL: "gemma4-12b,gpu"
       REGLLM_LLM_TIMEOUT: "240"

@@ -79,7 +79,7 @@ class LocalLLMClient:
         self.ollama_model = (
             ollama_model
             or os.getenv("OLLAMA_MODEL")
-            or "qwen2.5:14b-instruct-q4_K_M"
+            or "none"
         )
         # OLLAMA_MODEL=none → force stub mode (no model download needed)
         if self.ollama_model == "none":
