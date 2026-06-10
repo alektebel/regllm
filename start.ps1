@@ -3,6 +3,7 @@
 # Usage:
 #   .\start.ps1                                # full stack with model auto-pull
 #   .\start.ps1 -Model qwen2.5:7b-instruct-q4_K_M
+#   .\start.ps1 -NoModel                       # skip model download (LLM falls back to stub)
 #   .\start.ps1 -NoBrowser                     # skip auto-opening the UI
 #   .\start.ps1 -Rebuild                       # force `docker compose build --no-cache`
 #
@@ -13,6 +14,7 @@
 param(
     [string]$Model     = "",
     [int]   $WaitSecs  = 600,
+    [switch]$NoModel,
     [switch]$NoBrowser,
     [switch]$Rebuild
 )
@@ -55,6 +57,9 @@ if (-not (Test-Path $envPath)) {
     Copy-Item (Join-Path $PSScriptRoot ".env.example") $envPath
 }
 
+if ($NoModel) {
+    $Model = "none"
+}
 if ($Model) {
     Write-Stage "Pinning OLLAMA_MODEL=$Model in .env"
     $content = Get-Content $envPath
@@ -83,11 +88,15 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "docker compose build failed" }
     }
 
-    Write-Stage "Starting Ollama and pulling the model (this can take a while on first run)"
+    if ($NoModel) {
+        Write-Stage "Starting Ollama (model download skipped — LLM will run in stub mode)"
+    } else {
+        Write-Stage "Starting Ollama and pulling the model (this can take a while on first run)"
+    }
     docker compose up -d --build ollama ollama-init
     if ($LASTEXITCODE -ne 0) { throw "docker compose up ollama failed" }
 
-    Write-Host "Waiting for the model pull to finish (live progress below)…"
+    Write-Host "Waiting for ollama-init to finish…"
     docker compose logs -f ollama-init
     $exit = (docker inspect -f '{{.State.ExitCode}}' regllm-ollama-init 2>$null)
     if ($exit -and $exit -ne "0") {

@@ -48,6 +48,10 @@ services:
     command:
       - |
         set -e
+        if [ "$$MODEL_TAG" = "none" ] || [ -z "$$MODEL_TAG" ]; then
+          echo "[init] OLLAMA_MODEL=none — skipping model pull (stub mode)"
+          exit 0
+        fi
         if ollama list 2>/dev/null | tail -n +2 | awk '{print $$1}' | grep -qx "$$MODEL_TAG"; then
           echo "[init] $$MODEL_TAG already present in Ollama cache"
         else

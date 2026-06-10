@@ -81,6 +81,9 @@ class LocalLLMClient:
             or os.getenv("OLLAMA_MODEL")
             or "qwen2.5:14b-instruct-q4_K_M"
         )
+        # OLLAMA_MODEL=none → force stub mode (no model download needed)
+        if self.ollama_model == "none":
+            prefer = "stub"
         self.prefer = prefer or os.getenv("REGLLM_LLM", "auto")
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
