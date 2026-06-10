@@ -64,6 +64,25 @@ function dedupeEdges(edges: FieldEdge[]): FieldEdge[] {
   return Array.from(seen.values());
 }
 
+/** Collapse a multiline expression to a single readable line for display. */
+function collapseExpr(expr: string): string {
+  return expr.replace(/\s+/g, " ").trim();
+}
+
+/** Strip MVAR[name] macro placeholder tokens for readable display.
+ *  e.g. "MVAR[LIBWORK]MVAR[PREF_PROG]_03_AUX_02" → "03_AUX_02"
+ *       "LGD_BE_MVAR[VERSION]_MVAR[SUFIJO_TABLAS_BE]"  → "LGD_BE_·"
+ */
+function displayStep(step: string): string {
+  return step
+    .replace(/MVAR\[[^\]]+\]/g, "·")  // each macro var token → ·
+    .replace(/·+/g, "·")              // collapse consecutive ··· → ·
+    .replace(/^·_?|_?·$/g, "")        // strip leading/trailing · (with optional _)
+    .replace(/_·_/g, "_")             // middle · between _ → single _
+    .replace(/^_|_$/g, "")            // strip remaining leading/trailing _
+    .trim() || step;
+}
+
 /** Group deduplicated edges by their expression string. */
 function groupByExpr(edges: FieldEdge[]): [string, FieldEdge[]][] {
   const map = new Map<string, FieldEdge[]>();
@@ -112,10 +131,11 @@ function FieldCard({
   const kind = node?.kind ?? "computed";
 
   // Table = step where field is *written*, fall back to step where it is *read*
-  const tableName =
+  const rawTableName =
     node?.data_steps[0] ??
     srcMap.get(nodeId.toUpperCase())?.[0]?.data_step ??
     "—";
+  const tableName = displayStep(rawTableName);
 
   // Split predecessors into:
   //   direct  — BFS depth === currentDepth + 1  (show as child cards)
@@ -154,7 +174,10 @@ function FieldCard({
           isExpanded && "ring-2 ring-white/20",
         )}
       >
-        <div className={cn("text-[10px] font-normal truncate max-w-[160px]", KIND_MUTED[kind])}>
+        <div
+          className={cn("text-[10px] font-normal truncate max-w-[160px]", KIND_MUTED[kind])}
+          title={rawTableName}
+        >
           {tableName}
         </div>
         <div className="text-[13px] font-bold font-mono mt-0.5 tracking-wide">
@@ -251,7 +274,7 @@ function ExprBridge({
         )}
         title={isConditions ? "conditional branch" : expr}
       >
-        {isConditions ? "condition" : `= ${expr}`}
+        {isConditions ? "condition" : `= ${collapseExpr(expr)}`}
       </div>
       <div className="w-px h-5 bg-border/60" />
       <div className="flex flex-row gap-6 flex-wrap justify-center items-start">
@@ -414,8 +437,11 @@ export default function TracePage() {
                     onPointerDown={(e) => { e.preventDefault(); selectField(node.id); }}
                     className="w-full text-left px-4 py-2 text-sm hover:bg-muted/40 flex items-baseline gap-2"
                   >
-                    <span className="text-[10px] text-muted-foreground font-mono min-w-0 truncate max-w-[120px]">
-                      {node.data_steps[0] ?? "—"}
+                    <span
+                      className="text-[10px] text-muted-foreground font-mono min-w-0 truncate max-w-[120px]"
+                      title={node.data_steps[0] ?? "—"}
+                    >
+                      {displayStep(node.data_steps[0] ?? "—")}
                     </span>
                     <span className="font-mono font-semibold text-foreground truncate">{node.id}</span>
                     <span className={cn("ml-auto text-[9px] shrink-0", KIND_MUTED[node.kind])}>{node.kind}</span>
