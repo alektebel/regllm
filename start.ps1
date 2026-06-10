@@ -57,8 +57,8 @@ if (-not (Test-Path $envPath)) {
     Copy-Item (Join-Path $PSScriptRoot ".env.example") $envPath
 }
 
+$useOllama = $WithModel.IsPresent -or ($Model -ne "")
 if ($Model) {
-    $WithModel = $true
     Write-Stage "Pinning OLLAMA_MODEL=$Model in .env"
     $content = Get-Content $envPath
     $content = $content -replace '^OLLAMA_MODEL=.*', "OLLAMA_MODEL=$Model"
@@ -86,7 +86,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "docker compose build failed" }
     }
 
-    if ($WithModel) {
+    if ($useOllama) {
         Write-Stage "Starting Ollama and pulling the model (this can take a while on first run)"
         docker compose --profile ollama up -d --build ollama ollama-init
         if ($LASTEXITCODE -ne 0) { throw "docker compose up ollama failed" }
