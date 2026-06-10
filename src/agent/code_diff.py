@@ -22,6 +22,8 @@ from src.sas_logic_tree import (
     DataStepNode,
     FilterNode,
     IfNode,
+    MacroDefNode,
+    ProcNode,
     SASLogicTree,
     SelectNode,
 )
@@ -163,7 +165,63 @@ def _fingerprint(step: DataStepNode) -> StepFingerprint:
 
 
 def _data_steps(nodes: list[AnyNode]) -> list[DataStepNode]:
-    return [n for n in nodes if isinstance(n, DataStepNode)]
+    """Collect DataStepNodes, recursing into MacroDefNode bodies."""
+    out: list[DataStepNode] = []
+    for n in nodes:
+        if isinstance(n, DataStepNode):
+            out.append(n)
+        elif isinstance(n, MacroDefNode):
+            out.extend(_data_steps(n.body))
+    return out
+
+
+def _proc_sql_steps(nodes: list[AnyNode]) -> list[ProcNode]:
+    """Collect ProcNode SQL steps that have output_table + select_fields."""
+    out: list[ProcNode] = []
+    for n in nodes:
+        if isinstance(n, ProcNode) and n.output_table and n.select_fields:
+            out.append(n)
+        elif isinstance(n, MacroDefNode):
+            out.extend(_proc_sql_steps(n.body))
+    return out
+
+
+@dataclass
+class ProcSQLFingerprint:
+    """A normalised summary of a PROC SQL CREATE TABLE useful for diffing."""
+
+    output: str
+    inputs: tuple[str, ...]
+    writes: tuple[str, ...]
+    reads: tuple[str, ...]
+    body_text: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "output": self.output,
+            "inputs": list(self.inputs),
+            "writes": list(self.writes),
+            "reads": list(self.reads),
+            "body_text": self.body_text,
+        }
+
+
+def _fingerprint_proc_sql(proc: ProcNode) -> ProcSQLFingerprint:
+    writes: set[str] = set()
+    reads: set[str] = set()
+    for alias, expr in proc.select_fields:
+        if alias == "*":
+            continue
+        writes.add(alias.upper())
+        for tok in _expr_idents(expr):
+            reads.add(tok.upper())
+    return ProcSQLFingerprint(
+        output=proc.output_table.upper(),
+        inputs=tuple(t.upper() for t in proc.input_tables),
+        writes=tuple(sorted(writes)),
+        reads=tuple(sorted(reads)),
+        body_text=proc.display(indent=0).strip(),
+    )
 
 
 # ── Per-target scoping ──────────────────────────────────────────────────────
@@ -242,8 +300,22 @@ def compare(
     tree = SASLogicTree()
     nodes_v2 = tree.parse(sas_v2) if sas_v2 else []
     nodes_v3 = tree.parse(sas_v3) if sas_v3 else []
-    fps_v2 = [_fingerprint(s) for s in _data_steps(nodes_v2)]
-    fps_v3 = [_fingerprint(s) for s in _data_steps(nodes_v3)]
+    fps_v2: list[StepFingerprint] = [_fingerprint(s) for s in _data_steps(nodes_v2)]
+    fps_v3: list[StepFingerprint] = [_fingerprint(s) for s in _data_steps(nodes_v3)]
+
+    # Include PROC SQL steps as StepFingerprints too
+    for p in _proc_sql_steps(nodes_v2):
+        fp = _fingerprint_proc_sql(p)
+        fps_v2.append(StepFingerprint(
+            output=fp.output, inputs=fp.inputs, writes=fp.writes,
+            reads=fp.reads, body_text=fp.body_text,
+        ))
+    for p in _proc_sql_steps(nodes_v3):
+        fp = _fingerprint_proc_sql(p)
+        fps_v3.append(StepFingerprint(
+            output=fp.output, inputs=fp.inputs, writes=fp.writes,
+            reads=fp.reads, body_text=fp.body_text,
+        ))
 
     # Restrict to the target's lineage when requested
     if target:

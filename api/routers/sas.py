@@ -9,7 +9,28 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/sas", tags=["sas"])
 
-_SAMPLE_SAS = Path(__file__).resolve().parent.parent.parent / "data" / "samples" / "sample_lgd.sas"
+_ROOT = Path(__file__).resolve().parent.parent.parent
+_SAS_ROOT = _ROOT / "data" / "sas"
+_TRACE_VERSION = "v3"
+_FALLBACK_SAS = _ROOT / "data" / "samples" / "sample_lgd.sas"
+
+
+def _load_trace_sas() -> str:
+    """Concatenate every ``.sas`` file under ``data/sas/v3/`` (sorted by path).
+
+    The trace view operates on the full v3 program — all data steps and PROC
+    SQL across every v3 file — so a field's lineage spans the whole module,
+    not just one sample file. Falls back to the bundled sample when v3 is
+    empty or missing.
+    """
+    folder = _SAS_ROOT / _TRACE_VERSION
+    if folder.exists():
+        files = sorted(folder.rglob("*.sas"))
+        if files:
+            return "\n\n".join(f.read_text(encoding="utf-8") for f in files)
+    if _FALLBACK_SAS.exists():
+        return _FALLBACK_SAS.read_text(encoding="utf-8")
+    return ""
 
 
 class CodeRequest(BaseModel):
@@ -25,9 +46,10 @@ class LineageRequest(BaseModel):
 
 @router.get("/sample")
 def get_sample() -> dict:
-    if not _SAMPLE_SAS.exists():
-        raise HTTPException(404, "Sample SAS file not found")
-    return {"code": _SAMPLE_SAS.read_text(encoding="utf-8")}
+    code = _load_trace_sas()
+    if not code.strip():
+        raise HTTPException(404, "No v3 SAS code found")
+    return {"code": code}
 
 
 @router.post("/parse")

@@ -129,12 +129,24 @@ class ProcNode:
     kind: str
     data: str
     raw: str
+    output_table: str = ""
+    input_tables: list[str] = field(default_factory=list)
+    select_fields: list[tuple[str, str]] = field(default_factory=list)
 
     def display(self, indent: int = 0) -> str:
+        if self.output_table:
+            return "  " * indent + f"PROC {self.kind}  CREATE TABLE {self.output_table}"
         return "  " * indent + f"PROC {self.kind}  DATA={self.data}"
 
     def to_dict(self) -> dict:
-        return {"type": "proc", "kind": self.kind, "data": self.data, "raw": self.raw}
+        d: dict = {"type": "proc", "kind": self.kind, "data": self.data, "raw": self.raw}
+        if self.output_table:
+            d["output_table"] = self.output_table
+        if self.input_tables:
+            d["input_tables"] = self.input_tables
+        if self.select_fields:
+            d["select_fields"] = [{"alias": a, "expr": e} for a, e in self.select_fields]
+        return d
 
 
 # ── New node types ────────────────────────────────────────────────────────────
@@ -690,7 +702,7 @@ _METADATA_KEYWORDS = re.compile(
     r"^(LIBNAME|FILENAME|OPTIONS|TITLE|FOOTNOTE|ODS|RUN|QUIT|"
     r"LABEL|ATTRIB|FORMAT|INFORMAT|LENGTH|KEEP|DROP|RENAME|"
     r"FILE|PUT|INPUT|INFILE|WINDOW|DISPLAY|NOTE|"
-    r"%MEND|%END|%GLOBAL|%LOCAL|%PUT|%INCLUDE)\b",
+    r"%GLOBAL|%LOCAL|%PUT|%INCLUDE)\b",
     re.IGNORECASE,
 )
 
@@ -706,13 +718,83 @@ def _strip_comments(code: str) -> str:
 
 
 def _strip_macro_refs(code: str) -> str:
-    """Replace &macrovar references with a placeholder so they don't break parsing."""
-    return re.sub(r"&&?\w+\.?", "__MACRO__", code)
+    """Replace &macrovar references with MVAR[name] so table names stay readable.
+
+    Uses square-bracket delimiters (``MVAR[name]``) so the macro variable name
+    is unambiguous even when the name itself contains underscores (e.g.
+    ``&PREF_PROG.`` → ``MVAR[PREF_PROG]``).  Adjacent macro vars are separated
+    by the next literal character — e.g. ``&LIBWORK.&TABLE.`` → ``MVAR[LIBWORK]MVAR[TABLE]``.
+    """
+    # Double-ampersand (&&var.) must be handled first
+    code = re.sub(r"&&(\w+)\.?", r"MVAR[\1]", code)
+    code = re.sub(r"&(\w+)\.?", r"MVAR[\1]", code)
+    return code
 
 
 def _split_statements(code: str) -> list[str]:
     """Split SAS code by ';' returning non-empty stripped statements."""
     return [s.strip() for s in code.split(";") if s.strip()]
+
+
+def _collect_sql_fragment_macros(code: str) -> dict[str, tuple[list[str], str]]:
+    """Find %macro definitions whose bodies contain no semicolons.
+
+    These are *SQL field-list fragment* macros — their body is a bare SQL
+    expression (e.g. ``, CASE … AS alias``) meant to be inlined inside a
+    ``SELECT`` clause.  They have no ``DATA``/``PROC`` structure and cannot be
+    parsed as standalone statements, so we expand them before the main parse.
+
+    Returns ``{lowercase_name: (param_list, body_template)}``.
+    """
+    macros: dict[str, tuple[list[str], str]] = {}
+    pattern = re.compile(
+        r"%macro\s+(\w+)\s*\(([^)]*)\)\s*;(.*?)%mend\b",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for m in pattern.finditer(code):
+        name = m.group(1).lower()
+        raw_params = m.group(2)
+        body = m.group(3).lstrip(";").strip()
+        # Skip structural macros (bodies that contain statements / DATA steps / PROCs)
+        if ";" in body:
+            continue
+        params = [p.strip() for p in raw_params.split(",") if p.strip()]
+        macros[name] = (params, body)
+    return macros
+
+
+def _expand_sql_fragment_macros(
+    code: str,
+    macros: dict[str, tuple[list[str], str]],
+) -> str:
+    """Replace ``%name(args)`` call sites with the expanded macro body.
+
+    Only macros present in *macros* (the SQL-fragment set) are touched;
+    structural macro calls such as ``%LGD_BE_EST(...)`` are left unchanged.
+
+    Parameter substitution handles both ``&PARAM.`` (with trailing dot) and
+    ``&PARAM`` (without), case-insensitively.
+    """
+    if not macros:
+        return code
+
+    def _replacer(m: re.Match) -> str:
+        name = m.group(1).lower()
+        if name not in macros:
+            return m.group(0)       # leave unknown/structural calls unchanged
+        params, body = macros[name]
+        # Simple comma-split — fragment-macro args are always simple tokens
+        args = [a.strip() for a in m.group(2).split(",")]
+        result = body
+        for param, arg in zip(params, args):
+            result = re.sub(
+                rf"&{re.escape(param)}\.?", arg, result, flags=re.IGNORECASE
+            )
+        return result
+
+    # %macroname(possibly, multiple, args) — args never contain nested parens
+    # in the known fragment macros, so a simple [^)]* is safe.
+    return re.sub(r"%(\w+)\s*\(([^)]*)\)", _replacer, code, flags=re.IGNORECASE)
 
 
 class _Parser:
@@ -739,26 +821,42 @@ class _Parser:
     def parse(self) -> list[AnyNode]:
         nodes: list[AnyNode] = []
         while self._pos < len(self._s):
-            u = self._upper()
-            if re.match(r"^DATA\b", u) and not re.match(r"^DATA\s*;", u):
-                nodes.append(self._parse_data_step())
-            elif re.match(r"^PROC\s+\w", u):
-                nodes.append(self._parse_proc())
-            elif re.match(r"^%MACRO\b", u, re.IGNORECASE):
-                n = self._parse_macro_def()
-                if n:
-                    nodes.append(n)
-            elif re.match(r"^%LET\b", u, re.IGNORECASE):
-                n = self._parse_macro_let()
-                if n:
-                    nodes.append(n)
-            elif re.match(r"^%[A-Z_]\w*\s*\(", u, re.IGNORECASE):
-                n = self._parse_macro_call()
-                if n:
-                    nodes.append(n)
-            else:
-                self._consume()
+            result = self._parse_one_top_level()
+            if result is not None:
+                if isinstance(result, list):
+                    nodes.extend(result)
+                else:
+                    nodes.append(result)
         return nodes
+
+    def _parse_one_top_level(self) -> "AnyNode | list[AnyNode] | None":
+        """Parse a single top-level statement (DATA step, PROC, macro, etc.)."""
+        u = self._upper()
+        if re.match(r"^DATA\b", u) and not re.match(r"^DATA\s*;", u):
+            return self._parse_data_step()
+        if re.match(r"^PROC\s+\w", u):
+            return self._parse_proc()
+        if re.match(r"^%MACRO\b", u, re.IGNORECASE):
+            return self._parse_macro_def()
+        if re.match(r"^%LET\b", u, re.IGNORECASE):
+            return self._parse_macro_let()
+        if re.match(r"^%IF\b", u, re.IGNORECASE):
+            return self._parse_macro_if_block()
+        if re.match(r"^%DO\b", u, re.IGNORECASE):
+            return self._parse_macro_do_block()
+        if re.match(r"^%END\b", u, re.IGNORECASE):
+            self._consume()  # orphaned %END
+            return None
+        if re.match(r"^%MEND\b", u, re.IGNORECASE):
+            self._consume()  # orphaned %MEND
+            return None
+        if re.match(r"^%[A-Z_]\w*\s*\(", u, re.IGNORECASE):
+            return self._parse_macro_call()
+        if _METADATA_KEYWORDS.match(u):
+            self._consume()
+            return None
+        self._consume()
+        return None
 
     # ── DATA step ─────────────────────────────────────────────────────────────
 
@@ -801,7 +899,9 @@ class _Parser:
                 body.append(MergeNode(datasets=datasets))
                 continue
             result = self._parse_body_stmt()
-            if isinstance(result, ByNode):
+            if isinstance(result, list):
+                body.extend(result)
+            elif isinstance(result, ByNode):
                 by_keys = result.keys
                 body.append(result)
             elif result is not None:
@@ -883,7 +983,15 @@ class _Parser:
         if re.match(r"^%LET\b", u, re.IGNORECASE):
             return self._parse_macro_let()
         if re.match(r"^%IF\b", u, re.IGNORECASE):
-            return self._parse_macro_if_inline()
+            return self._parse_macro_if_block()
+        if re.match(r"^%DO\b", u, re.IGNORECASE):
+            return self._parse_macro_do_block()
+        if re.match(r"^%END\b", u, re.IGNORECASE):
+            self._consume()  # orphaned %END
+            return None
+        if re.match(r"^%MEND\b", u, re.IGNORECASE):
+            self._consume()  # orphaned %MEND
+            return None
         if re.match(r"^%[A-Z_]\w*\s*\(", u, re.IGNORECASE):
             return self._parse_macro_call()
 
@@ -1169,17 +1277,90 @@ class _Parser:
             if re.match(r"^%MEND\b", u, re.IGNORECASE):
                 self._consume()
                 break
-            result = self._parse_body_stmt()
+            result = self._parse_one_top_level()
             if result is not None:
-                body.append(result)
+                if isinstance(result, list):
+                    body.extend(result)
+                else:
+                    body.append(result)
         return MacroDefNode(name=name, params=params, body=body)
 
-    # ── Macro %IF (inline, simplified) ───────────────────────────────────────
+    # ── Macro %IF/%THEN/%DO ... %END ────────────────────────────────────────
 
-    def _parse_macro_if_inline(self) -> MacroLetNode | None:
-        # %IF ... %THEN ... is complex; just consume for now
-        self._consume()
-        return None
+    def _parse_macro_if_block(self) -> list[AnyNode] | None:
+        """Parse %IF ... %THEN %DO ... %END [%ELSE %DO ... %END].
+
+        Returns inner nodes from both branches (flattened) since we cannot
+        evaluate macro conditions at parse time.
+        """
+        stmt = self._consume()
+        u = stmt.upper()
+        nodes: list[AnyNode] = []
+
+        # %IF ... %THEN %DO on same statement
+        if "%THEN" in u and "%DO" in u:
+            nodes.extend(self._parse_macro_block_until_pct_end())
+        elif "%THEN" in u:
+            # %THEN without %DO — single inline statement follows
+            result = self._parse_one_top_level()
+            if result is not None:
+                if isinstance(result, list):
+                    nodes.extend(result)
+                else:
+                    nodes.append(result)
+        # else: %IF without %THEN on same line — just consumed, inner stmts
+        # will be parsed by the caller naturally
+
+        # Check for %ELSE
+        if self._pos < len(self._s):
+            nu = self._upper()
+            if re.match(r"^%ELSE\b", nu, re.IGNORECASE):
+                stmt2 = self._consume()
+                u2 = stmt2.upper()
+                if "%DO" in u2:
+                    nodes.extend(self._parse_macro_block_until_pct_end())
+                else:
+                    result = self._parse_one_top_level()
+                    if result is not None:
+                        if isinstance(result, list):
+                            nodes.extend(result)
+                        else:
+                            nodes.append(result)
+
+        return nodes if nodes else None
+
+    # ── Macro %DO ... %END ───────────────────────────────────────────────────
+
+    def _parse_macro_do_block(self) -> list[AnyNode]:
+        """Consume %DO ... %END block, recursively parsing inner statements."""
+        self._consume()  # consume the %DO statement
+        return self._parse_macro_block_until_pct_end()
+
+    def _parse_macro_block_until_pct_end(self) -> list[AnyNode]:
+        """Parse statements until matching %END, handling nested %DO/%END."""
+        nodes: list[AnyNode] = []
+        depth = 0
+        while self._pos < len(self._s):
+            u = self._upper()
+            if re.match(r"^%END\b", u, re.IGNORECASE):
+                if depth == 0:
+                    self._consume()
+                    break
+                depth -= 1
+                self._consume()
+                continue
+            # Track nested %DO (standalone or inside %IF...%THEN %DO)
+            if re.match(r"^%DO\b", u, re.IGNORECASE):
+                depth += 1
+            elif re.match(r"^%IF\b", u, re.IGNORECASE) and "%DO" in u:
+                depth += 1
+            result = self._parse_one_top_level()
+            if result is not None:
+                if isinstance(result, list):
+                    nodes.extend(result)
+                else:
+                    nodes.append(result)
+        return nodes
 
     # ── Macro call %name(...) ─────────────────────────────────────────────────
 
@@ -1204,7 +1385,16 @@ class _Parser:
                 self._consume()
                 break
             raw_lines.append(self._consume())
-        return ProcNode(kind, data, "; ".join(raw_lines))
+        raw = "; ".join(raw_lines)
+        node = ProcNode(kind, data, raw)
+        if kind == "SQL":
+            out_tbl, in_tbls, fields = _parse_proc_sql_fields(raw)
+            node.output_table = out_tbl
+            node.input_tables = in_tbls
+            node.select_fields = fields
+            if not node.data and in_tbls:
+                node.data = in_tbls[0]
+        return node
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1281,6 +1471,102 @@ def _split_csv(s: str) -> list[str]:
     if buf:
         parts.append("".join(buf).strip())
     return parts
+
+
+def _split_sql_select(body: str) -> list[str]:
+    """Split SQL SELECT field list on commas, respecting parens and CASE/END."""
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0  # parenthesis depth
+    case_depth = 0  # CASE ... END depth
+    i = 0
+    upper = body.upper()
+    while i < len(body):
+        ch = body[i]
+        # Track CASE/END keywords
+        if upper[i:i+4] == "CASE" and (i == 0 or not upper[i-1].isalnum()):
+            case_depth += 1
+            buf.append(body[i:i+4])
+            i += 4
+            continue
+        if upper[i:i+3] == "END" and case_depth > 0 and (i == 0 or not upper[i-1].isalnum()):
+            case_depth -= 1
+            buf.append(body[i:i+3])
+            i += 3
+            continue
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+        elif ch == ',' and depth == 0 and case_depth == 0:
+            parts.append("".join(buf))
+            buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    if buf:
+        parts.append("".join(buf))
+    return parts
+
+
+def _parse_proc_sql_fields(raw: str) -> tuple[str, list[str], list[tuple[str, str]]]:
+    """Extract output table, input tables, and SELECT field aliases from PROC SQL."""
+    # Output table: CREATE TABLE <name> AS
+    output_table = ""
+    # Table names may contain MVAR[name] bracket tokens after macro substitution
+    ct_m = re.search(r"CREATE\s+TABLE\s+([\w.\[\]]+)\s+AS\b", raw, re.IGNORECASE)
+    if ct_m:
+        output_table = ct_m.group(1).strip()
+
+    # Input tables: FROM <table> and JOIN <table>
+    input_tables: list[str] = []
+    skip = {'SELECT', 'WHERE', 'GROUP', 'ORDER', 'HAVING', 'SET', 'UNION'}
+    for m in re.finditer(r"(?:FROM|JOIN)\s+([\w.\[\]]+)", raw, re.IGNORECASE):
+        tbl = m.group(1).strip()
+        if tbl.upper() not in skip:
+            input_tables.append(tbl)
+
+    # SELECT fields with AS alias
+    select_fields: list[tuple[str, str]] = []
+    sel_m = re.search(r"\bSELECT(?:\s+DISTINCT)?\s+(.*?)\bFROM\b", raw, re.IGNORECASE | re.DOTALL)
+    if not sel_m:
+        return output_table, input_tables, select_fields
+
+    select_body = sel_m.group(1).strip()
+    if re.match(r"^\*\s*$", select_body):
+        return output_table, input_tables, [("*", "*")]
+
+    # Handle SELECT * , computed_col — strip leading *,
+    if select_body.startswith("*"):
+        select_body = re.sub(r"^\*\s*,?\s*", "", select_body)
+        select_fields.append(("*", "*"))
+
+    fragments = _split_sql_select(select_body)
+    for frag in fragments:
+        frag = frag.strip()
+        if not frag:
+            continue
+        # Skip macro calls (e.g. %macro_name(...))
+        if frag.startswith("%"):
+            continue
+        # Skip passthrough alias.* fragments — no specific field name available
+        if re.match(r"^\w+\.\*$", frag.strip()):
+            select_fields.append(("*", frag.strip()))
+            continue
+        # Look for AS <alias> at the end
+        as_m = re.search(r"\bAS\s+(\w+)\s*$", frag, re.IGNORECASE)
+        if as_m:
+            alias = as_m.group(1).strip()
+            expr = frag[:as_m.start()].strip()
+            select_fields.append((alias, expr))
+        else:
+            # No alias — extract last identifier as implicit alias
+            parts = re.findall(r'[\w]+', frag)
+            if parts:
+                select_fields.append((parts[-1], frag))
+
+    return output_table, input_tables, select_fields
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1486,6 +1772,12 @@ _LINEAGE_SKIP = {
     'IF', 'THEN', 'ELSE', 'DO', 'END', 'WHERE', 'SET', 'DATA',
     'TRUE', 'FALSE', 'NULL', 'MISSING', 'TO', 'BY', 'BETWEEN',
     'SELECT', 'WHEN', 'OTHERWISE', 'WHILE', 'UNTIL', 'LIKE',
+    # SELECT/CASE keywords
+    'CASE', 'AS', 'DISTINCT', 'CALCULATED',
+    # PROC SQL structural keywords
+    'PROC', 'SQL', 'QUIT', 'RUN', 'CREATE', 'TABLE', 'DROP',
+    'FROM', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'FULL',
+    'ON', 'GROUP', 'ORDER', 'HAVING', 'UNION', 'ALL', 'FORCE',
     # Numeric functions
     'MAX', 'MIN', 'ABS', 'ROUND', 'INT', 'FLOOR', 'CEIL', 'SQRT',
     'LOG', 'LOG2', 'LOG10', 'EXP', 'MOD', 'SIGN',
@@ -1515,6 +1807,9 @@ _LINEAGE_SKIP = {
     'TEMPORARY', 'INITIAL',
 }
 
+# SAS format-spec pattern: uppercase letters followed by digits (e.g. YYMMN6, BEST12, DATE9)
+_FORMAT_SPEC_RE = re.compile(r'^[A-Z]+\d+$')
+
 
 def _vars_in_expr(expr: str) -> set[str]:
     """Extract SAS variable names from an expression."""
@@ -1522,8 +1817,22 @@ def _vars_in_expr(expr: str) -> set[str]:
     cleaned = re.sub(r'"[^"]*"', " ", cleaned)
     cleaned = re.sub(r"&&?\w+\.?", " ", cleaned)   # strip macro var refs
     cleaned = re.sub(r"\[\s*\w+\s*\]", " ", cleaned)  # strip subscripts
+    # alias.* (SELECT *) carries no field information — remove whole token
+    cleaned = re.sub(r"\b\w+\.\*", " ", cleaned)
+    # Strip SQL table-alias qualifiers: T1.FIELD → FIELD, alias.FIELD → FIELD
+    cleaned = re.sub(r"\b[A-Za-z_]\w*\.(?=[A-Za-z_])", "", cleaned)
     tokens = re.findall(r'\b([A-Za-z_][A-Za-z0-9_]*)\b', cleaned)
-    return {t.upper() for t in tokens if t.upper() not in _LINEAGE_SKIP}
+    result: set[str] = set()
+    for t in tokens:
+        u = t.upper()
+        if u in _LINEAGE_SKIP:
+            continue
+        if _FORMAT_SPEC_RE.match(u):   # SAS format spec like YYMMN6, BEST12
+            continue
+        if "MVAR[" in u:             # substituted macro variable placeholder
+            continue
+        result.add(u)
+    return result
 
 
 @dataclass
@@ -1550,11 +1859,34 @@ class _LineageWalker:
                 self._current_step = node.output_dataset
                 if node.output_dataset not in self._step_order:
                     self._step_order.append(node.output_dataset)
-                # Add merge datasets as input sources
                 for ds in node.merge_datasets:
                     self._read.update()  # no field-level info from merge names
                 self._walk_body(node.body)
+            elif isinstance(node, ProcNode) and node.output_table and node.select_fields:
+                self._current_step = node.output_table
+                if node.output_table not in self._step_order:
+                    self._step_order.append(node.output_table)
+                self._walk_proc_sql(node)
+            elif isinstance(node, MacroDefNode):
+                self.walk(node.body)
         return self._build()
+
+    def _walk_proc_sql(self, node: ProcNode) -> None:
+        """Extract lineage edges from PROC SQL SELECT fields."""
+        for alias, expr in node.select_fields:
+            if alias == "*":
+                continue
+            target = alias.upper()
+            sources = _vars_in_expr(expr)
+            self._written.add(target)
+            # Only count a source as a real read if it is not the field itself
+            # (bare passthrough T1.FOO AS FOO resolves to source==target — skip)
+            real_sources = sources - {target}
+            self._read.update(real_sources)
+            if target not in self._field_step:
+                self._field_step[target] = self._current_step
+            for src in real_sources:
+                self._add_edge(src, target, "assigns", expr)
 
     def _walk_body(self, body: list[AnyNode]) -> None:
         for node in body:
@@ -1643,6 +1975,9 @@ class _LineageWalker:
         all_fields = self._written | self._read
         step_idx = {s: i for i, s in enumerate(self._step_order)}
 
+        # Fields that have at least one real incoming edge
+        has_real_source: set[str] = {e["target"] for e in self._edges}
+
         raw_layers: dict[str, int] = {}
         for f in all_fields:
             if f in self._written:
@@ -1656,7 +1991,13 @@ class _LineageWalker:
         nodes = []
         for f in sorted(all_fields):
             if f in self._written:
-                kind = "modified" if f in self._read else "computed"
+                if f not in has_real_source:
+                    # Written by a step but no real source edges — opaque origin
+                    kind = "input"
+                elif f in self._read:
+                    kind = "modified"
+                else:
+                    kind = "computed"
                 step = self._field_step.get(f, "")
                 steps = [step] if step else []
             else:
@@ -1759,6 +2100,11 @@ class SASLogicTree:
 
     def parse(self, code: str) -> list[AnyNode]:
         clean = _strip_comments(code)
+        # Expand SQL-fragment macros (no semicolons in body) before statement
+        # splitting so their SELECT-field expressions become visible to the
+        # PROC SQL field extractor.
+        sql_macros = _collect_sql_fragment_macros(clean)
+        clean = _expand_sql_fragment_macros(clean, sql_macros)
         clean = _strip_macro_refs(clean)
         stmts = _split_statements(clean)
         return _Parser(stmts).parse()

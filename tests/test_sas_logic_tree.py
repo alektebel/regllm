@@ -4,6 +4,8 @@ No external dependencies — just the parser and evaluator against
 known SAS snippets matching the real IRB/IFRS9 patterns in data/samples/.
 """
 
+from pathlib import Path
+
 import pytest
 from src.sas_logic_tree import (
     SASLogicTree,
@@ -341,3 +343,65 @@ class TestTraceFieldAncestors:
         data = r.json()
         assert data["target"] == "ECL"
         assert {"PD", "LGD", "EAD"}.issubset(set(data["ancestors"]))
+
+
+class TestRealSasPrograms:
+
+    def test_or_conced_program_compiles_lineage(self):
+        code = (
+            Path(__file__).resolve().parents[1]
+            / "data/sas/v3/L14_P51_OR_CONCED.sas"
+        ).read_text(encoding="utf-8")
+
+        nodes = tree.parse(code)
+        lg = tree.lineage(nodes)
+        field_ids = {node["id"] for node in lg.nodes}
+
+        assert nodes
+        assert {"OR_CONCED", "OR_CONCED_01", "CAMP_RECUPERAT"}.issubset(field_ids)
+
+        or_conced_01 = trace_field_ancestors(lg, "OR_CONCED_01")
+        assert or_conced_01["found"] is True
+        assert any(
+            edge["source"] == "OR_CONCED"
+            for edge in or_conced_01["direct_predecessors"]
+        )
+
+        camp_recuperat = trace_field_ancestors(lg, "CAMP_RECUPERAT")
+        assert camp_recuperat["found"] is True
+        assert {
+            "OR_CONCED_01_PRI",
+            "OR_CONCED_02_PRI",
+            "OR_CONCED_03_PRI",
+            "OR_CONCED_04_PRI",
+            "OR_CONCED_05_PRI",
+            "OR_CONCED_06_PRI",
+        }.issubset(set(camp_recuperat["ancestors"]))
+
+    def test_all_v3_sas_files_compile(self):
+        v3_root = Path(__file__).resolve().parents[1] / "data/sas/v3"
+        files = sorted(v3_root.rglob("*.sas"))
+        assert files, "expected at least one v3 SAS file"
+        for f in files:
+            code = f.read_text(encoding="utf-8")
+            nodes = tree.parse(code)
+            lg = tree.lineage(nodes)
+            assert nodes, f"{f} produced no AST nodes"
+            assert lg.nodes, f"{f} produced no lineage fields"
+
+    def test_trace_sample_endpoint_uses_full_v3(self):
+        from fastapi.testclient import TestClient
+        from api.main import app
+
+        client = TestClient(app)
+        sample = client.get("/sas/sample")
+        assert sample.status_code == 200
+        code = sample.json()["code"]
+
+        # The combined v3 program spans every v3 file, so OR_CONCED (defined in
+        # L14_P51_OR_CONCED.sas) must be traceable through the lineage endpoint.
+        lineage_res = client.post("/sas/lineage", json={"code": code})
+        assert lineage_res.status_code == 200
+        field_ids = {n["id"] for n in lineage_res.json()["nodes"]}
+        assert "OR_CONCED" in field_ids
+        assert "CAMP_RECUPERAT" in field_ids

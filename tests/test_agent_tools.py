@@ -43,9 +43,15 @@ def test_dispatch_bad_arguments_returns_error_dict() -> None:
     assert "error" in out
 
 
-def test_inspect_lineage_returns_ancestors_for_ecl() -> None:
-    """Uses the bundled sample_lgd.sas as the fallback when data/sas is empty."""
-    out = dispatch_tool("inspect_lineage", {"target": "ECL", "sas_version": "v3"})
+def test_inspect_lineage_returns_ancestors_for_ecl(monkeypatch) -> None:
+    """Uses the bundled sample_lgd.sas to test lineage for ECL."""
+    from pathlib import Path
+    sample = Path(__file__).resolve().parent.parent / "data" / "samples" / "sample_lgd.sas"
+    sas_text = sample.read_text(encoding="utf-8")
+    import src.agent.tools as _tools
+    monkeypatch.setattr(_tools, "_load_sas", lambda version: sas_text)
+    from src.agent.tools import _t_inspect_lineage
+    out = _t_inspect_lineage("ECL", "v3")
     assert "ancestors" in out
     # ECL = PD * LGD * EAD → expect those three among the ancestors
     expected = {"PD_ESTIMADA", "LGD_ESTIMADA", "EAD"}
