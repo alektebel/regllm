@@ -1,6 +1,10 @@
 @echo off
 REM RegLLM - Windows one-command launcher (cmd.exe fallback).
 REM
+REM Usage:
+REM   start.bat                  API + Web only (no LLM)
+REM   start.bat --with-model     include Ollama + model auto-pull
+REM
 REM Use start.ps1 for a richer experience (live model-pull progress,
 REM per-stage status, optional flags).
 
@@ -30,17 +34,21 @@ if not exist .env (
     copy /Y .env.example .env >nul
 )
 
-echo ==^> Starting Ollama and pulling the model (first run can take a while)
-docker compose up -d --build ollama ollama-init
-if errorlevel 1 goto :fail
+if /i "%~1"=="--with-model" (
+    echo ==^> Starting Ollama and pulling the model (first run can take a while)
+    docker compose --profile ollama up -d --build ollama ollama-init
+    if errorlevel 1 goto :fail
 
-echo ==^> Waiting for the model pull to finish (Ctrl+C exits log tail only)
-docker compose logs -f ollama-init
+    echo ==^> Waiting for the model pull to finish (Ctrl+C exits log tail only)
+    docker compose logs -f ollama-init
 
-for /f "tokens=*" %%i in ('docker inspect -f "{{.State.ExitCode}}" regllm-ollama-init') do set "INIT_EXIT=%%i"
-if not "%INIT_EXIT%"=="0" (
-    echo Model pull failed (exit=%INIT_EXIT%). See "docker compose logs ollama-init".
-    goto :fail
+    for /f "tokens=*" %%i in ('docker inspect -f "{{.State.ExitCode}}" regllm-ollama-init') do set "INIT_EXIT=%%i"
+    if not "%INIT_EXIT%"=="0" (
+        echo Model pull failed (exit=%INIT_EXIT%). See "docker compose logs ollama-init".
+        goto :fail
+    )
+) else (
+    echo ==^> Skipping Ollama (no LLM -- use "start.bat --with-model" to enable)
 )
 
 echo ==^> Starting API and Web
