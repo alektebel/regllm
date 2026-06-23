@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Play,
   Loader2,
@@ -15,6 +16,7 @@ import {
   Network,
   Wand2,
   SlidersHorizontal,
+  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LineageGraph, {
@@ -711,13 +713,22 @@ function Header({ llmBackend, llmModel }: { llmBackend: string; llmModel: string
           </p>
         </div>
       </div>
-      <div className="text-xs text-muted-foreground flex items-center gap-2">
-        <span className={cn("inline-block w-2 h-2 rounded-full", dotColor)} />
-        <span>local LLM:</span>
-        <span className="font-mono text-foreground/90">
-          {llmBackend || "?"}
-          {llmModel && llmModel !== "stub" ? ` · ${llmModel}` : ""}
-        </span>
+      <div className="flex items-center gap-4">
+        <Link
+          href="/embeddings"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <Boxes className="h-3.5 w-3.5" />
+          Embedding Visualizer
+        </Link>
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
+          <span className={cn("inline-block w-2 h-2 rounded-full", dotColor)} />
+          <span>local LLM:</span>
+          <span className="font-mono text-foreground/90">
+            {llmBackend || "?"}
+            {llmModel && llmModel !== "stub" ? ` · ${llmModel}` : ""}
+          </span>
+        </div>
       </div>
     </header>
   );
