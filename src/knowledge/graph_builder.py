@@ -312,7 +312,7 @@ class GraphBuilder:
             user_msg = f"Source: {source}\nChunk {i + 1}/{len(chunks)}:\n\n{chunk}"
             extraction = self._llm.chat_json(
                 _REGULATION_EXTRACT_SYSTEM, user_msg,
-                temperature=0.1, max_tokens=2048,
+                temperature=0.1, max_tokens=4096,
             )
 
             if "error" in extraction:

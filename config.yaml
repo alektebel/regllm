@@ -3,12 +3,12 @@
 
 # Chat/reasoning LLM — maintains the knowledge graph, runs agentic Q&A
 llm:
-  model: "qwen3:32b"
+  model: "qwen2.5:14b-instruct-q4_K_M"
   backend: "auto"            # auto | ollama | litert | stub
   ollama_url: "http://localhost:11434"
   litert_url: "http://localhost:9379/v1"
   litert_model: "gemma4-12b,gpu"
-  timeout: 120
+  timeout: 300
 
 # Embedding model — encodes regulation text into the vector store
 embedding:

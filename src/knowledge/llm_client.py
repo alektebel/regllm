@@ -450,7 +450,9 @@ def reset_client() -> None:
 
 def _safe_json(text: str) -> dict[str, Any]:
     """Best-effort JSON extraction from a model response."""
-    text = text.strip()
+    import re
+    # Strip thinking tags (qwen3 family outputs <think>...</think> before JSON)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     for fence in ("```json", "```"):
         if text.startswith(fence):
             text = text[len(fence):]
