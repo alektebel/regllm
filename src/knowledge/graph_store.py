@@ -39,12 +39,41 @@ _SCHEMA_VERSION = 1
 class GraphStore:
     """Thin wrapper around a KuzuDB database for the regulatory KG."""
 
+    _MAX_LOCK_RETRIES = 3
+    _LOCK_RETRY_DELAY = 2.0  # seconds
+
     def __init__(self, db_path: str | Path = "data/knowledge/regllm.kuzu") -> None:
         self._db_path = Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = kuzu.Database(str(self._db_path))
+        self._db = self._open_db_with_retry()
         self._conn = kuzu.Connection(self._db)
         self._ensure_schema()
+
+    def _open_db_with_retry(self) -> kuzu.Database:
+        """Open KuzuDB, retrying on lock errors from stale processes."""
+        import time
+
+        last_err: Exception | None = None
+        for attempt in range(self._MAX_LOCK_RETRIES):
+            try:
+                return kuzu.Database(str(self._db_path))
+            except RuntimeError as e:
+                if "lock" not in str(e).lower():
+                    raise
+                last_err = e
+                if attempt < self._MAX_LOCK_RETRIES - 1:
+                    logger.warning(
+                        "KuzuDB locked (%s), retrying in %.0fs (attempt %d/%d)...",
+                        self._db_path, self._LOCK_RETRY_DELAY, attempt + 1,
+                        self._MAX_LOCK_RETRIES,
+                    )
+                    time.sleep(self._LOCK_RETRY_DELAY)
+        raise RuntimeError(
+            f"Could not open KuzuDB at {self._db_path} after "
+            f"{self._MAX_LOCK_RETRIES} attempts. Another process may be "
+            f"holding the lock. Kill stale processes or delete the WAL file "
+            f"({self._db_path}.wal) if safe to do so."
+        ) from last_err
 
     # ── Schema management ────────────────────────────────────────────────
 

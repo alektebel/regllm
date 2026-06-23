@@ -87,13 +87,89 @@ async def upload_sas(
     saved: list[str] = []
     for f in files:
         ext = Path(f.filename or "").suffix.lower()
-        if ext != ".sas":
-            raise HTTPException(400, f"Only .sas files allowed (got {ext!r})")
-        target = target_dir / Path(f.filename or "").name
-        with target.open("wb") as out:
-            shutil.copyfileobj(f.file, out)
-        saved.append(target.name)
+        if ext not in {".sas", ".egp"}:
+            raise HTTPException(400, f"Only .sas and .egp files allowed (got {ext!r})")
+        if ext == ".egp":
+            # Parse .egp in a temp file → extract SAS blocks → save as .sas
+            extracted = _extract_egp(f, target_dir)
+            saved.extend(extracted)
+        else:
+            target = target_dir / Path(f.filename or "").name
+            with target.open("wb") as out:
+                shutil.copyfileobj(f.file, out)
+            saved.append(target.name)
     return {"version": version, "saved": saved, "folder": str(target_dir)}
+
+
+def _extract_egp(upload: UploadFile, target_dir: Path) -> list[str]:
+    """Parse an .egp upload into individual .sas files in target_dir."""
+    import tempfile
+    from src.sas_parser import SASParser
+
+    saved: list[str] = []
+    egp_stem = Path(upload.filename or "project").stem
+
+    with tempfile.NamedTemporaryFile(suffix=".egp", delete=False) as tmp:
+        shutil.copyfileobj(upload.file, tmp)
+        tmp_path = Path(tmp.name)
+
+    try:
+        parser = SASParser()
+        blocks = parser.parse(tmp_path)
+        if not blocks:
+            raise HTTPException(
+                422,
+                f"No SAS code blocks found in {upload.filename}. "
+                "The .egp file may be empty or in an unsupported format.",
+            )
+        for i, block in enumerate(blocks):
+            # Sanitize task name into a filename
+            safe_name = _sanitize_filename(block.task_name or f"block_{i}")
+            fname = f"{egp_stem}_{safe_name}.sas"
+            out_path = target_dir / fname
+            out_path.write_text(block.code, encoding="utf-8")
+            saved.append(fname)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return saved
+
+
+def _sanitize_filename(name: str) -> str:
+    """Convert a task name to a safe filename component."""
+    import re
+    name = re.sub(r"[^\w\s-]", "", name)
+    name = re.sub(r"[\s]+", "_", name).strip("_")
+    return name[:60] or "unnamed"
+
+
+@router.post("/sas/upload-egp")
+async def upload_egp(
+    file: UploadFile = File(...),
+    version: str = Form(...),
+) -> dict:
+    """Upload a .egp (SAS Enterprise Guide project) file.
+
+    Extracts all SAS code blocks from the project and saves them as
+    individual .sas files into data/sas/{version}/.
+    """
+    if version not in {"v2", "v3"}:
+        raise HTTPException(400, "version must be 'v2' or 'v3'")
+    ext = Path(file.filename or "").suffix.lower()
+    if ext != ".egp":
+        raise HTTPException(400, f"Only .egp files allowed (got {ext!r})")
+
+    target_dir = _SAS_ROOT / version
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = _extract_egp(file, target_dir)
+    return {
+        "version": version,
+        "source_file": file.filename,
+        "blocks_extracted": len(saved),
+        "saved": saved,
+        "folder": str(target_dir),
+    }
 
 
 @router.delete("/sas/{version}/{name}")

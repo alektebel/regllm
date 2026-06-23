@@ -230,9 +230,16 @@ class LocalLLMClient:
         max_tokens: int,
         json_mode: bool,
     ) -> ChatResponse:
+        # For JSON mode with thinking-capable models (qwen3*), disable
+        # thinking to prevent <think> tokens consuming the output budget
+        # and returning empty JSON.
+        msgs = list(messages)
+        if json_mode and self._is_thinking_model():
+            msgs = _inject_no_think(msgs)
+
         payload: dict[str, Any] = {
             "model": self.ollama_model,
-            "messages": messages,
+            "messages": msgs,
             "stream": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
         }
@@ -245,8 +252,13 @@ class LocalLLMClient:
         )
         r.raise_for_status()
         data = r.json()
-        text = data.get("message", {}).get("content", "")
+        text = _strip_think_tags(data.get("message", {}).get("content", ""))
         return ChatResponse(text=text, backend="ollama", model=self.ollama_model, raw=data)
+
+    def _is_thinking_model(self) -> bool:
+        """Return True if the current model has a thinking mode (qwen3, deepseek-r1, etc.)."""
+        name = self.ollama_model.lower()
+        return any(prefix in name for prefix in ("qwen3", "deepseek-r1", "qwq"))
 
     def _chat_stub(self, messages: list[dict[str, str]], json_mode: bool) -> ChatResponse:
         last = messages[-1]["content"] if messages else ""
@@ -337,7 +349,7 @@ class LocalLLMClient:
             )
         data = r.json()
         msg = data.get("message", {}) or {}
-        text = msg.get("content", "") or ""
+        text = _strip_think_tags(msg.get("content", "") or "")
         raw_calls = msg.get("tool_calls") or []
         calls = []
         for c in raw_calls:
@@ -448,11 +460,28 @@ def reset_client() -> None:
     _default_client = None
 
 
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from model output (qwen3, deepseek-r1)."""
+    import re
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+def _inject_no_think(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Prepend /no_think to the last user message to disable thinking mode."""
+    if not messages:
+        return messages
+    out = list(messages)
+    for i in range(len(out) - 1, -1, -1):
+        if out[i].get("role") == "user":
+            out[i] = {**out[i], "content": "/no_think\n" + out[i]["content"]}
+            break
+    return out
+
+
 def _safe_json(text: str) -> dict[str, Any]:
     """Best-effort JSON extraction from a model response."""
-    import re
-    # Strip thinking tags (qwen3 family outputs <think>...</think> before JSON)
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Strip any residual thinking tags (belt-and-suspenders with _strip_think_tags)
+    text = _strip_think_tags(text)
     for fence in ("```json", "```"):
         if text.startswith(fence):
             text = text[len(fence):]

@@ -12,6 +12,11 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+# Ensure project root is on sys.path so `src.*` imports work without PYTHONPATH
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(message)s",
