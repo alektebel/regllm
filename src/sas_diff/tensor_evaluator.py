@@ -35,6 +35,7 @@ from src.sas_logic_tree import (
     MacroCallNode,
     MacroDefNode,
     MacroLetNode,
+    MergeNode,
     ProcNode,
     RetainNode,
     SelectNode,
@@ -380,6 +381,11 @@ class TensorEvaluator:
             if isinstance(node, DataStepNode):
                 self._current_step = node.output_dataset
                 self._step_passes = True
+                # Set MERGE IN= variables to 1 (assume row is present)
+                for body_node in node.body:
+                    if isinstance(body_node, MergeNode):
+                        for v in body_node.in_vars:
+                            env[v] = 1
                 self._eval_body(node.body, env)
             elif isinstance(node, (ProcNode, MacroLetNode, MacroDefNode, MacroCallNode)):
                 continue

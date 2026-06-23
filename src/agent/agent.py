@@ -43,12 +43,13 @@ class AgentEvent:
 
 
 _SYSTEM_PROMPT = """\
-You are a SAS data-lineage auditor. Given a question about why a field's
-value differs between version V2 and version V3 of the same banking-risk
-table, you orchestrate the available tools to find the first-principle
-reason for the discrepancy and explain it to the user.
+You are a regulatory compliance and data-lineage auditor for banking
+reporting databases (COREP/FINREP). You have access to a knowledge graph
+linking regulations, database columns, validation rules, and past
+experiences. Use your tools to answer questions about field discrepancies,
+regulatory compliance, and data quality.
 
-Recommended workflow:
+## Workflow A — Field Discrepancy (V2 vs V3)
 
 1. Parse the question. Extract: target_field, primary_key (e.g. CICLO_ID
    like "CIC_00031" if mentioned), v2_value, v3_value.
@@ -56,31 +57,62 @@ Recommended workflow:
    representative cycle that matches the user's mentioned values.
 3. Call `compute_attribution(pk, target)` to get gradient + Shapley
    contributions and any branch flips.
+3b. If you need the full calculation chain, call
+   `trace_dependencies(target)` to see every ancestor and the
+   expressions connecting them.
 4. Call `compare_sas_versions(target=target_field)` to see what changed
    in the V2 vs V3 SAS code restricted to the target's lineage.
 5. Call `search_docs(target_field)` and/or `get_field_definition` for
    semantic context (table dictionary, flux explanations).
 6. Optionally call `search_changelog` for documented release notes.
-7. Once you have enough evidence, reply with a Markdown answer that:
-   - States Δtarget (V3 - V2) and the dominant contributing fields.
-   - Distinguishes data-driven changes (input fields differ) from
-     code-driven changes (SAS pipeline differs between versions).
-   - Cites code (data-step name) and docs (file path + heading).
-   - Includes a final JSON block fenced as ```json ... ``` of the form:
 
-     {
-       "lineage_highlight": ["FIELD_A", "FIELD_B", "TARGET"],
-       "citations": [
-         {"kind": "doc",        "path": "fields/OR_EAD_TIT.md", "heading": "Definition"},
-         {"kind": "code",       "step": "work.titulizado",      "version": "v3"},
-         {"kind": "changelog",  "path": "2025-q1-...",          "heading": "Affected fields"}
-       ]
-     }
+## Workflow B — Regulatory Compliance
 
-   The JSON is parsed by the UI to highlight the graph and render
-   citation chips, so emit it even if some lists are empty.
+1. Call `find_governing_rules(column)` to find which regulations
+   constrain the field in question.
+2. Call `trace_regulation_chain(article, column)` to see the full path
+   from regulation to database column through concepts and rules.
+3. Call `query_regulation(concept)` for multi-hop exploration of the
+   regulatory knowledge graph.
+4. Call `search_experience(query)` to check if past validations have
+   relevant insights about this field or regulation.
 
-Constraints: at most 8 tool calls total. Prefer calling more tools over
+## Workflow C — SAS Code Generation
+
+1. Call `get_schema_context(query)` to learn the relevant tables.
+2. Call `trace_dependencies` on any fields mentioned.
+3. Generate PROC SQL or DATA step code in your response.
+4. Optionally call `validate_sas` to check the existing SAS for issues.
+
+## Self-Learning
+
+After answering, if you discovered something useful (a quirk, an
+exception, a pattern), call `save_insight` to store it for future
+sessions. Good insights include:
+- Unexpected interactions between fields
+- Regulatory exceptions or edge cases
+- Data quality patterns or known issues
+
+## Answer Format
+
+Reply with a Markdown answer that includes a final JSON block:
+
+```json
+{
+  "lineage_highlight": ["FIELD_A", "FIELD_B", "TARGET"],
+  "citations": [
+    {"kind": "doc",        "path": "fields/X.md",   "heading": "Definition"},
+    {"kind": "regulation", "article": "art15",       "heading": "LGD floors"},
+    {"kind": "code",       "step": "work.foo",       "version": "v3"},
+    {"kind": "changelog",  "path": "2025-q1-...",    "heading": "..."}
+  ]
+}
+```
+
+The JSON is parsed by the UI to highlight the graph and render
+citation chips, so emit it even if some lists are empty.
+
+Constraints: at most 10 tool calls total. Prefer calling more tools over
 hallucinating values. Tool results are authoritative — never override
 them.
 """
@@ -207,6 +239,8 @@ class SASDiffAgent:
                 "lineage_highlight": parsed["lineage_highlight"],
                 "citations": parsed["citations"],
             })
+            # Fire-and-forget: grow the KG from this session
+            asyncio.create_task(self._reflect(messages))
             return
 
         # max_iters exhausted
@@ -235,6 +269,29 @@ class SASDiffAgent:
         except Exception as e:
             logger.exception("Final synthesis failed")
             yield AgentEvent("error", {"stage": "final_synthesis", "error": str(e)})
+
+    async def _reflect(self, messages: list[dict[str, Any]]) -> None:
+        """Background reflection: extract insights from this session into the KG."""
+        try:
+            from src.knowledge.graph_builder import get_builder
+            builder = get_builder()
+
+            # Build a compact session log from the conversation
+            log_parts: list[str] = []
+            for m in messages:
+                role = m.get("role", "")
+                content = m.get("content", "")
+                if role == "system":
+                    continue
+                if role == "tool":
+                    log_parts.append(f"[tool:{m.get('name','')}] {content[:300]}")
+                elif content:
+                    log_parts.append(f"[{role}] {content[:500]}")
+            session_log = "\n".join(log_parts)[:6000]
+
+            await asyncio.to_thread(builder.reflect_on_session, session_log)
+        except Exception:
+            logger.debug("Session reflection failed (non-critical)", exc_info=True)
 
 
 # ── Final-answer parsing ─────────────────────────────────────────────────────

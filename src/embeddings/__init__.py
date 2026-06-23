@@ -1,4 +1,4 @@
-"""Embedding generation + projection for the docs/KB corpus."""
+"""Embedding generation + projection + inspection for the docs/KB corpus."""
 
 from src.embeddings.embedder import EmbeddingSet, get_default_embeddings, reset_default_embeddings
 from src.embeddings.projector import PROJECTION_METHODS, project

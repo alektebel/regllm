@@ -1,4 +1,4 @@
-"""Embedding space visualizer — section embeddings + 2D/3D projections."""
+"""Embedding space visualizer — section embeddings + 2D/3D projections + inspection."""
 
 from __future__ import annotations
 
@@ -14,6 +14,21 @@ class ProjectRequest(BaseModel):
     perplexity: float = 30.0
     n_neighbors: int = 15
     min_dist: float = 0.1
+    rebuild: bool = False
+
+
+class ClusterRequest(BaseModel):
+    method: str = "hdbscan"
+    n_clusters: int = 8
+    min_cluster_size: int = 3
+    rebuild: bool = False
+
+
+class GraphRequest(BaseModel):
+    k: int = 5
+    threshold: float = 0.3
+    cluster_method: str = "hdbscan"
+    min_cluster_size: int = 3
     rebuild: bool = False
 
 
@@ -69,3 +84,65 @@ def project_embeddings(req: ProjectRequest) -> dict:
         points.append(point)
 
     return {"method": req.method, "n_components": req.n_components, "points": points}
+
+
+# ── Inspection endpoints ─────────────────────────────────────────────────────
+
+
+@router.get("/inspect/anisotropy")
+def inspect_anisotropy(rebuild: bool = False) -> dict:
+    """Measure embedding space anisotropy."""
+    from src.embeddings.embedder import get_default_embeddings
+    from src.embeddings.inspector import anisotropy
+
+    emb = get_default_embeddings(rebuild=rebuild)
+    return anisotropy(emb.vectors)
+
+
+@router.get("/inspect/nn-audit")
+def inspect_nn_audit(k: int = 5, rebuild: bool = False) -> dict:
+    """Nearest-neighbor audit for each embedded section."""
+    from src.embeddings.embedder import get_default_embeddings
+    from src.embeddings.inspector import nn_audit
+
+    emb = get_default_embeddings(rebuild=rebuild)
+    items = nn_audit(emb.vectors, emb.ids, emb.headings, k=k)
+    return {"k": k, "count": len(items), "items": items}
+
+
+@router.post("/inspect/clusters")
+def inspect_clusters(req: ClusterRequest) -> dict:
+    """Cluster the embedding space and report cluster membership + silhouette."""
+    from src.embeddings.embedder import get_default_embeddings
+    from src.embeddings.inspector import cluster
+
+    emb = get_default_embeddings(rebuild=req.rebuild)
+    result = cluster(emb.vectors, method=req.method,
+                     n_clusters=req.n_clusters,
+                     min_cluster_size=req.min_cluster_size)
+    return result.summary(emb.ids, emb.headings)
+
+
+@router.get("/inspect/similarity")
+def inspect_similarity(max_points: int = 200, rebuild: bool = False) -> dict:
+    """Cosine similarity heatmap data."""
+    from src.embeddings.embedder import get_default_embeddings
+    from src.embeddings.inspector import similarity_matrix
+
+    emb = get_default_embeddings(rebuild=rebuild)
+    return similarity_matrix(emb.vectors, emb.ids, max_points=max_points)
+
+
+@router.post("/inspect/graph")
+def inspect_graph(req: GraphRequest) -> dict:
+    """k-NN graph with cluster coloring for the force-directed view."""
+    from src.embeddings.embedder import get_default_embeddings
+    from src.embeddings.inspector import cluster, knn_graph
+
+    emb = get_default_embeddings(rebuild=req.rebuild)
+    cl = cluster(emb.vectors, method=req.cluster_method,
+                 min_cluster_size=req.min_cluster_size)
+    return knn_graph(
+        emb.vectors, emb.ids, emb.headings, emb.paths,
+        cluster_labels=cl.labels, k=req.k, threshold=req.threshold,
+    )

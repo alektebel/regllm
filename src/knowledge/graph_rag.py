@@ -196,7 +196,14 @@ Reply with JSON of the form:
 
 
 class GraphRAG:
-    """Combines a change-log graph with a Gemma client for grounded justifications."""
+    """Combines a change-log graph with a Gemma client for grounded justifications.
+
+    Supports two backends:
+    - **NetworkX** (legacy): loads from ``graph.json``, in-memory graph.
+    - **GraphStore** (KuzuDB): when ``graph_store`` is provided, queries
+      are routed to the persistent knowledge graph.  The NetworkX graph
+      is still built on-demand for ``linearise_subgraph`` compatibility.
+    """
 
     def __init__(
         self,
@@ -204,17 +211,22 @@ class GraphRAG:
         changelog_dir: Path | str = _DEFAULT_CHANGELOG_DIR,
         schema_files: list[Path | str] | None = None,
         client: LocalLLMClient | None = None,
+        graph_store: Any | None = None,
     ) -> None:
         self.graph_path = Path(graph_path)
         self.changelog_dir = Path(changelog_dir)
         self.schema_files = [Path(p) for p in (schema_files or _DEFAULT_SCHEMA_FILES)]
         self.client = client or get_client()
         self._graph: nx.DiGraph | None = None
+        self._graph_store = graph_store  # GraphStore instance (optional)
 
     @property
     def graph(self) -> nx.DiGraph:
         if self._graph is None:
-            if self.graph_path.exists():
+            if self._graph_store is not None:
+                # Build a NetworkX view from the KuzuDB store
+                self._graph = self._graph_store.to_networkx()
+            elif self.graph_path.exists():
                 self._graph = load_graph(self.graph_path)
             else:
                 self._graph = self.reindex(persist=True)

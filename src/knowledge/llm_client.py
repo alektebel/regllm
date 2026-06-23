@@ -32,9 +32,33 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
+
+try:
+    import yaml as _yaml
+except ImportError:  # pyyaml not installed — fall back to env-only config
+    _yaml = None
+
+
+def _load_yaml_config() -> dict[str, Any]:
+    """Load config.yaml from the project root (best-effort)."""
+    for candidate in (
+        Path(__file__).resolve().parents[2] / "config.yaml",
+        Path("config.yaml"),
+    ):
+        if candidate.is_file():
+            if _yaml is None:
+                return {}
+            with open(candidate) as f:
+                return _yaml.safe_load(f) or {}
+    return {}
+
+
+_CFG = _load_yaml_config()
+_LLM_CFG: dict[str, Any] = _CFG.get("llm", {})
 
 logger = logging.getLogger(__name__)
 
@@ -67,24 +91,32 @@ class LocalLLMClient:
             litert_url
             or os.getenv("LITERT_URL")
             or os.getenv("GEMMA_LITERT_URL")
+            or _LLM_CFG.get("litert_url")
             or "http://localhost:9379/v1"
         )
         self.litert_model = (
             litert_model
             or os.getenv("LITERT_MODEL")
             or os.getenv("GEMMA_LITERT_MODEL")
+            or _LLM_CFG.get("litert_model")
             or "gemma4-12b,gpu"
         )
-        self.ollama_url = ollama_url or os.getenv("OLLAMA_URL", "http://localhost:11434")
+        self.ollama_url = (
+            ollama_url
+            or os.getenv("OLLAMA_URL")
+            or _LLM_CFG.get("ollama_url")
+            or "http://localhost:11434"
+        )
         self.ollama_model = (
             ollama_model
             or os.getenv("OLLAMA_MODEL")
-            or "none"
+            or _LLM_CFG.get("model")
+            or "qwen3:32b"
         )
         # OLLAMA_MODEL=none → force stub mode (no model download needed)
         if self.ollama_model == "none":
             prefer = "stub"
-        self.prefer = prefer or os.getenv("REGLLM_LLM", "auto")
+        self.prefer = prefer or os.getenv("REGLLM_LLM") or _LLM_CFG.get("backend") or "auto"
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
         self._probed = False
@@ -226,7 +258,7 @@ class LocalLLMClient:
                 "rationale": (
                     "Stub mode: no local LLM backend reachable. "
                     "Start Ollama and pull a model "
-                    "(`ollama pull qwen2.5:14b-instruct-q4_K_M`), or set "
+                    "(`ollama pull qwen3:32b`), or set "
                     "REGLLM_LLM=litert with LiteRT-LM serving Gemma."
                 ),
             }
@@ -390,7 +422,7 @@ class LocalLLMClient:
             text=(
                 "[stub LLM] No local LLM backend reachable, so I cannot run "
                 "the agentic Q&A. Pull a model with "
-                "`scripts/setup_llm.sh` (default Qwen 2.5 14B) or set "
+                "`ollama pull qwen3:32b` or set "
                 f"REGLLM_LLM=litert. Question was: {last_user[:200]}"
             ),
             backend="stub", model="stub", tool_calls=None,

@@ -1,0 +1,23 @@
+# RegLLM model configuration
+# GGUF file / Ollama tag assignments for each role.
+
+# Chat/reasoning LLM — maintains the knowledge graph, runs agentic Q&A
+llm:
+  model: "qwen3:32b"
+  backend: "auto"            # auto | ollama | litert | stub
+  ollama_url: "http://localhost:11434"
+  litert_url: "http://localhost:9379/v1"
+  litert_model: "gemma4-12b,gpu"
+  timeout: 120
+
+# Embedding model — encodes regulation text into the vector store
+embedding:
+  model: "nomic-embed-text"
+  dim: 768
+  ollama_url: "http://localhost:11434"
+
+# Knowledge graph persistence paths
+knowledge:
+  graph_db: "data/knowledge/graph"
+  vector_db: "data/knowledge/vectors"
+  collection: "regllm"

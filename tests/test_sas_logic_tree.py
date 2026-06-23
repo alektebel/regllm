@@ -457,6 +457,49 @@ class TestSelectStarAndMacroPlaceholders:
         field_ids = {n["id"] for n in lg.nodes}
         assert "MVAR" not in field_ids
 
+    def test_macro_call_resolves_table_prefix(self):
+        # A program macro with a table-prefix parameter, called with a literal,
+        # should resolve the table name to that literal (not the &PREF placeholder).
+        code = """
+        %macro build(PREF);
+            PROC SQL;
+            CREATE TABLE LIB.&PREF._05 AS SELECT a, (b + c) AS X FROM LIB.&PREF._04;
+            QUIT;
+        %mend;
+        %build(PREF = I_P13);
+        """
+        lg = tree.lineage(tree.parse(code))
+        nmap = {n["id"]: n for n in lg.nodes}
+        assert "X" in nmap
+        steps = nmap["X"]["data_steps"]
+        assert any("I_P13_05" in s for s in steps), steps
+        assert not any("PREF" in s.upper() for s in steps), steps
+
+    def test_uncalled_macro_still_parses_as_definition(self):
+        # A defined-but-never-called macro must NOT be inlined/dropped.
+        from src.sas_logic_tree import MacroDefNode
+        code = "%MACRO run_ecl; DATA w.o; SET w.i; ECL = PD * LGD * EAD; RUN; %MEND run_ecl;"
+        nodes = tree.parse(code)
+        assert any(isinstance(n, MacroDefNode) for n in nodes)
+
+    def test_macro_flujo_table_names_resolved(self):
+        path = Path(__file__).resolve().parents[1] / "data/sas/v3/macro_flujo_I.sas"
+        if not path.exists():
+            import pytest
+            pytest.skip("macro_flujo_I.sas not present")
+        lg = tree.lineage(tree.parse(path.read_text(encoding="utf-8")))
+        nmap = {n["id"]: n for n in lg.nodes}
+
+        # Macro-parameter prefixes resolve to the per-call-site literal values.
+        assert any("I_P13_03_AUX_05" in s for s in nmap["ID_CASO_BE"]["data_steps"]), \
+            nmap["ID_CASO_BE"]["data_steps"]
+        assert any("I_P12_06" in s for s in nmap["OR_EAD_SOLO_AD"]["data_steps"]), \
+            nmap["OR_EAD_SOLO_AD"]["data_steps"]
+
+        # No unresolved macro-parameter placeholders remain in any step name.
+        all_steps = {s for n in lg.nodes for s in n["data_steps"]}
+        assert not any("PREFIJO_PROGRAMA" in s or "PREF_PROG" in s for s in all_steps)
+
     def test_macro_flujo_lineage_complete(self):
         path = Path(__file__).resolve().parents[1] / "data/sas/v3/macro_flujo_I.sas"
         if not path.exists():
@@ -477,3 +520,97 @@ class TestSelectStarAndMacroPlaceholders:
             "OR_EAD", "PV_GA_TOT_SCIC", "PV_GR_L1_SCIC",
             "SW_MARCA_HIPO_PRI", "SW_OP_LGD_DEF", "TERMINACION",
         }.issubset(set(ic["ancestors"]))
+
+    def test_macro_flujo_fin_steps_present(self):
+        """_FIN and _08 passthrough steps must appear in field data_steps."""
+        path = Path(__file__).resolve().parents[1] / "data/sas/v3/macro_flujo_I.sas"
+        if not path.exists():
+            import pytest
+            pytest.skip("macro_flujo_I.sas not present")
+        lg = tree.lineage(tree.parse(path.read_text(encoding="utf-8")))
+        all_steps = {s for n in lg.nodes for s in n["data_steps"]}
+        for prefix in ("I_P12", "I_P13", "I_P14"):
+            fin_steps = [s for s in all_steps if prefix in s and "_FIN" in s]
+            assert fin_steps, f"no _FIN step found for {prefix}"
+        assert any("I_P12_08" in s for s in all_steps)
+
+    def test_select_star_propagates_steps(self):
+        """SELECT * should propagate the current step to all known fields."""
+        code = """\
+DATA work.base; SET work.input; X = A + B; RUN;
+PROC SQL; CREATE TABLE work.final AS SELECT * FROM work.base; QUIT;
+"""
+        lg = tree.lineage(tree.parse(code))
+        nmap = {n["id"]: n for n in lg.nodes}
+        assert "work.final" in nmap["X"]["data_steps"]
+        assert "work.base" in nmap["X"]["data_steps"]
+
+    def test_multi_step_field_tracking(self):
+        """A field modified in step 1 and re-selected in step 2 should list both."""
+        code = """\
+PROC SQL; CREATE TABLE work.s1 AS SELECT A + B AS X FROM work.input; QUIT;
+PROC SQL; CREATE TABLE work.s2 AS SELECT T1.X, T1.X * 2 AS Y FROM work.s1 AS T1; QUIT;
+"""
+        lg = tree.lineage(tree.parse(code))
+        nmap = {n["id"]: n for n in lg.nodes}
+        assert "work.s1" in nmap["X"]["data_steps"]
+        assert "work.s2" in nmap["X"]["data_steps"]
+        assert "work.s2" in nmap["Y"]["data_steps"]
+
+    def test_nested_macro_trailing_dot(self):
+        """Trailing dots from SAS &VAR. delimiter must not leak into values."""
+        code = """\
+%macro OUTER(PREFIJO);
+DATA work.&PREFIJO._01; SET work.input; X = 1; RUN;
+%INNER(PREF = &PREFIJO.);
+%mend;
+
+%macro INNER(PREF);
+DATA work.&PREF._TABLE; SET work.&PREF._01; Y = X * 2; RUN;
+%mend;
+
+%OUTER(PREFIJO = I_P12);
+"""
+        lg = tree.lineage(tree.parse(code))
+        all_steps = {s for n in lg.nodes for s in n["data_steps"]}
+        assert "work.I_P12_TABLE" in all_steps
+        assert not any("I_P12._TABLE" in s or "I_P12.." in s for s in all_steps)
+
+
+class TestValidation:
+    def test_missing_dataset(self):
+        code = "DATA w.o; SET some_missing_table; X = 1; RUN;"
+        diags = tree.validate(tree.parse(code))
+        missing = [d for d in diags if d["code"] == "MISSING_DATASET"]
+        assert len(missing) > 0
+
+    def test_no_false_missing_dataset(self):
+        code = """\
+DATA w.base; SET w.input; X = 1; RUN;
+DATA w.final; SET w.base; Y = X + 1; RUN;
+"""
+        diags = tree.validate(tree.parse(code))
+        missing = [d for d in diags if d["code"] == "MISSING_DATASET"]
+        # w.base is produced by step 1, so step 2 should not flag it
+        assert not any(d["dataset"] == "w.base" for d in missing)
+
+    def test_schema_mismatch(self):
+        from pathlib import Path
+        schema = Path(__file__).resolve().parents[1] / "data" / "samples" / "irb_schema.sql"
+        if not schema.exists():
+            pytest.skip("irb_schema.sql not present")
+        code = """\
+PROC SQL;
+  CREATE TABLE w.out AS
+  SELECT FAKE_NONEXISTENT_COL FROM contratos;
+QUIT;
+"""
+        diags = tree.validate(tree.parse(code), schema_path=schema)
+        schema_diags = [d for d in diags if d["code"] == "SCHEMA_MISMATCH"]
+        assert any(d["field"] == "FAKE_NONEXISTENT_COL" for d in schema_diags)
+
+    def test_clean_code_no_errors(self):
+        code = "DATA w.o; SET w.i; X = A + B; RUN;"
+        diags = tree.validate(tree.parse(code))
+        errors = [d for d in diags if d["level"] == "error"]
+        assert len(errors) == 0

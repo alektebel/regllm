@@ -1,4 +1,4 @@
-"""Local LLM + change-log GraphRAG."""
+"""Local LLM + change-log GraphRAG + regulatory knowledge graph."""
 
 from .change_log_graph import (
     build_graph,
@@ -21,10 +21,18 @@ from .graph_rag import (
     field_subgraph,
     linearise_subgraph,
 )
+from .graph_store import GraphStore
+from .ontology import (
+    EdgeType,
+    KGEdge,
+    KGNode,
+    NodeType,
+)
 
 __all__ = [
     "build_graph", "graph_to_payload", "load_graph", "save_graph",
     "ChatResponse", "LocalLLMClient", "GemmaClient", "get_client", "reset_client",
     "FieldJustification", "GraphRAG", "GraphRAGReport",
     "collect_evidence", "field_subgraph", "linearise_subgraph",
+    "GraphStore", "EdgeType", "KGEdge", "KGNode", "NodeType",
 ]

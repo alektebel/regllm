@@ -11,6 +11,8 @@ pandas>=2.2
 
 # Knowledge graph
 networkx>=3.3
+kuzu>=0.8
+chromadb>=0.5
 
 # Embedding space visualizer (TF-IDF/SVD embeddings + PCA/t-SNE/UMAP projection)
 scikit-learn>=1.5
@@ -18,6 +20,7 @@ umap-learn>=0.5
 
 # LLM transport (litert-lm OpenAI-compatible API + Ollama fallback)
 httpx>=0.27
+pyyaml>=6.0
 
 # Demo / CLI
 rich>=13.7

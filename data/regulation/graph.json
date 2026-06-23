@@ -1,0 +1,1478 @@
+{
+  "nodes": [
+    {
+      "id": "doc:art_08_clasificacion_ciclos.md",
+      "type": "Document",
+      "label": "art_08_clasificacion_ciclos.md",
+      "source": "data/regulation/art_08_clasificacion_ciclos.md"
+    },
+    {
+      "id": "sec:art_08_clasificacion_ciclos.md:1",
+      "type": "Section",
+      "label": "Art\u00edculo 8 \u2014 Clasificaci\u00f3n de los Ciclos de Recuperaci\u00f3n",
+      "level": 1,
+      "doc": "doc:art_08_clasificacion_ciclos.md",
+      "body": "**Norma:** Circular 6/2016 del Banco de Espa\u00f1a, modificada por Circular 4/2022  \n**Ep\u00edgrafe:** Criterios de clasificaci\u00f3n del ciclo crediticio para la dotaci\u00f3n de provisiones"
+    },
+    {
+      "id": "sec:art_08_clasificacion_ciclos.md:2",
+      "type": "Section",
+      "label": "\u00c1mbito de aplicaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_08_clasificacion_ciclos.md",
+      "body": "El presente art\u00edculo define los criterios de clasificaci\u00f3n de los ciclos de recuperaci\u00f3n (`CICLO_ID`) en fases de expansi\u00f3n, contracci\u00f3n y crisis, a efectos del c\u00e1lculo de la provisi\u00f3n regulatoria obligatoria.\n\nLa clasificaci\u00f3n aplica a todas las exposiciones registradas en `mylib.ciclos_recuperacion` con independencia del `SEGMENTO` al que pertenezcan."
+    },
+    {
+      "id": "field:CICLO_ID",
+      "type": "Field",
+      "label": "CICLO_ID"
+    },
+    {
+      "id": "field:SEGMENTO",
+      "type": "Field",
+      "label": "SEGMENTO"
+    },
+    {
+      "id": "sec:art_08_clasificacion_ciclos.md:3",
+      "type": "Section",
+      "label": "Fases del ciclo crediticio",
+      "level": 2,
+      "doc": "doc:art_08_clasificacion_ciclos.md",
+      "body": "Los ciclos se clasifican en tres fases seg\u00fan el valor acumulado de `DPDS` (d\u00edas en default) en la ventana de observaci\u00f3n definida por `VENTANA_OBSERVACION_YEARS`:\n\n| Fase | Condici\u00f3n sobre DPDS | Identificador regulatorio |\n|---|---|---|\n| Expansi\u00f3n | DPDS < 90 | FASE_EXPANSION |\n| Contracci\u00f3n | 90 \u2264 DPDS < 360 | FASE_CONTRACCION |\n| Crisis | DPDS \u2265 360 | FASE_CRISIS |"
+    },
+    {
+      "id": "field:VENTANA_OBSERVACION_YEARS",
+      "type": "Field",
+      "label": "VENTANA_OBSERVACION_YEARS"
+    },
+    {
+      "id": "field:FASE_CONTRACCION",
+      "type": "Field",
+      "label": "FASE_CONTRACCION"
+    },
+    {
+      "id": "field:FASE_EXPANSION",
+      "type": "Field",
+      "label": "FASE_EXPANSION"
+    },
+    {
+      "id": "field:DPDS",
+      "type": "Field",
+      "label": "DPDS"
+    },
+    {
+      "id": "field:FASE_CRISIS",
+      "type": "Field",
+      "label": "FASE_CRISIS"
+    },
+    {
+      "id": "sec:art_08_clasificacion_ciclos.md:4",
+      "type": "Section",
+      "label": "Criterios adicionales por segmento",
+      "level": 2,
+      "doc": "doc:art_08_clasificacion_ciclos.md",
+      "body": "Para el `SEGMENTO` CORP (corporativo), la clasificaci\u00f3n se ajusta con el campo `RATING_GRADO`:\n\n- `RATING_GRADO` \u2264 3 y `DPDS` \u2265 60 \u2192 anticipa la fase de contracci\u00f3n independientemente del umbral de DPDS.\n- `RATING_GRADO` \u2265 8 \u2192 rebaja el umbral de crisis a `DPDS` \u2265 270.\n\nPara el `SEGMENTO` MORTGAGE (hipotecario), el campo `COLATERAL_TIPO` HIPOTECA reduce el umbral de crisis a `DPDS` \u2265 480 debido a la mayor capacidad de recuperaci\u00f3n colateralizada."
+    },
+    {
+      "id": "field:HIPOTECA",
+      "type": "Field",
+      "label": "HIPOTECA"
+    },
+    {
+      "id": "field:RATING_GRADO",
+      "type": "Field",
+      "label": "RATING_GRADO"
+    },
+    {
+      "id": "field:COLATERAL_TIPO",
+      "type": "Field",
+      "label": "COLATERAL_TIPO"
+    },
+    {
+      "id": "field:MORTGAGE",
+      "type": "Field",
+      "label": "MORTGAGE"
+    },
+    {
+      "id": "field:CORP",
+      "type": "Field",
+      "label": "CORP"
+    },
+    {
+      "id": "sec:art_08_clasificacion_ciclos.md:5",
+      "type": "Section",
+      "label": "Relaci\u00f3n con STAGE_IFRS9",
+      "level": 2,
+      "doc": "doc:art_08_clasificacion_ciclos.md",
+      "body": "La fase del ciclo debe ser coherente con la clasificaci\u00f3n IFRS9 del contrato:\n\n- `STAGE_IFRS9` = 1 \u2192 compatible \u00fanicamente con FASE_EXPANSION.\n- `STAGE_IFRS9` = 2 \u2192 compatible con FASE_EXPANSION o FASE_CONTRACCION.\n- `STAGE_IFRS9` = 3 \u2192 requiere FASE_CONTRACCION o FASE_CRISIS obligatoriamente.\n\nCualquier inconsistencia entre `STAGE_IFRS9` y la fase calculada deber\u00e1 ser reportada como excepci\u00f3n en el campo `NO_CONFORMES` del pipeline de c\u00e1lculo."
+    },
+    {
+      "id": "field:STAGE_IFRS9",
+      "type": "Field",
+      "label": "STAGE_IFRS9"
+    },
+    {
+      "id": "field:IFRS9",
+      "type": "Field",
+      "label": "IFRS9"
+    },
+    {
+      "id": "field:NO_CONFORMES",
+      "type": "Field",
+      "label": "NO_CONFORMES"
+    },
+    {
+      "id": "sec:art_08_clasificacion_ciclos.md:6",
+      "type": "Section",
+      "label": "Ventana de calibraci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_08_clasificacion_ciclos.md",
+      "body": "La clasificaci\u00f3n de fase utiliza la ventana definida por `VENTANA_CALIBRACION_YEARS`. Cambios de fase dentro de la ventana de calibraci\u00f3n no son efectivos hasta el cierre del per\u00edodo de observaci\u00f3n (`VENTANA_OBSERVACION_YEARS`)."
+    },
+    {
+      "id": "field:VENTANA_CALIBRACION_YEARS",
+      "type": "Field",
+      "label": "VENTANA_CALIBRACION_YEARS"
+    },
+    {
+      "id": "sec:art_08_clasificacion_ciclos.md:7",
+      "type": "Section",
+      "label": "Referencias cruzadas",
+      "level": 2,
+      "doc": "doc:art_08_clasificacion_ciclos.md",
+      "body": "- Art\u00edculo 12 \u2014 Per\u00edodos de dotaci\u00f3n por fase de ciclo (`PROVISION_PERIOD_MONTHS`)\n- Art\u00edculo 15 \u2014 Dotaciones m\u00ednimas por segmento (`LGD_FLOOR_APLICADO`, `PD_ESTIMADA`)\n- Art\u00edculo 23 \u2014 Condiciones de liberaci\u00f3n de provisi\u00f3n (`CURE_FLAG`)"
+    },
+    {
+      "id": "field:PD_ESTIMADA",
+      "type": "Field",
+      "label": "PD_ESTIMADA"
+    },
+    {
+      "id": "field:LGD_FLOOR_APLICADO",
+      "type": "Field",
+      "label": "LGD_FLOOR_APLICADO"
+    },
+    {
+      "id": "field:CURE_FLAG",
+      "type": "Field",
+      "label": "CURE_FLAG"
+    },
+    {
+      "id": "field:PROVISION_PERIOD_MONTHS",
+      "type": "Field",
+      "label": "PROVISION_PERIOD_MONTHS"
+    },
+    {
+      "id": "doc:art_12_periodos_dotacion.md",
+      "type": "Document",
+      "label": "art_12_periodos_dotacion.md",
+      "source": "data/regulation/art_12_periodos_dotacion.md"
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:1",
+      "type": "Section",
+      "label": "Art\u00edculo 12 \u2014 Per\u00edodos M\u00ednimos de Dotaci\u00f3n por Fase de Ciclo",
+      "level": 1,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "**Norma:** Circular 6/2016 del Banco de Espa\u00f1a, modificada por Circular 4/2022  \n**Ep\u00edgrafe:** Duraci\u00f3n m\u00ednima del per\u00edodo de dotaci\u00f3n de provisiones en funci\u00f3n del ciclo crediticio"
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:2",
+      "type": "Section",
+      "label": "\u00c1mbito de aplicaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "El presente art\u00edculo establece la duraci\u00f3n m\u00ednima del per\u00edodo de dotaci\u00f3n de provisiones regulatorias (`PROVISION_PERIOD_MONTHS`) para cada `SEGMENTO` de exposici\u00f3n y fase de ciclo crediticio definida en el Art\u00edculo 8.\n\nEl campo `PROVISION_PERIOD_MONTHS` registrado en `mylib.ciclos_recuperacion` debe respetar en todo momento los m\u00ednimos establecidos en este art\u00edculo. Su incumplimiento activa el indicador de excepci\u00f3n del pipeline (`NO_CONFORMES`)."
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:3",
+      "type": "Section",
+      "label": "Per\u00edodos m\u00ednimos por segmento",
+      "level": 2,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": ""
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:4",
+      "type": "Section",
+      "label": "Segmento CORP (corporativo)",
+      "level": 3,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "| Fase del ciclo | PROVISION_PERIOD_MONTHS m\u00ednimo |\n|---|---|\n| FASE_EXPANSION | 12 meses |\n| FASE_CONTRACCION | 18 meses |\n| FASE_CRISIS | 24 meses |\n\nAdicionalmente, cuando `COLATERAL_TIPO` = NINGUNA y el segmento es CORP, se aplica un recargo de +6 meses sobre los m\u00ednimos anteriores, debido a la mayor incertidumbre en la recuperaci\u00f3n sin garant\u00eda real."
+    },
+    {
+      "id": "field:NINGUNA",
+      "type": "Field",
+      "label": "NINGUNA"
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:5",
+      "type": "Section",
+      "label": "Segmento RETAIL (minorista)",
+      "level": 3,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "| Fase del ciclo | PROVISION_PERIOD_MONTHS m\u00ednimo |\n|---|---|\n| FASE_EXPANSION | 24 meses |\n| FASE_CONTRACCION | 30 meses |\n| FASE_CRISIS | 36 meses |"
+    },
+    {
+      "id": "field:RETAIL",
+      "type": "Field",
+      "label": "RETAIL"
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:6",
+      "type": "Section",
+      "label": "Segmento MORTGAGE (hipotecario)",
+      "level": 3,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "| Fase del ciclo | PROVISION_PERIOD_MONTHS m\u00ednimo |\n|---|---|\n| FASE_EXPANSION | 36 meses |\n| FASE_CONTRACCION | 42 meses |\n| FASE_CRISIS | 48 meses |\n\nLa mayor duraci\u00f3n para el segmento MORTGAGE se justifica por los plazos procesales asociados a la ejecuci\u00f3n hipotecar\u00eda, que en la pr\u00e1ctica difieren el momento de recuperaci\u00f3n efectiva."
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:7",
+      "type": "Section",
+      "label": "Interacci\u00f3n con STAGE_IFRS9",
+      "level": 2,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "Cuando `STAGE_IFRS9` = 3, el per\u00edodo de dotaci\u00f3n m\u00ednimo se ampl\u00eda en 6 meses adicionales sobre los valores indicados en las tablas anteriores, con independencia del segmento. Esta ampliaci\u00f3n es obligatoria y no admite excepci\u00f3n individual.\n\nCuando `STAGE_IFRS9` retorna a 2 desde 3, el per\u00edodo de dotaci\u00f3n debe mantenerse al menos 12 meses adicionales antes de poder reducirse al m\u00ednimo correspondiente a FASE_CONTRACCION. Esto se controla mediante el campo `CURE_FLAG`."
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:8",
+      "type": "Section",
+      "label": "C\u00f3mputo del per\u00edodo de dotaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "El per\u00edodo de dotaci\u00f3n (`PROVISION_PERIOD_MONTHS`) se computa desde la fecha de primera clasificaci\u00f3n en default hasta la fecha de cierre del ciclo o la fecha de evaluaci\u00f3n, la que ocurra antes. El campo EAD se utiliza como base de exposici\u00f3n para el c\u00e1lculo de la provisi\u00f3n efectiva durante el per\u00edodo."
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:9",
+      "type": "Section",
+      "label": "Justificaci\u00f3n regulatoria",
+      "level": 2,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "Los per\u00edodos m\u00ednimos establecidos en este art\u00edculo derivan de los percentiles hist\u00f3ricos de recuperaci\u00f3n observados en el sistema financiero espa\u00f1ol durante el per\u00edodo 2008\u20132015, ajustados por un factor de prudencia del 15% para reflejar la incertidumbre del modelo (MOC)."
+    },
+    {
+      "id": "sec:art_12_periodos_dotacion.md:10",
+      "type": "Section",
+      "label": "Referencias cruzadas",
+      "level": 2,
+      "doc": "doc:art_12_periodos_dotacion.md",
+      "body": "- Art\u00edculo 8 \u2014 Clasificaci\u00f3n de ciclos y fases (`DPDS`, `STAGE_IFRS9`, `SEGMENTO`)\n- Art\u00edculo 15 \u2014 Dotaciones m\u00ednimas (`LGD_FLOOR_APLICADO`, `PD_ESTIMADA`)\n- Art\u00edculo 23 \u2014 Condiciones de liberaci\u00f3n (`CURE_FLAG`, `PROVISION_PERIOD_MONTHS`)"
+    },
+    {
+      "id": "doc:art_15_dotaciones_minimas.md",
+      "type": "Document",
+      "label": "art_15_dotaciones_minimas.md",
+      "source": "data/regulation/art_15_dotaciones_minimas.md"
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:1",
+      "type": "Section",
+      "label": "Art\u00edculo 15 \u2014 Dotaciones M\u00ednimas por Segmento durante el Per\u00edodo de Dotaci\u00f3n",
+      "level": 1,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "**Norma:** Circular 6/2016 del Banco de Espa\u00f1a, modificada por Circular 4/2022  \n**Ep\u00edgrafe:** Tasas m\u00ednimas de p\u00e9rdida esperada y suelos de par\u00e1metros durante el per\u00edodo de dotaci\u00f3n regulatoria"
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:2",
+      "type": "Section",
+      "label": "\u00c1mbito de aplicaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "Durante el per\u00edodo de dotaci\u00f3n activo (`PROVISION_PERIOD_MONTHS` > 0), los par\u00e1metros de riesgo empleados en el c\u00e1lculo de la p\u00e9rdida esperada (`ECL`) deben respetar los suelos m\u00ednimos establecidos en el presente art\u00edculo. Estos suelos se registran en los campos `LGD_FLOOR_APLICADO` y `PD_ESTIMADA` del ciclo correspondiente."
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:3",
+      "type": "Section",
+      "label": "Suelos m\u00ednimos de LGD",
+      "level": 2,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "El campo `LGD_ESTIMADA` no puede ser inferior a los valores m\u00ednimos de `LGD_FLOOR_APLICADO` definidos a continuaci\u00f3n:\n\n| Segmento | Colateral | LGD_FLOOR_APLICADO m\u00ednimo |\n|---|---|---|\n| CORP | NINGUNA | 0.50 |\n| CORP | FINANCIERO / COLATERAL_FIN | 0.35 |\n| RETAIL | PERSONAL | 0.35 |\n| RETAIL | NINGUNA | 0.45 |\n| MORTGAGE | HIPOTECA | 0.25 |\n| MORTGAGE | NINGUNA | 0.40 |\n\nEl campo `LGD_FLOOR_APLICADO` debe reflejar el suelo efectivamente aplicado en el c\u00e1lculo de `ECL`. Cuando `LGD_ESTIMADA` > `LGD_FLOOR_APLICADO`, se utiliza `LGD_ESTIMADA`; en caso contrario, se utiliza `LGD_FLOOR_APLICADO`."
+    },
+    {
+      "id": "field:COLATERAL_FIN",
+      "type": "Field",
+      "label": "COLATERAL_FIN"
+    },
+    {
+      "id": "field:PERSONAL",
+      "type": "Field",
+      "label": "PERSONAL"
+    },
+    {
+      "id": "field:LGD_ESTIMADA",
+      "type": "Field",
+      "label": "LGD_ESTIMADA"
+    },
+    {
+      "id": "field:FINANCIERO",
+      "type": "Field",
+      "label": "FINANCIERO"
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:4",
+      "type": "Section",
+      "label": "Suelo m\u00ednimo de PD",
+      "level": 2,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "Durante cualquier per\u00edodo de dotaci\u00f3n activo, `PD_ESTIMADA` no puede ser inferior al 0.05%, con independencia del `SEGMENTO` o del `RATING_GRADO`. Este suelo fue actualizado de 0.03% a 0.05% mediante la Circular 4/2022 y es de aplicaci\u00f3n a todos los ciclos con `PROVISION_PERIOD_MONTHS` > 0 desde el 1 de enero de 2023."
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:5",
+      "type": "Section",
+      "label": "Interacci\u00f3n con el campo MOC",
+      "level": 2,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "El ajuste por incertidumbre del modelo (`MOC`) se aplica sobre la `LGD_ESTIMADA` antes de comparar con `LGD_FLOOR_APLICADO`. La secuencia de c\u00e1lculo es:\n\n1. `LGD_ajustada` = `LGD_ESTIMADA` \u00d7 (1 + `MOC`)\n2. `LGD_efectiva` = max(`LGD_ajustada`, `LGD_FLOOR_APLICADO`)\n3. `ECL` = `PD_ESTIMADA` \u00d7 `LGD_efectiva` \u00d7 `EAD`\n\nCuando `LGD_ajustada` < `LGD_FLOOR_APLICADO`, la diferencia debe reportarse en el log de validaci\u00f3n y queda registrada en el campo `NO_CONFORMES` si supera el 10% del valor del suelo."
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:6",
+      "type": "Section",
+      "label": "Suelos durante STAGE_IFRS9 = 3",
+      "level": 2,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "Cuando `STAGE_IFRS9` = 3, se aplican suelos adicionales de `PD_ESTIMADA` = 1.0 (probabilidad de default unitaria para Stage 3) y el `LGD_FLOOR_APLICADO` se incrementa en un factor de 1.20 respecto a los valores de la tabla anterior."
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:7",
+      "type": "Section",
+      "label": "Justificaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "Los suelos establecidos en este art\u00edculo est\u00e1n calibrados para asegurar que la provisi\u00f3n regulatoria cubre, como m\u00ednimo, el percentil 75 de p\u00e9rdidas hist\u00f3ricas observadas en el sistema bancario espa\u00f1ol en per\u00edodos de contracci\u00f3n del ciclo crediticio. El suelo de `PD_ESTIMADA` al 0.05% previene la sub-dotaci\u00f3n en carteras de alta calidad crediticia durante fases de expansi\u00f3n en las que el modelo de PD puede infraestimar el riesgo sist\u00e9mico latente."
+    },
+    {
+      "id": "sec:art_15_dotaciones_minimas.md:8",
+      "type": "Section",
+      "label": "Referencias cruzadas",
+      "level": 2,
+      "doc": "doc:art_15_dotaciones_minimas.md",
+      "body": "- Art\u00edculo 8 \u2014 Clasificaci\u00f3n de ciclos (`SEGMENTO`, `COLATERAL_TIPO`, `STAGE_IFRS9`)\n- Art\u00edculo 12 \u2014 Per\u00edodos m\u00ednimos de dotaci\u00f3n (`PROVISION_PERIOD_MONTHS`)\n- Art\u00edculo 23 \u2014 Condiciones de liberaci\u00f3n (`CURE_FLAG`, `LGD_FLOOR_APLICADO`)"
+    },
+    {
+      "id": "doc:art_23_liberacion_provisiones.md",
+      "type": "Document",
+      "label": "art_23_liberacion_provisiones.md",
+      "source": "data/regulation/art_23_liberacion_provisiones.md"
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:1",
+      "type": "Section",
+      "label": "Art\u00edculo 23 \u2014 Condiciones para la Liberaci\u00f3n de Provisiones",
+      "level": 1,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "**Norma:** Circular 6/2016 del Banco de Espa\u00f1a, modificada por Circular 4/2022  \n**Ep\u00edgrafe:** Requisitos para la liberaci\u00f3n o reducci\u00f3n de provisiones regulatorias al cierre del per\u00edodo de dotaci\u00f3n"
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:2",
+      "type": "Section",
+      "label": "\u00c1mbito de aplicaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "El presente art\u00edculo establece las condiciones bajo las cuales una entidad puede liberar o reducir las provisiones regulatorias asociadas a un ciclo de recuperaci\u00f3n (`CICLO_ID`). La liberaci\u00f3n parcial o total s\u00f3lo procede cuando se cumplen simult\u00e1neamente todos los requisitos descritos en este art\u00edculo."
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:3",
+      "type": "Section",
+      "label": "Requisito 1 \u2014 Expiraci\u00f3n del per\u00edodo de dotaci\u00f3n m\u00ednimo",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "El valor de `PROVISION_PERIOD_MONTHS` acumulado para el ciclo debe ser igual o superior al m\u00ednimo establecido en el Art\u00edculo 12 para el `SEGMENTO` y fase de ciclo correspondiente.\n\nEl c\u00f3mputo se realiza en meses naturales completos desde la fecha de entrada en default hasta la fecha de evaluaci\u00f3n."
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:4",
+      "type": "Section",
+      "label": "Requisito 2 \u2014 Indicador de cura confirmado",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "El campo `CURE_FLAG` debe estar activo (`CURE_FLAG` = 1), lo que acredita que el acreditado ha regularizado su situaci\u00f3n crediticia seg\u00fan los criterios definidos en la pol\u00edtica de curas de la entidad.\n\nLa activaci\u00f3n de `CURE_FLAG` requiere que el contrato haya permanecido fuera de default durante un m\u00ednimo de 90 d\u00edas consecutivos (per\u00edodo de prueba). Durante este per\u00edodo el contrato conserva su clasificaci\u00f3n en la fase de ciclo previa."
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:5",
+      "type": "Section",
+      "label": "Requisito 3 \u2014 Retorno a STAGE_IFRS9 \u2264 2",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "El campo `STAGE_IFRS9` debe haber retornado al valor 1 o 2 y mantenerse en dicho valor durante al menos dos ventanas de observaci\u00f3n consecutivas (`VENTANA_OBSERVACION_YEARS`).\n\nEl retorno a `STAGE_IFRS9` = 1 directamente desde `STAGE_IFRS9` = 3 no est\u00e1 permitido salvo en casos de cancelaci\u00f3n total del contrato. La secuencia obligatoria es: STAGE 3 \u2192 STAGE 2 (m\u00ednimo una ventana de observaci\u00f3n) \u2192 STAGE 1."
+    },
+    {
+      "id": "field:STAGE",
+      "type": "Field",
+      "label": "STAGE"
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:6",
+      "type": "Section",
+      "label": "Requisito 4 \u2014 Suelos de par\u00e1metros cumplidos en origen",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "Los par\u00e1metros `LGD_FLOOR_APLICADO` y `PD_ESTIMADA` utilizados durante todo el per\u00edodo de dotaci\u00f3n deben haber respetado los m\u00ednimos del Art\u00edculo 15. Si se detecta incumplimiento retroactivo, la liberaci\u00f3n queda bloqueada hasta la correcci\u00f3n de los registros hist\u00f3ricos en `mylib.ciclos_recuperacion`."
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:7",
+      "type": "Section",
+      "label": "Proceso de liberaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "Cuando se cumplen los cuatro requisitos anteriores, la provisi\u00f3n puede liberarse de forma progresiva seg\u00fan el siguiente calendario:\n\n| Meses adicionales tras cumplimiento | Liberaci\u00f3n m\u00e1xima acumulada |\n|---|---|\n| 0\u20136 meses | 25% de la provisi\u00f3n |\n| 6\u201312 meses | 50% de la provisi\u00f3n |\n| 12\u201318 meses | 75% de la provisi\u00f3n |\n| > 18 meses | 100% de la provisi\u00f3n |\n\nLa provisi\u00f3n base se calcula como `ECL` = `PD_ESTIMADA` \u00d7 `LGD_FLOOR_APLICADO` \u00d7 `EAD` en la fecha de inicio del proceso de liberaci\u00f3n."
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:8",
+      "type": "Section",
+      "label": "Excepciones y no conformidades",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "Los ciclos que no cumplan los requisitos anteriores al cierre del per\u00edodo de dotaci\u00f3n se registran en el campo `NO_CONFORMES` del pipeline de c\u00e1lculo (`lgd_pipeline`). Las no conformidades deben ser revisadas manualmente por el equipo de Riesgos antes del cierre contable trimestral.\n\nEl campo `OR_EAD_TIT` se utiliza en operaciones de titulizaci\u00f3n para ajustar la `EAD` efectiva aplicable al c\u00e1lculo de provisi\u00f3n en el proceso de liberaci\u00f3n para el segmento CORP."
+    },
+    {
+      "id": "field:OR_EAD_TIT",
+      "type": "Field",
+      "label": "OR_EAD_TIT"
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:9",
+      "type": "Section",
+      "label": "Justificaci\u00f3n",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "Los requisitos de liberaci\u00f3n establecidos en este art\u00edculo garantizan que la provisi\u00f3n regulatoria no se libera prematuramente en exposiciones que, aunque t\u00e9cnicamente curadas, pueden presentar reca\u00edda en default dentro del per\u00edodo de seguimiento post-cura. El escalonamiento en la liberaci\u00f3n reduce el riesgo de volatilidad en los resultados contables."
+    },
+    {
+      "id": "sec:art_23_liberacion_provisiones.md:10",
+      "type": "Section",
+      "label": "Referencias cruzadas",
+      "level": 2,
+      "doc": "doc:art_23_liberacion_provisiones.md",
+      "body": "- Art\u00edculo 8 \u2014 Clasificaci\u00f3n de ciclos (`DPDS`, `STAGE_IFRS9`, `VENTANA_OBSERVACION_YEARS`)\n- Art\u00edculo 12 \u2014 Per\u00edodos m\u00ednimos de dotaci\u00f3n (`PROVISION_PERIOD_MONTHS`)\n- Art\u00edculo 15 \u2014 Dotaciones m\u00ednimas (`LGD_FLOOR_APLICADO`, `PD_ESTIMADA`, `ECL`, `EAD`)"
+    },
+    {
+      "id": "doc:irb_schema.sql",
+      "type": "Document",
+      "label": "irb_schema.sql",
+      "source": "data/samples/irb_schema.sql"
+    },
+    {
+      "id": "tbl:contratos",
+      "type": "TableChange",
+      "label": "contratos",
+      "doc": "doc:irb_schema.sql"
+    },
+    {
+      "id": "field:CONTRATO_ID",
+      "type": "Field",
+      "label": "CONTRATO_ID"
+    },
+    {
+      "id": "field:MOTIVO_CIERRE",
+      "type": "Field",
+      "label": "MOTIVO_CIERRE"
+    },
+    {
+      "id": "tbl:clientes",
+      "type": "TableChange",
+      "label": "clientes",
+      "doc": "doc:irb_schema.sql"
+    },
+    {
+      "id": "field:CLIENTE_ID",
+      "type": "Field",
+      "label": "CLIENTE_ID"
+    },
+    {
+      "id": "field:TIPO_PERSONA",
+      "type": "Field",
+      "label": "TIPO_PERSONA"
+    },
+    {
+      "id": "field:INGRESOS_ANUALES",
+      "type": "Field",
+      "label": "INGRESOS_ANUALES"
+    },
+    {
+      "id": "tbl:parametros_irb",
+      "type": "TableChange",
+      "label": "parametros_irb",
+      "doc": "doc:irb_schema.sql"
+    },
+    {
+      "id": "field:PARAM_ID",
+      "type": "Field",
+      "label": "PARAM_ID"
+    },
+    {
+      "id": "field:FECHA_CALCULO",
+      "type": "Field",
+      "label": "FECHA_CALCULO"
+    },
+    {
+      "id": "tbl:defaults",
+      "type": "TableChange",
+      "label": "defaults",
+      "doc": "doc:irb_schema.sql"
+    },
+    {
+      "id": "field:DEFAULT_ID",
+      "type": "Field",
+      "label": "DEFAULT_ID"
+    },
+    {
+      "id": "field:FECHA_DEFAULT",
+      "type": "Field",
+      "label": "FECHA_DEFAULT"
+    },
+    {
+      "id": "field:DIAS_MORA_TRIGGER",
+      "type": "Field",
+      "label": "DIAS_MORA_TRIGGER"
+    },
+    {
+      "id": "tbl:colaterales",
+      "type": "TableChange",
+      "label": "colaterales",
+      "doc": "doc:irb_schema.sql"
+    },
+    {
+      "id": "field:COLATERAL_ID",
+      "type": "Field",
+      "label": "COLATERAL_ID"
+    },
+    {
+      "id": "field:TIPO_COLATERAL",
+      "type": "Field",
+      "label": "TIPO_COLATERAL"
+    },
+    {
+      "id": "field:VALOR_TASACION",
+      "type": "Field",
+      "label": "VALOR_TASACION"
+    },
+    {
+      "id": "tbl:ciclos_recuperacion",
+      "type": "TableChange",
+      "label": "ciclos_recuperacion",
+      "doc": "doc:irb_schema.sql"
+    },
+    {
+      "id": "field:MES_REFERENCIA",
+      "type": "Field",
+      "label": "MES_REFERENCIA"
+    },
+    {
+      "id": "field:PROVISION_PERIODO",
+      "type": "Field",
+      "label": "PROVISION_PERIODO"
+    },
+    {
+      "id": "tbl:modelos_validacion",
+      "type": "TableChange",
+      "label": "modelos_validacion",
+      "doc": "doc:irb_schema.sql"
+    },
+    {
+      "id": "field:VALIDACION_ID",
+      "type": "Field",
+      "label": "VALIDACION_ID"
+    },
+    {
+      "id": "field:MODELO_ID",
+      "type": "Field",
+      "label": "MODELO_ID"
+    },
+    {
+      "id": "field:FECHA_VALIDACION",
+      "type": "Field",
+      "label": "FECHA_VALIDACION"
+    },
+    {
+      "id": "field:RESULTADO",
+      "type": "Field",
+      "label": "RESULTADO"
+    },
+    {
+      "id": "field:TEST_DISCRIMINACION",
+      "type": "Field",
+      "label": "TEST_DISCRIMINACION"
+    }
+  ],
+  "edges": [
+    {
+      "source": "doc:art_08_clasificacion_ciclos.md",
+      "target": "sec:art_08_clasificacion_ciclos.md:1",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_08_clasificacion_ciclos.md",
+      "target": "sec:art_08_clasificacion_ciclos.md:2",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_08_clasificacion_ciclos.md",
+      "target": "sec:art_08_clasificacion_ciclos.md:3",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_08_clasificacion_ciclos.md",
+      "target": "sec:art_08_clasificacion_ciclos.md:4",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_08_clasificacion_ciclos.md",
+      "target": "sec:art_08_clasificacion_ciclos.md:5",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_08_clasificacion_ciclos.md",
+      "target": "sec:art_08_clasificacion_ciclos.md:6",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_08_clasificacion_ciclos.md",
+      "target": "sec:art_08_clasificacion_ciclos.md:7",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:2",
+      "target": "field:CICLO_ID",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:2",
+      "target": "field:SEGMENTO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:3",
+      "target": "field:VENTANA_OBSERVACION_YEARS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:3",
+      "target": "field:FASE_CONTRACCION",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:3",
+      "target": "field:FASE_EXPANSION",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:3",
+      "target": "field:DPDS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:3",
+      "target": "field:FASE_CRISIS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:4",
+      "target": "field:HIPOTECA",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:4",
+      "target": "field:RATING_GRADO",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:4",
+      "target": "field:COLATERAL_TIPO",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:4",
+      "target": "field:MORTGAGE",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:4",
+      "target": "field:CORP",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:4",
+      "target": "field:SEGMENTO",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:4",
+      "target": "field:DPDS",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:5",
+      "target": "field:STAGE_IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:5",
+      "target": "field:FASE_CONTRACCION",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:5",
+      "target": "field:IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:5",
+      "target": "field:NO_CONFORMES",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:5",
+      "target": "field:FASE_EXPANSION",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:5",
+      "target": "field:FASE_CRISIS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:6",
+      "target": "field:VENTANA_OBSERVACION_YEARS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:6",
+      "target": "field:VENTANA_CALIBRACION_YEARS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:7",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:7",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:7",
+      "target": "field:CURE_FLAG",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_08_clasificacion_ciclos.md:7",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:1",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:2",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:3",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:4",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:5",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:6",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:7",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:8",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:9",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_12_periodos_dotacion.md",
+      "target": "sec:art_12_periodos_dotacion.md:10",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:2",
+      "target": "field:SEGMENTO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:2",
+      "target": "field:NO_CONFORMES",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:2",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:4",
+      "target": "field:COLATERAL_TIPO",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:4",
+      "target": "field:FASE_CONTRACCION",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:4",
+      "target": "field:FASE_EXPANSION",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:4",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:4",
+      "target": "field:CORP",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:4",
+      "target": "field:NINGUNA",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:4",
+      "target": "field:FASE_CRISIS",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:5",
+      "target": "field:FASE_CONTRACCION",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:5",
+      "target": "field:RETAIL",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:5",
+      "target": "field:FASE_EXPANSION",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:5",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:5",
+      "target": "field:FASE_CRISIS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:6",
+      "target": "field:FASE_CONTRACCION",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:6",
+      "target": "field:MORTGAGE",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:6",
+      "target": "field:FASE_EXPANSION",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:6",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:6",
+      "target": "field:FASE_CRISIS",
+      "relation": "JUSTIFIES"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:7",
+      "target": "field:STAGE_IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:7",
+      "target": "field:FASE_CONTRACCION",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:7",
+      "target": "field:CURE_FLAG",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:8",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:10",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:10",
+      "target": "field:STAGE_IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:10",
+      "target": "field:CURE_FLAG",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:10",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:10",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:10",
+      "target": "field:SEGMENTO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_12_periodos_dotacion.md:10",
+      "target": "field:DPDS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:1",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:2",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:3",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:4",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:5",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:6",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:7",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_15_dotaciones_minimas.md",
+      "target": "sec:art_15_dotaciones_minimas.md:8",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:2",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:2",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:2",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:COLATERAL_FIN",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:HIPOTECA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:PERSONAL",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:MORTGAGE",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:RETAIL",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:CORP",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:NINGUNA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:LGD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:3",
+      "target": "field:FINANCIERO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:4",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:4",
+      "target": "field:SEGMENTO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:4",
+      "target": "field:RATING_GRADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:4",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:5",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:5",
+      "target": "field:LGD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:5",
+      "target": "field:NO_CONFORMES",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:5",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:6",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:6",
+      "target": "field:STAGE_IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:6",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:7",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:8",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:8",
+      "target": "field:COLATERAL_TIPO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:8",
+      "target": "field:STAGE_IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:8",
+      "target": "field:CURE_FLAG",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:8",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_15_dotaciones_minimas.md:8",
+      "target": "field:SEGMENTO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:1",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:2",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:3",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:4",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:5",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:6",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:7",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:8",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:9",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:art_23_liberacion_provisiones.md",
+      "target": "sec:art_23_liberacion_provisiones.md:10",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:2",
+      "target": "field:CICLO_ID",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:3",
+      "target": "field:SEGMENTO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:3",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:4",
+      "target": "field:CURE_FLAG",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:5",
+      "target": "field:VENTANA_OBSERVACION_YEARS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:5",
+      "target": "field:STAGE_IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:5",
+      "target": "field:STAGE",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:6",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:6",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:7",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:7",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:8",
+      "target": "field:NO_CONFORMES",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:8",
+      "target": "field:OR_EAD_TIT",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:8",
+      "target": "field:CORP",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:10",
+      "target": "field:LGD_FLOOR_APLICADO",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:10",
+      "target": "field:VENTANA_OBSERVACION_YEARS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:10",
+      "target": "field:STAGE_IFRS9",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:10",
+      "target": "field:PROVISION_PERIOD_MONTHS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:10",
+      "target": "field:PD_ESTIMADA",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "sec:art_23_liberacion_provisiones.md:10",
+      "target": "field:DPDS",
+      "relation": "MENTIONS_FIELD"
+    },
+    {
+      "source": "doc:irb_schema.sql",
+      "target": "tbl:contratos",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:irb_schema.sql",
+      "target": "tbl:clientes",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:irb_schema.sql",
+      "target": "tbl:parametros_irb",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:irb_schema.sql",
+      "target": "tbl:defaults",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:irb_schema.sql",
+      "target": "tbl:colaterales",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:irb_schema.sql",
+      "target": "tbl:ciclos_recuperacion",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "doc:irb_schema.sql",
+      "target": "tbl:modelos_validacion",
+      "relation": "CONTAINS"
+    },
+    {
+      "source": "tbl:contratos",
+      "target": "field:CONTRATO_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:contratos",
+      "target": "field:MOTIVO_CIERRE",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:clientes",
+      "target": "field:CLIENTE_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:clientes",
+      "target": "field:TIPO_PERSONA",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:clientes",
+      "target": "field:INGRESOS_ANUALES",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:parametros_irb",
+      "target": "field:PARAM_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:parametros_irb",
+      "target": "field:CONTRATO_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:parametros_irb",
+      "target": "field:FECHA_CALCULO",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:defaults",
+      "target": "field:DEFAULT_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:defaults",
+      "target": "field:CONTRATO_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:defaults",
+      "target": "field:CLIENTE_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:defaults",
+      "target": "field:FECHA_DEFAULT",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:defaults",
+      "target": "field:DIAS_MORA_TRIGGER",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:colaterales",
+      "target": "field:COLATERAL_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:colaterales",
+      "target": "field:CONTRATO_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:colaterales",
+      "target": "field:TIPO_COLATERAL",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:colaterales",
+      "target": "field:VALOR_TASACION",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:ciclos_recuperacion",
+      "target": "field:CICLO_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:ciclos_recuperacion",
+      "target": "field:DEFAULT_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:ciclos_recuperacion",
+      "target": "field:MES_REFERENCIA",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:ciclos_recuperacion",
+      "target": "field:PROVISION_PERIODO",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:modelos_validacion",
+      "target": "field:VALIDACION_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:modelos_validacion",
+      "target": "field:MODELO_ID",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:modelos_validacion",
+      "target": "field:FECHA_VALIDACION",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:modelos_validacion",
+      "target": "field:RESULTADO",
+      "relation": "HAS_COLUMN"
+    },
+    {
+      "source": "tbl:modelos_validacion",
+      "target": "field:TEST_DISCRIMINACION",
+      "relation": "HAS_COLUMN"
+    }
+  ]
+}

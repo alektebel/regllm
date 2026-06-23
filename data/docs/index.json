@@ -137,14 +137,6 @@
       "body": "- `CICLO_ID` (PK) — e.g. `CIC_00031`\n- `SEGMENTO` — `CORP` | `RETAIL`\n- `COLATERAL_TIPO` — `HIPOTECA` | `PERSONAL` | `NINGUNA` | `FINANCIERO`\n- Numeric: `PD_ESTIMADA`, `LGD_ESTIMADA`, `EAD`, `DPDS`,\n  `STAGE_IFRS9`, `RATING_GRADO`, `PROVISION_PERIOD_MONTHS`,\n  `VENTANA_OBSERVACION_YEARS`, `VENTANA_CALIBRACION_YEARS`,\n  `LGD_FLOOR_APLICADO`, `MOC`, `CURE_FLAG`, `RWA`, `ECL`\n- V3-only: `OR_EAD_TIT` (computed)",
       "line_start": 6,
       "line_end": 15
-    },
-    {
-      "path": "uploads/test_upload.md",
-      "heading": "Smoke test field",
-      "level": 1,
-      "body": "Quick test for the docs upload pipeline.",
-      "line_start": 1,
-      "line_end": 3
     }
   ]
 }

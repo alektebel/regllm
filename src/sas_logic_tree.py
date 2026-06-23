@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Union
 
 
@@ -323,13 +324,14 @@ class CallNode:
 @dataclass
 class MergeNode:
     """MERGE statement inside a DATA step."""
-    datasets: list[str]        # dataset names (may include IN= options as text)
+    datasets: list[str]        # dataset names (options stripped)
+    in_vars: list[str] = field(default_factory=list)  # IN= variable names
 
     def display(self, indent: int = 0) -> str:
         return "  " * indent + f"MERGE {' '.join(self.datasets)}"
 
     def to_dict(self) -> dict:
-        return {"type": "merge", "datasets": self.datasets}
+        return {"type": "merge", "datasets": self.datasets, "in_vars": self.in_vars}
 
 
 @dataclass
@@ -798,6 +800,117 @@ def _expand_sql_fragment_macros(
     return re.sub(r"%(\w+)\s*\(([^)]*)\)", _replacer, code, flags=re.IGNORECASE)
 
 
+def _collect_structural_macros(code: str) -> dict[str, tuple[list[str], str]]:
+    """Find ``%macro NAME(params); ... %mend;`` definitions whose body contains
+    statements (a ``;``).
+
+    These are the real program macros (DATA steps / PROC SQL wrapped in a macro
+    with table-name parameters). Returns ``{lowercase_name: (params, body)}``.
+    SQL-fragment macros (no ``;`` in the body) are handled separately and skipped.
+    """
+    defs: dict[str, tuple[list[str], str]] = {}
+    pattern = re.compile(
+        r"%macro\s+(\w+)\s*(?:\(([^)]*)\))?\s*;(.*?)%mend\b\s*;?",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for m in pattern.finditer(code):
+        name = m.group(1).lower()
+        raw_params = m.group(2) or ""
+        body = m.group(3)
+        if ";" not in body:          # SQL-fragment macro — handled elsewhere
+            continue
+        # Parameter names only (drop any ``=default``)
+        params = [p.split("=")[0].strip() for p in raw_params.split(",") if p.strip()]
+        defs[name] = (params, body)
+    return defs
+
+
+def _bind_macro_args(params: list[str], argstr: str) -> dict[str, str]:
+    """Bind a call's argument string to parameter names (named or positional).
+
+    Trailing dots are stripped from values because in SAS ``&VAR.`` the dot
+    is a delimiter, not part of the value.
+    """
+    mapping: dict[str, str] = {}
+    pos = 0
+    for arg in _split_csv(argstr):
+        if not arg:
+            continue
+        if "=" in arg:
+            key, val = arg.split("=", 1)
+            mapping[key.strip().lower()] = val.strip().rstrip(".")
+        else:
+            if pos < len(params):
+                mapping[params[pos].lower()] = arg.strip().rstrip(".")
+            pos += 1
+    return mapping
+
+
+def _substitute_macro_params(body: str, mapping: dict[str, str]) -> str:
+    """Replace ``&param.`` / ``&param`` references in *body* with bound values."""
+    for key, val in mapping.items():
+        body = re.sub(rf"&{re.escape(key)}\.", val, body, flags=re.IGNORECASE)
+        body = re.sub(rf"&{re.escape(key)}\b\.?", val, body, flags=re.IGNORECASE)
+    return body
+
+
+def _remove_macro_def(code: str, name: str) -> str:
+    """Remove a single ``%macro NAME ... %mend;`` block from *code*."""
+    pattern = re.compile(
+        r"%macro\s+" + re.escape(name) + r"\s*(?:\([^)]*\))?\s*;.*?%mend\b\s*;?",
+        re.IGNORECASE | re.DOTALL,
+    )
+    return pattern.sub("", code, count=1)
+
+
+def _expand_called_macros(code: str, max_passes: int = 8) -> str:
+    """Inline ``%NAME(args)`` invocations of program macros, substituting the
+    call's argument values into the macro body.
+
+    This resolves table-name parameters (e.g. ``&PREFIJO_PROGRAMA.``) to the
+    literal values supplied at the call site, so tables across different macro
+    instances get distinct, correct names (``I_P12_06`` vs ``I_P13_06``)
+    instead of all collapsing onto the same ``&PREFIJO_PROGRAMA.`` placeholder.
+
+    Only macros that have BOTH a definition and at least one call are expanded;
+    defined-but-never-called macros are left untouched so they still parse into
+    ``MacroDefNode`` entries. Expansion runs in bounded passes to resolve nested
+    macro calls (a macro body that calls another macro).
+    """
+    defs = _collect_structural_macros(code)
+    if not defs:
+        return code
+
+    expandable = {
+        name for name in defs
+        if re.search(r"%" + re.escape(name) + r"\s*\(", code, re.IGNORECASE)
+    }
+    if not expandable:
+        return code
+
+    # Drop the definitions of expandable macros so they are not also parsed as
+    # standalone MacroDefNodes; their bodies live in ``defs`` for inlining.
+    driver = code
+    for name in expandable:
+        driver = _remove_macro_def(driver, name)
+
+    call_pattern = re.compile(r"%(\w+)\s*\(([^()]*)\)\s*;?", re.IGNORECASE | re.DOTALL)
+
+    def _replacer(m: re.Match) -> str:
+        name = m.group(1).lower()
+        if name not in expandable:
+            return m.group(0)        # leave non-program macro calls unchanged
+        params, body = defs[name]
+        return _substitute_macro_params(body, _bind_macro_args(params, m.group(2)))
+
+    for _ in range(max_passes):
+        expanded = call_pattern.sub(_replacer, driver)
+        if expanded == driver:
+            break
+        driver = expanded
+    return driver
+
+
 class _Parser:
     def __init__(self, stmts: list[str]):
         self._s = stmts
@@ -890,14 +1003,21 @@ class _Parser:
             if re.match(r"^MERGE\b", u):
                 stmt = self._consume()
                 raw = re.sub(r"^MERGE\s*", "", stmt, flags=re.IGNORECASE).strip()
-                # Extract dataset names (strip parenthesized options)
-                datasets = re.findall(r"[\w.]+(?:\s*\([^)]*\))?", raw)
-                datasets = [re.sub(r"\s*\([^)]*\)", "", d).strip() for d in datasets]
-                datasets = [d for d in datasets if d]
+                # Extract dataset names and IN= variables
+                raw_datasets = re.findall(r"[\w.]+(?:\s*\([^)]*\))?", raw)
+                in_vars: list[str] = []
+                datasets = []
+                for d in raw_datasets:
+                    in_m = re.search(r"\(\s*IN\s*=\s*(\w+)", d, re.IGNORECASE)
+                    if in_m:
+                        in_vars.append(in_m.group(1))
+                    clean = re.sub(r"\s*\([^)]*\)", "", d).strip()
+                    if clean:
+                        datasets.append(clean)
                 merge_datasets = datasets
                 if not input_ds and datasets:
                     input_ds = datasets[0]
-                body.append(MergeNode(datasets=datasets))
+                body.append(MergeNode(datasets=datasets, in_vars=in_vars))
                 continue
             result = self._parse_body_stmt()
             if isinstance(result, list):
@@ -1203,7 +1323,11 @@ class _Parser:
         init_vals: list[str] = []
         init_m = re.search(r"\(([^)]+)\)\s*$", rest_clean)
         if init_m:
-            init_vals = [v.strip() for v in init_m.group(1).split()]
+            raw_init = init_m.group(1).strip()
+            if "," in raw_init:
+                init_vals = [v.strip() for v in raw_init.split(",") if v.strip()]
+            else:
+                init_vals = raw_init.split()
             rest_clean = rest_clean[:init_m.start()].strip()
 
         var_list = [v.strip() for v in rest_clean.split() if v.strip()]
@@ -1444,6 +1568,18 @@ class _Parser:
             return DeleteNode()
         if re.match(r"^RETURN\s*$", u):
             return ReturnNode()
+        if re.match(r"^STOP\s*$", u):
+            return StopNode()
+        if re.match(r"^CALL\b", u):
+            m = re.match(r"CALL\s+(\w+)\s*\((.*)\)", stmt, re.IGNORECASE | re.DOTALL)
+            if m:
+                return CallNode(routine=m.group(1), args=m.group(2).strip())
+        if re.match(r"^LINK\b", u):
+            lbl = re.sub(r"^LINK\s*", "", stmt, flags=re.IGNORECASE).strip()
+            return LinkNode(label=lbl)
+        if re.match(r"^GOTO\b", u):
+            lbl = re.sub(r"^GOTO?\s*", "", stmt, flags=re.IGNORECASE).strip()
+            return GotoNode(label=lbl)
         if re.match(r"^[\w\[\]{}().\s]+\s*=\s*(?!=)", u):
             return self._stmt_to_assign(stmt)
         return None
@@ -1589,6 +1725,11 @@ class _Evaluator:
             if isinstance(node, DataStepNode):
                 self._current_step = node.output_dataset
                 self._step_passes = True
+                # Set MERGE IN= variables to 1 (assume row is present)
+                for body_node in node.body:
+                    if isinstance(body_node, MergeNode):
+                        for v in body_node.in_vars:
+                            env[v] = 1
                 self._eval_body(node.body, env)
             elif isinstance(node, ProcNode):
                 pass
@@ -1623,7 +1764,14 @@ class _Evaluator:
             self._row_deleted = True
             self.steps.append(TraceStep(kind="delete", label="",
                                         data_step=self._current_step))
-        # Other nodes (MergeNode, ByNode, ArrayNode, CallNode, etc.) — record but don't simulate
+        elif isinstance(node, CallNode):
+            self.steps.append(TraceStep(kind="call",
+                                        label=f"CALL {node.routine}({node.args})",
+                                        data_step=self._current_step))
+        elif isinstance(node, StopNode):
+            self.steps.append(TraceStep(kind="stop", label="STOP",
+                                        data_step=self._current_step))
+        # Other nodes (MergeNode, ByNode, ArrayNode, LinkNode, GotoNode, etc.) — skip
 
     def _eval_assign(self, node: AssignNode, env: dict[str, Any]) -> None:
         old = env.get(node.var)
@@ -1755,8 +1903,9 @@ class _Evaluator:
         if node.initial:
             init_val = _eval_expr(node.initial, env)
             for v in node.vars:
-                if v.upper() not in env:
-                    env[v.upper()] = init_val
+                # Use original case to match how _eval_assign stores variables.
+                if v not in env:
+                    env[v] = init_val
 
     @property
     def row_passes_filter(self) -> bool:
@@ -1851,7 +2000,7 @@ class _LineageWalker:
         self._edges: list[dict] = []
         self._seen_edges: set[tuple] = set()
         self._step_order: list[str] = []
-        self._field_step: dict[str, str] = {}
+        self._field_steps: dict[str, list[str]] = {}
         self._current_step: str = ""
         self._cond_stack: list[set[str]] = []
 
@@ -1877,6 +2026,11 @@ class _LineageWalker:
         """Extract lineage edges from PROC SQL SELECT fields."""
         for alias, expr in node.select_fields:
             if alias == "*":
+                # SELECT * propagates all fields already known from input tables
+                for f in list(self._written):
+                    self._field_steps.setdefault(f, [])
+                    if self._current_step not in self._field_steps[f]:
+                        self._field_steps[f].append(self._current_step)
                 continue
             target = alias.upper()
             sources = _vars_in_expr(expr)
@@ -1885,8 +2039,9 @@ class _LineageWalker:
             # (bare passthrough T1.FOO AS FOO resolves to source==target — skip)
             real_sources = sources - {target}
             self._read.update(real_sources)
-            if target not in self._field_step:
-                self._field_step[target] = self._current_step
+            self._field_steps.setdefault(target, [])
+            if self._current_step not in self._field_steps[target]:
+                self._field_steps[target].append(self._current_step)
             for src in real_sources:
                 self._add_edge(src, target, "assigns", expr)
 
@@ -1919,8 +2074,9 @@ class _LineageWalker:
         sources = _vars_in_expr(node.expr)
         self._written.add(target)
         self._read.update(sources)
-        if target not in self._field_step:
-            self._field_step[target] = self._current_step
+        self._field_steps.setdefault(target, [])
+        if self._current_step not in self._field_steps[target]:
+            self._field_steps[target].append(self._current_step)
         for src in sources:
             self._add_edge(src, target, "assigns", node.expr)
         for cond_vars in self._cond_stack:
@@ -1954,13 +2110,25 @@ class _LineageWalker:
         self._walk_body(node.body)
 
     def _on_select(self, node: SelectNode) -> None:
+        # Collect all vars that guard this SELECT block — the select expression
+        # plus any condition variables inside WHEN clauses.  Push them onto the
+        # condition stack so that assignments inside WHEN bodies record these as
+        # conditioning ancestors (same mechanism as _on_if).
+        guard_vars: set[str] = set()
         if node.select_expr:
-            self._read.update(_vars_in_expr(node.select_expr))
+            guard_vars.update(_vars_in_expr(node.select_expr))
+            self._read.update(guard_vars)
+        self._cond_stack.append(guard_vars)
         for when in node.whens:
+            when_guard: set[str] = set()
             for v in when.values:
-                self._read.update(_vars_in_expr(v))
+                when_guard.update(_vars_in_expr(v))
+            self._read.update(when_guard)
+            self._cond_stack.append(when_guard)
             self._walk_body(when.body)
+            self._cond_stack.pop()
         self._walk_body(node.otherwise)
+        self._cond_stack.pop()
 
     def _add_edge(self, source: str, target: str, kind: str, expr: str) -> None:
         key = (source, target, kind, self._current_step)
@@ -1983,8 +2151,9 @@ class _LineageWalker:
         raw_layers: dict[str, int] = {}
         for f in all_fields:
             if f in self._written:
-                step = self._field_step.get(f, "")
-                raw_layers[f] = step_idx.get(step, 0) + 1
+                steps = self._field_steps.get(f, [])
+                first_step = steps[0] if steps else ""
+                raw_layers[f] = step_idx.get(first_step, 0) + 1
             else:
                 raw_layers[f] = 0
         used = sorted(set(raw_layers.values()))
@@ -2000,8 +2169,7 @@ class _LineageWalker:
                     kind = "modified"
                 else:
                     kind = "computed"
-                step = self._field_step.get(f, "")
-                steps = [step] if step else []
+                steps = self._field_steps.get(f, [])
             else:
                 kind = "input"
                 steps = []
@@ -2093,6 +2261,29 @@ def trace_field_ancestors(
     }
 
 
+def _parse_schema_columns(schema_path: Path) -> dict[str, set[str]]:
+    """Parse a SQL DDL file and return {TABLE_NAME: {COL1, COL2, ...}}."""
+    text = schema_path.read_text(encoding="utf-8")
+    result: dict[str, set[str]] = {}
+    for block in re.split(r"(?=CREATE TABLE)", text, flags=re.IGNORECASE):
+        m = re.match(r"CREATE TABLE\s+(\w+)", block, re.IGNORECASE)
+        if not m:
+            continue
+        tname = m.group(1).upper()
+        cols: set[str] = set()
+        # Extract column names from lines like "  col_name  TYPE  ..."
+        for line in block.split("\n"):
+            line = line.strip()
+            if line.startswith("--") or line.startswith("/*") or not line:
+                continue
+            cm = re.match(r"(\w+)\s+(?:VARCHAR|TEXT|NUMERIC|INTEGER|INT|DECIMAL|DATE|TIMESTAMP|BOOLEAN|SERIAL|BIGINT|SMALLINT|REAL|DOUBLE|FLOAT|CHAR)", line, re.IGNORECASE)
+            if cm:
+                cols.add(cm.group(1).upper())
+        if cols:
+            result[tname] = cols
+    return result
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2107,6 +2298,9 @@ class SASLogicTree:
         # PROC SQL field extractor.
         sql_macros = _collect_sql_fragment_macros(clean)
         clean = _expand_sql_fragment_macros(clean, sql_macros)
+        # Inline program-macro calls, resolving table-name parameters (e.g.
+        # &PREFIJO_PROGRAMA.) to the literal values passed at each call site.
+        clean = _expand_called_macros(clean)
         clean = _strip_macro_refs(clean)
         stmts = _split_statements(clean)
         return _Parser(stmts).parse()
@@ -2134,3 +2328,83 @@ class SASLogicTree:
             row_passes_filter=ev.row_passes_filter,
             filter_results=ev.filter_results,
         )
+
+    def validate(
+        self,
+        nodes: list[AnyNode],
+        schema_path: str | Path | None = None,
+    ) -> list[dict[str, str]]:
+        """Run static checks on parsed AST and return diagnostics.
+
+        Checks: undefined variables, missing datasets, type heuristics,
+        and optionally column validation against a DDL schema file.
+        """
+        diags: list[dict[str, str]] = []
+        lg = self.lineage(nodes)
+        node_map = {n["id"]: n for n in lg.nodes}
+
+        # 1. Variables used in expressions that shadow or duplicate names.
+        #    Without the input dataset schema we cannot distinguish
+        #    legitimate SET inputs from truly undefined variables, so this
+        #    check is deferred to schema validation (check 4 below).
+
+        # 2. Missing datasets — input datasets not produced by prior steps
+        produced: set[str] = set()
+        for n in nodes:
+            if isinstance(n, DataStepNode):
+                produced.add(n.output_dataset.upper())
+            elif isinstance(n, ProcNode) and n.output_table:
+                produced.add(n.output_table.upper())
+        for n in nodes:
+            if isinstance(n, DataStepNode):
+                all_inputs = [n.input_dataset] + n.merge_datasets
+                for ds in all_inputs:
+                    if not ds:
+                        continue
+                    ds_u = ds.upper()
+                    if ds_u not in produced and "MVAR[" not in ds_u:
+                        diags.append({
+                            "level": "info", "code": "MISSING_DATASET",
+                            "dataset": ds,
+                            "message": f"Dataset {ds} is read but not created in this code",
+                        })
+
+        # 3. Type heuristics — fields in arithmetic AND compared to string
+        numeric_ctx: set[str] = set()
+        string_ctx: set[str] = set()
+        for e in lg.edges:
+            expr = e.get("expr", "")
+            src = e["source"]
+            if any(op in expr for op in ("+", "-", "*", "/", "**")):
+                numeric_ctx.add(src)
+            if "'" in expr or '"' in expr:
+                string_ctx.add(src)
+        for f in sorted(numeric_ctx & string_ctx):
+            diags.append({
+                "level": "warning", "code": "TYPE_MISMATCH", "field": f,
+                "message": f"Variable {f} used in both numeric and string contexts",
+            })
+
+        # 4. Schema validation (optional)
+        if schema_path:
+            schema_path = Path(schema_path)
+            if schema_path.exists():
+                schema_cols = _parse_schema_columns(schema_path)
+                for n in nodes:
+                    if isinstance(n, ProcNode) and n.kind == "SQL" and n.input_tables:
+                        for tbl in n.input_tables:
+                            tbl_clean = tbl.split(".")[-1].upper()
+                            if tbl_clean in schema_cols:
+                                valid_cols = schema_cols[tbl_clean]
+                                for alias, expr in n.select_fields:
+                                    if alias == "*":
+                                        continue
+                                    for v in _vars_in_expr(expr):
+                                        if v not in valid_cols and v not in produced:
+                                            diags.append({
+                                                "level": "warning",
+                                                "code": "SCHEMA_MISMATCH",
+                                                "field": v, "table": tbl_clean,
+                                                "message": f"Column {v} not found in schema table {tbl_clean}",
+                                            })
+        return diags

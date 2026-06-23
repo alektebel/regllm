@@ -23,14 +23,14 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="RegLLM — SAS Diff Explainer",
+    title="RegLLM — Regulatory Knowledge Graph Agent",
     description=(
-        "Path-integrated gradient + Shapley attribution for V2→V3 field "
-        "discrepancies in SAS pipelines, grounded by a change-log GraphRAG "
-        "served by a local LLM (Qwen 2.5 by default; Gemma 4 12B on LiteRT-LM "
-        "supported)."
+        "Self-learning agent for banking regulatory compliance (COREP/FINREP). "
+        "Combines a regulatory knowledge graph (KuzuDB), vector search (ChromaDB), "
+        "SAS field attribution (gradient + Shapley), and experience memory to "
+        "validate reporting databases against EBA regulations."
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -41,11 +41,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import agent, diff, embeddings, kb, sas  # noqa: E402
+from api.routers import agent, diff, embeddings, kb, kg, sas  # noqa: E402
 
 app.include_router(sas.router)
 app.include_router(diff.router)
 app.include_router(kb.router)
+app.include_router(kg.router)
 app.include_router(agent.router)
 app.include_router(embeddings.router)
 
