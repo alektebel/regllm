@@ -736,8 +736,14 @@ def _t_search_experience(
     results = store.search_nodes(
         node_types=[NodeType.EXPERIENCE, NodeType.INSIGHT],
         label_contains=query,
-        limit=k,
+        limit=k * 2,  # fetch extra, then sort by priority
     )
+    # Sort insights by priority (feedback > auto-discovered), experiences last
+    def _sort_key(n: Any) -> tuple[float, str]:
+        priority = getattr(n, "priority", 0.5) if hasattr(n, "priority") else 0.5
+        return (-priority, n.label)
+    results.sort(key=_sort_key)
+    results = results[:k]
     return {
         "query": query,
         "results": [n.model_dump() for n in results],
@@ -805,6 +811,263 @@ def _t_save_insight(
     }
 
 
+def _t_save_feedback(
+    feedback_type: str,
+    content: str,
+    original_claim: str = "",
+    corrected_understanding: str = "",
+    related_fields: list[str] | None = None,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    """Save user feedback as a high-priority Insight node."""
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.ontology import Insight, KGEdge, EdgeType
+    import hashlib
+    from datetime import datetime
+
+    ts = datetime.now().isoformat()
+    hash_input = f"feedback:{content}:{ts}"
+    fb_id = f"insight:{hashlib.sha256(hash_input.encode()).hexdigest()[:12]}"
+
+    store.add_node(Insight(
+        id=fb_id,
+        label=f"[feedback] {content[:90]}",
+        summary=content,
+        tags=["feedback"] + (tags or []),
+        priority=1.0,
+        feedback_type=feedback_type,
+        original_claim=original_claim,
+        corrected_understanding=corrected_understanding,
+    ))
+
+    edges_created = 0
+    for field in (related_fields or []):
+        col_id = f"col:{field.upper()}"
+        concept_id = f"concept:{field.upper()}"
+        target = col_id if store.get_node(col_id) else concept_id
+        if store.get_node(target):
+            store.add_edge(KGEdge(
+                src_id=fb_id,
+                dst_id=target,
+                edge_type=EdgeType.RELATES_TO,
+            ))
+            edges_created += 1
+
+    return {"saved": True, "id": fb_id, "edges_created": edges_created}
+
+
+def _t_backtrace_sas_field(
+    target: str,
+    sas_version: str = "v3",
+) -> dict[str, Any]:
+    """Trace a field backward through SAS logic, group leaf ancestors by source table."""
+    from src.sas_logic_tree import SASLogicTree
+    sas = _load_sas(sas_version)
+    if not sas:
+        return {"error": f"no SAS found for version {sas_version}"}
+    tree = SASLogicTree()
+    nodes = tree.parse(sas)
+    trace = tree.trace_lineage(nodes, target)
+    if not trace["found"]:
+        return {"target": target, "found": False, "input_tables": []}
+
+    # Group leaf ancestors (those with no further predecessors) by data step
+    ancestors = trace.get("ancestors", [])
+    layers = trace.get("layers", [])
+    edges = trace.get("edges", [])
+
+    # Find leaf fields (appear in deepest layers or have no outgoing edges in trace)
+    all_sources: set[str] = set()
+    for a in ancestors:
+        all_sources.add(a.upper() if isinstance(a, str) else str(a).upper())
+
+    # Group by data step context from edges
+    table_fields: dict[str, set[str]] = {}
+    for edge in edges:
+        src = edge.get("src", edge.get("from", ""))
+        step = edge.get("data_step", "unknown")
+        if isinstance(src, str):
+            table_fields.setdefault(step, set()).add(src.upper())
+
+    # Build input_tables list
+    input_tables = []
+    for step, fields in sorted(table_fields.items()):
+        input_tables.append({
+            "table": step,
+            "fields": sorted(fields),
+            "field_count": len(fields),
+        })
+
+    return {
+        "target": target,
+        "sas_version": sas_version,
+        "found": True,
+        "ancestor_count": trace["ancestor_count"],
+        "input_tables": input_tables[:20],
+        "layers": layers[:12],
+        "direct_predecessors": trace["direct_predecessors"][:30],
+    }
+
+
+def _t_create_investigation_plan(
+    target_field: str,
+    problem: str,
+    steps: list[str],
+    related_fields: list[str] | None = None,
+    cycles: list[str] | None = None,
+) -> dict[str, Any]:
+    """Persist an investigation plan as an Experience node in the KG."""
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.ontology import Experience, KGEdge, EdgeType
+    import hashlib
+    from datetime import datetime
+
+    ts = datetime.now().isoformat()
+    plan_id = f"exp:plan_{hashlib.sha256(f'{problem}:{ts}'.encode()).hexdigest()[:12]}"
+
+    plan_text = f"Investigation: {problem}\nTarget: {target_field}\n"
+    if cycles:
+        plan_text += f"Cycles: {', '.join(cycles)}\n"
+    plan_text += "Steps:\n" + "\n".join(f"  {i+1}. {s}" for i, s in enumerate(steps))
+
+    store.add_node(Experience(
+        id=plan_id,
+        label=f"[plan] {problem[:80]}",
+        session_id="",
+        question=problem,
+        answer_summary=plan_text,
+        timestamp=ts,
+    ))
+
+    # Link to related fields
+    edges_created = 0
+    for field in (related_fields or []) + [target_field]:
+        for prefix in ("col:", "concept:"):
+            target_id = f"{prefix}{field.upper()}"
+            if store.get_node(target_id):
+                store.add_edge(KGEdge(
+                    src_id=plan_id,
+                    dst_id=target_id,
+                    edge_type=EdgeType.RELATES_TO,
+                ))
+                edges_created += 1
+                break
+
+    return {
+        "saved": True,
+        "id": plan_id,
+        "plan": plan_text,
+        "edges_created": edges_created,
+    }
+
+
+def _t_formulate_data_request(
+    extractions: list[dict[str, Any]],
+    reason: str,
+) -> dict[str, Any]:
+    """Structure data requirements for the user to upload.
+
+    This is a pass-through tool: it formats the request for the UI to render
+    as a data upload card. Each extraction specifies a table, fields, optional
+    filters, cycles, and a human description.
+    """
+    formatted = []
+    for ext in extractions[:10]:
+        formatted.append({
+            "table": ext.get("table", ""),
+            "fields": ext.get("fields", []),
+            "filters": ext.get("filters", ""),
+            "cycles": ext.get("cycles", []),
+            "description": ext.get("description", ""),
+        })
+    return {
+        "data_request": True,
+        "reason": reason,
+        "extractions": formatted,
+        "count": len(formatted),
+    }
+
+
+def _t_analyze_uploaded_data(
+    file_path: str,
+    target_fields: list[str] | None = None,
+    cycle_filter: str | None = None,
+    limit_rows: int = 50,
+) -> dict[str, Any]:
+    """Read a CSV/XLSX from data/uploads/ and return columns, stats, preview rows."""
+    _UPLOADS = _PROJECT_ROOT / "data" / "uploads"
+    # Resolve relative to uploads dir, prevent path traversal
+    fp = (_UPLOADS / file_path).resolve()
+    if not str(fp).startswith(str(_UPLOADS.resolve())):
+        return {"error": "Invalid file path"}
+    if not fp.exists():
+        return {"error": f"File not found: {file_path}"}
+
+    ext = fp.suffix.lower()
+    try:
+        if ext == ".csv":
+            rows = _read_csv(fp)
+        elif ext in (".xlsx", ".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(fp, read_only=True, data_only=True)
+            ws = wb.active
+            if ws is None:
+                return {"error": "Empty workbook"}
+            header = [str(c.value or f"col_{i}") for i, c in enumerate(next(ws.iter_rows(max_row=1)))]
+            rows = []
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                rows.append(dict(zip(header, row)))
+            wb.close()
+        else:
+            return {"error": f"Unsupported format: {ext}"}
+    except Exception as e:
+        return {"error": f"Parse error: {e}"}
+
+    columns = list(rows[0].keys()) if rows else []
+
+    # Apply cycle filter
+    if cycle_filter and rows:
+        cycle_u = cycle_filter.upper()
+        rows = [r for r in rows if any(str(v).upper() == cycle_u for v in r.values())]
+
+    # Filter to target fields if specified
+    if target_fields and rows:
+        tf_set = {f.upper() for f in target_fields}
+        # Keep PK columns + target fields
+        keep = {c for c in columns if c.upper() in tf_set or "CICLO" in c.upper() or "ID" in c.upper()}
+        rows = [{k: v for k, v in r.items() if k in keep} for r in rows]
+
+    # Basic stats for numeric columns
+    stats: dict[str, dict[str, Any]] = {}
+    for col in columns[:30]:
+        vals = [r.get(col) for r in rows if r.get(col) is not None]
+        nums = []
+        for v in vals:
+            try:
+                nums.append(float(v))
+            except (TypeError, ValueError):
+                pass
+        if nums:
+            stats[col] = {
+                "count": len(nums),
+                "min": min(nums),
+                "max": max(nums),
+                "mean": round(sum(nums) / len(nums), 6),
+            }
+
+    return {
+        "file": file_path,
+        "columns": columns,
+        "row_count": len(rows),
+        "stats": stats,
+        "preview": rows[:limit_rows],
+    }
+
+
 TOOL_REGISTRY["query_regulation"] = ToolSpec(
     name="query_regulation",
     description=(
@@ -859,6 +1122,143 @@ TOOL_REGISTRY["trace_regulation_chain"] = ToolSpec(
         "required": ["article_id", "target_column"],
     },
     fn=_t_trace_regulation_chain,
+)
+
+TOOL_REGISTRY["backtrace_sas_field"] = ToolSpec(
+    name="backtrace_sas_field",
+    description=(
+        "Trace a target field backward through SAS logic and group leaf "
+        "ancestor fields by source table/data step. Use this to understand "
+        "which input tables and fields feed into a target calculation, and "
+        "to formulate data requirements for the user to upload."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "target": {"type": "string", "description": "Target field to trace backwards from."},
+            "sas_version": {"type": "string", "enum": ["v2", "v3"], "default": "v3"},
+        },
+        "required": ["target"],
+    },
+    fn=_t_backtrace_sas_field,
+)
+
+TOOL_REGISTRY["create_investigation_plan"] = ToolSpec(
+    name="create_investigation_plan",
+    description=(
+        "Persist an investigation plan for a validation case. Call this after "
+        "you have gathered context from backtrace, regulation, and experience "
+        "tools. The plan is saved as an Experience node in the KG so future "
+        "sessions can recall it."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "target_field": {"type": "string", "description": "Main field under investigation."},
+            "problem": {"type": "string", "description": "Problem description from the user."},
+            "steps": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Ordered investigation steps.",
+            },
+            "related_fields": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Other fields involved.",
+            },
+            "cycles": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Cycle IDs or periods mentioned.",
+            },
+        },
+        "required": ["target_field", "problem", "steps"],
+    },
+    fn=_t_create_investigation_plan,
+)
+
+TOOL_REGISTRY["formulate_data_request"] = ToolSpec(
+    name="formulate_data_request",
+    description=(
+        "Structure a data request for the user. After backtracing dependencies, "
+        "call this to tell the user exactly which tables, fields, and cycles "
+        "they need to extract and upload. The UI renders this as an upload card."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "extractions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "table": {"type": "string"},
+                        "fields": {"type": "array", "items": {"type": "string"}},
+                        "filters": {"type": "string"},
+                        "cycles": {"type": "array", "items": {"type": "string"}},
+                        "description": {"type": "string"},
+                    },
+                },
+                "description": "List of data extractions needed.",
+            },
+            "reason": {"type": "string", "description": "Why this data is needed."},
+        },
+        "required": ["extractions", "reason"],
+    },
+    fn=_t_formulate_data_request,
+)
+
+TOOL_REGISTRY["analyze_uploaded_data"] = ToolSpec(
+    name="analyze_uploaded_data",
+    description=(
+        "Read and analyze a CSV or XLSX file uploaded by the user. Returns "
+        "column names, basic statistics, and a preview of rows. Optionally "
+        "filter by cycle and target fields."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "file_path": {"type": "string", "description": "Relative path within data/uploads/"},
+            "target_fields": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Fields to focus on (keeps PK + these).",
+            },
+            "cycle_filter": {"type": "string", "description": "Filter rows to this cycle ID."},
+            "limit_rows": {"type": "integer", "default": 50},
+        },
+        "required": ["file_path"],
+    },
+    fn=_t_analyze_uploaded_data,
+)
+
+TOOL_REGISTRY["save_feedback"] = ToolSpec(
+    name="save_feedback",
+    description=(
+        "Save user feedback (correction, confirmation, or clarification) as a "
+        "high-priority Insight node. Call this when the user corrects the agent "
+        "or confirms a non-obvious finding. Feedback is recalled first in "
+        "future search_experience results."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "feedback_type": {
+                "type": "string",
+                "enum": ["correction", "confirmation", "clarification"],
+                "description": "Type of feedback.",
+            },
+            "content": {"type": "string", "description": "The feedback content."},
+            "original_claim": {"type": "string", "description": "What was originally said/concluded."},
+            "corrected_understanding": {"type": "string", "description": "The correct understanding."},
+            "related_fields": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Fields this feedback relates to.",
+            },
+            "tags": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Tags for categorization.",
+            },
+        },
+        "required": ["feedback_type", "content"],
+    },
+    fn=_t_save_feedback,
 )
 
 TOOL_REGISTRY["search_experience"] = ToolSpec(

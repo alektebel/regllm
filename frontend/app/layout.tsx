@@ -5,10 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "RegLLM — SAS Diff Explainer",
-  description:
-    "Why does this field differ between table V2 and V3? Path-integrated " +
-    "gradients + Shapley values, grounded by a change-log GraphRAG.",
+  title: "RegLLM",
+  description: "Regulatory compliance investigator for banking reporting databases",
 };
 
 export default function RootLayout({

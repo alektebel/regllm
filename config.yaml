@@ -1,9 +1,10 @@
 # RegLLM model configuration
-# GGUF file / Ollama tag assignments for each role.
+# Models are loaded locally via Ollama from GGUF files.
+# To use a custom GGUF: `ollama create mymodel -f Modelfile` then set the tag below.
 
 # Chat/reasoning LLM — maintains the knowledge graph, runs agentic Q&A
 llm:
-  model: "qwen2.5:14b-instruct-q4_K_M"
+  model: "qwen2.5:14b-instruct-q4_K_M"   # local GGUF via Ollama
   backend: "auto"            # auto | ollama | litert | stub
   ollama_url: "http://localhost:11434"
   litert_url: "http://localhost:9379/v1"
@@ -12,7 +13,7 @@ llm:
 
 # Embedding model — encodes regulation text into the vector store
 embedding:
-  model: "nomic-embed-text"
+  model: "nomic-embed-text"  # local GGUF via Ollama
   dim: 768
   ollama_url: "http://localhost:11434"
 

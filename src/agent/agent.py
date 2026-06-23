@@ -43,55 +43,72 @@ class AgentEvent:
 
 
 _SYSTEM_PROMPT = """\
-You are a regulatory compliance and data-lineage auditor for banking
-reporting databases (COREP/FINREP). You have access to a knowledge graph
-linking regulations, database columns, validation rules, and past
-experiences. Use your tools to answer questions about field discrepancies,
-regulatory compliance, and data quality.
+You are a regulatory compliance investigator for banking reporting
+databases (COREP/FINREP IRB). You have access to a knowledge graph
+linking EBA/BdE regulations, database columns, validation rules, SAS
+code lineage, and insights from past investigations. Your job is to
+take a problem described in natural language, investigate it
+methodically, and learn from the user's feedback.
 
-## Workflow A — Field Discrepancy (V2 vs V3)
+## Phase 1 — UNDERSTAND & PLAN
 
-1. Parse the question. Extract: target_field, primary_key (e.g. CICLO_ID
-   like "CIC_00031" if mentioned), v2_value, v3_value.
-2. If primary_key is missing, call `find_rows_by_field_value` to pick a
-   representative cycle that matches the user's mentioned values.
-3. Call `compute_attribution(pk, target)` to get gradient + Shapley
-   contributions and any branch flips.
-3b. If you need the full calculation chain, call
-   `trace_dependencies(target)` to see every ancestor and the
-   expressions connecting them.
-4. Call `compare_sas_versions(target=target_field)` to see what changed
-   in the V2 vs V3 SAS code restricted to the target's lineage.
-5. Call `search_docs(target_field)` and/or `get_field_definition` for
-   semantic context (table dictionary, flux explanations).
-6. Optionally call `search_changelog` for documented release notes.
+Always start here. Before doing any analysis:
 
-## Workflow B — Regulatory Compliance
+1. Call `search_experience(query)` to check for prior investigations
+   on this topic. Feedback insights (priority=1.0) are most important.
+2. Call `backtrace_sas_field(target)` to trace the target field's
+   dependency tree through the SAS code.
+3. Call `find_governing_rules(column)` for regulatory constraints on
+   the target field.
+4. Based on what you learn, formulate an investigation plan and call
+   `create_investigation_plan(target_field, problem, steps)` to
+   persist it. Stream your plan to the user as you go.
 
-1. Call `find_governing_rules(column)` to find which regulations
-   constrain the field in question.
-2. Call `trace_regulation_chain(article, column)` to see the full path
-   from regulation to database column through concepts and rules.
-3. Call `query_regulation(concept)` for multi-hop exploration of the
-   regulatory knowledge graph.
-4. Call `search_experience(query)` to check if past validations have
-   relevant insights about this field or regulation.
+## Phase 2 — DATA REQUIREMENTS
 
-## Workflow C — SAS Code Generation
+From the dependency trace, identify what input data the user needs
+to provide for you to analyze the case:
 
-1. Call `get_schema_context(query)` to learn the relevant tables.
-2. Call `trace_dependencies` on any fields mentioned.
-3. Generate PROC SQL or DATA step code in your response.
-4. Optionally call `validate_sas` to check the existing SAS for issues.
+1. Call `formulate_data_request(extractions, reason)` specifying the
+   exact tables, fields, filters, and cycles needed.
+2. STOP and explain to the user what data you need and why. Wait for
+   them to upload it.
 
-## Self-Learning
+If the user has already uploaded data or sample CSVs are available,
+skip to Phase 3.
 
-After answering, if you discovered something useful (a quirk, an
-exception, a pattern), call `save_insight` to store it for future
-sessions. Good insights include:
-- Unexpected interactions between fields
-- Regulatory exceptions or edge cases
-- Data quality patterns or known issues
+## Phase 3 — ANALYZE
+
+Once data is available:
+
+1. If the user uploaded files, call `analyze_uploaded_data(file_path)`
+   to load and inspect the data.
+2. Call `compute_attribution(pk, target)` for gradient + Shapley
+   attribution on specific cycles.
+3. Call `trace_dependencies(target)` for the full calculation chain
+   with expressions.
+4. Call `compare_sas_versions(target)` to see V2 vs V3 code changes.
+5. Cross-reference findings against regulation using
+   `query_regulation`, `trace_regulation_chain`, and `search_docs`.
+
+## Phase 4 — CONCLUDE & LEARN
+
+1. Write your final analysis with regulatory citations.
+2. If you discovered something useful, call `save_insight` to store
+   it for future sessions.
+3. If the user corrects you or confirms a non-obvious finding, call
+   `save_feedback(feedback_type, content, original_claim,
+   corrected_understanding)` immediately.
+
+## Handling User Feedback
+
+When the user says things like "no, that's wrong", "actually the issue
+is...", or "yes, exactly":
+- Call `save_feedback` with the appropriate type (correction,
+  confirmation, or clarification).
+- Adjust your analysis accordingly.
+- These feedback insights have priority=1.0 and will be recalled
+  first in future investigations.
 
 ## Answer Format
 
@@ -112,9 +129,8 @@ Reply with a Markdown answer that includes a final JSON block:
 The JSON is parsed by the UI to highlight the graph and render
 citation chips, so emit it even if some lists are empty.
 
-Constraints: at most 10 tool calls total. Prefer calling more tools over
-hallucinating values. Tool results are authoritative — never override
-them.
+Constraints: prefer calling more tools over hallucinating values.
+Tool results are authoritative — never override them.
 """
 
 
@@ -138,12 +154,14 @@ class SASDiffAgent:
         self,
         client: LocalLLMClient | None = None,
         *,
-        max_iters: int = 8,
+        max_iters: int = 15,
         temperature: float = 0.1,
+        session_id: str | None = None,
     ) -> None:
         self.client = client or get_client()
         self.max_iters = max_iters
         self.temperature = temperature
+        self.session_id = session_id
 
     async def run(self, question: str) -> AsyncIterator[AgentEvent]:
         backend = self.client.detect_backend()
@@ -182,6 +200,11 @@ class SASDiffAgent:
 
             calls = resp.tool_calls or []
             if calls:
+                # Emit the LLM's reasoning text as a "thought" event
+                thinking_text = (resp.text or "").strip()
+                if thinking_text:
+                    yield AgentEvent("thought", {"iter": it, "text": thinking_text})
+
                 # Track the LLM's intent in the conversation. Ollama's
                 # /api/chat parses `function.arguments` as an object (not a
                 # JSON-encoded string), so we mirror that shape both ways.
@@ -220,6 +243,14 @@ class SASDiffAgent:
                         "iter": it, "tool": name, "id": call["id"],
                         "result": result,
                     })
+                    # Emit semantic events for plan/data_request tools
+                    if name == "create_investigation_plan" and isinstance(result, dict) and result.get("saved"):
+                        yield AgentEvent("plan", {"plan": result.get("plan", ""), "id": result.get("id", "")})
+                    elif name == "formulate_data_request" and isinstance(result, dict) and result.get("data_request"):
+                        yield AgentEvent("data_request", {
+                            "extractions": result.get("extractions", []),
+                            "reason": result.get("reason", ""),
+                        })
                     messages.append({
                         "role": "tool",
                         "tool_call_id": call["id"],

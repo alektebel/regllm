@@ -35,8 +35,10 @@ _INDEX_PATH = _DOCS_ROOT / "index.json"
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=3)
-    max_iters: int = 8
+    max_iters: int = 15
     temperature: float = 0.1
+    session_id: str | None = None
+    context: list[dict] | None = None  # injected system messages (e.g. upload notifications)
 
 
 # ── /agent/ask  (SSE) ────────────────────────────────────────────────────────
@@ -47,12 +49,37 @@ def _sse_event(event: dict) -> bytes:
     return ("data: " + json.dumps(event, default=str) + "\n\n").encode("utf-8")
 
 
-async def _stream(question: str, *, max_iters: int, temperature: float) -> AsyncIterator[bytes]:
+async def _stream(
+    question: str,
+    *,
+    max_iters: int,
+    temperature: float,
+    session_id: str | None = None,
+    context: list[dict] | None = None,
+) -> AsyncIterator[bytes]:
     from src.agent import SASDiffAgent
 
-    agent = SASDiffAgent(max_iters=max_iters, temperature=temperature)
+    agent = SASDiffAgent(
+        max_iters=max_iters,
+        temperature=temperature,
+        session_id=session_id,
+    )
+
+    # Build effective question with any injected context
+    effective_question = question
+    if context:
+        ctx_text = "\n".join(
+            f"[{c.get('role', 'system')}] {c.get('content', '')}"
+            for c in context
+        )
+        effective_question = f"{ctx_text}\n\nUser question: {question}"
+
+    # Save session state if session_id provided
+    if session_id:
+        _save_session(session_id, question, context)
+
     try:
-        async for ev in agent.run(question):
+        async for ev in agent.run(effective_question):
             yield _sse_event(ev.to_dict())
     except Exception as e:
         logger.exception("Agent run failed")
@@ -63,13 +90,86 @@ async def _stream(question: str, *, max_iters: int, temperature: float) -> Async
 @router.post("/ask")
 async def ask(req: AskRequest) -> StreamingResponse:
     return StreamingResponse(
-        _stream(req.question, max_iters=req.max_iters, temperature=req.temperature),
+        _stream(
+            req.question,
+            max_iters=req.max_iters,
+            temperature=req.temperature,
+            session_id=req.session_id,
+            context=req.context,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ── Session state ────────────────────────────────────────────────────────────
+
+_SESSIONS_ROOT = _PROJECT_ROOT / "data" / "sessions"
+_UPLOADS_ROOT = _PROJECT_ROOT / "data" / "uploads"
+
+
+def _save_session(session_id: str, question: str, context: list[dict] | None) -> None:
+    _SESSIONS_ROOT.mkdir(parents=True, exist_ok=True)
+    session_file = _SESSIONS_ROOT / f"{session_id}.json"
+    data: dict = {}
+    if session_file.exists():
+        data = json.loads(session_file.read_text(encoding="utf-8"))
+    if "questions" not in data:
+        data["questions"] = []
+    data["questions"].append({"question": question, "context": context})
+    session_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+
+
+# ── /agent/data/upload ──────────────────────────────────────────────────────
+
+
+@router.post("/data/upload")
+async def upload_data(
+    files: list[UploadFile] = File(...),
+    session_id: str = Form("default"),
+) -> dict:
+    """Upload CSV/XLSX data files for the agent to analyze."""
+    target_dir = _UPLOADS_ROOT / session_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    results: list[dict] = []
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in {".csv", ".xlsx", ".xls"}:
+            raise HTTPException(400, f"Only .csv and .xlsx files allowed (got {ext!r})")
+        target = target_dir / Path(f.filename or "").name
+        with target.open("wb") as out:
+            shutil.copyfileobj(f.file, out)
+        # Parse and return preview
+        file_info: dict = {"file": target.name, "path": f"{session_id}/{target.name}"}
+        try:
+            if ext == ".csv":
+                import csv as csv_mod
+                with target.open(encoding="utf-8") as cf:
+                    reader = csv_mod.DictReader(cf)
+                    rows = list(reader)
+                file_info["columns"] = list(rows[0].keys()) if rows else []
+                file_info["row_count"] = len(rows)
+                file_info["preview"] = rows[:5]
+            elif ext in (".xlsx", ".xls"):
+                import openpyxl
+                wb = openpyxl.load_workbook(target, read_only=True, data_only=True)
+                ws = wb.active
+                if ws is not None:
+                    header = [str(c.value or f"col_{i}") for i, c in enumerate(next(ws.iter_rows(max_row=1)))]
+                    rows = []
+                    for row in ws.iter_rows(min_row=2, values_only=True):
+                        rows.append(dict(zip(header, row)))
+                    file_info["columns"] = header
+                    file_info["row_count"] = len(rows)
+                    file_info["preview"] = rows[:5]
+                wb.close()
+        except Exception as e:
+            file_info["parse_error"] = str(e)
+        results.append(file_info)
+    return {"session_id": session_id, "files": results}
 
 
 # ── /agent/sas/upload ────────────────────────────────────────────────────────

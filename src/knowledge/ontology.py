@@ -137,6 +137,10 @@ class Insight(KGNode):
     node_type: NodeType = NodeType.INSIGHT
     summary: str = ""
     tags: list[str] = Field(default_factory=list)
+    priority: float = 0.5  # feedback=1.0, auto-discovered=0.5
+    feedback_type: str = ""  # "correction", "confirmation", "clarification"
+    original_claim: str = ""
+    corrected_understanding: str = ""
 
 
 # ── Edge model ───────────────────────────────────────────────────────────────

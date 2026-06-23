@@ -26,6 +26,12 @@ def test_registry_has_expected_tools() -> None:
         "trace_regulation_chain",
         "search_experience",
         "save_insight",
+        # New investigation tools
+        "backtrace_sas_field",
+        "create_investigation_plan",
+        "formulate_data_request",
+        "analyze_uploaded_data",
+        "save_feedback",
     }
     assert expected == set(TOOL_REGISTRY)
 
@@ -174,3 +180,164 @@ def test_validate_sas_clean_code(monkeypatch) -> None:
     out = _t_validate_sas("v3")
     errors = [d for d in out["diagnostics"] if d["level"] == "error"]
     assert len(errors) == 0
+
+
+# ── New investigation tools ─────────────────────────────────────────────────
+
+
+def test_backtrace_sas_field(monkeypatch) -> None:
+    from pathlib import Path
+    sample = Path(__file__).resolve().parent.parent / "data" / "samples" / "sample_lgd.sas"
+    sas_text = sample.read_text(encoding="utf-8")
+    import src.agent.tools as _tools
+    monkeypatch.setattr(_tools, "_load_sas", lambda version: sas_text)
+    from src.agent.tools import _t_backtrace_sas_field
+    out = _t_backtrace_sas_field("ECL", "v3")
+    assert out["found"] is True
+    assert out["ancestor_count"] >= 3
+    assert len(out["input_tables"]) > 0
+    # Each input table entry should have fields
+    for t in out["input_tables"]:
+        assert "table" in t
+        assert "fields" in t
+        assert len(t["fields"]) > 0
+
+
+def test_backtrace_sas_field_not_found(monkeypatch) -> None:
+    import src.agent.tools as _tools
+    monkeypatch.setattr(_tools, "_load_sas", lambda version: "DATA work.out; X = 1; RUN;")
+    from src.agent.tools import _t_backtrace_sas_field
+    out = _t_backtrace_sas_field("NONEXISTENT_FIELD", "v3")
+    assert out["found"] is False
+
+
+def test_formulate_data_request() -> None:
+    from src.agent.tools import _t_formulate_data_request
+    out = _t_formulate_data_request(
+        extractions=[
+            {"table": "contratos", "fields": ["PD_ESTIMADA", "LGD_ESTIMADA"], "cycles": ["202312"]},
+            {"table": "garantias", "fields": ["VALOR_GARANTIA"], "description": "Collateral values"},
+        ],
+        reason="Need to verify LGD floor application",
+    )
+    assert out["data_request"] is True
+    assert out["count"] == 2
+    assert out["extractions"][0]["table"] == "contratos"
+    assert "PD_ESTIMADA" in out["extractions"][0]["fields"]
+
+
+def test_analyze_uploaded_data_csv(tmp_path, monkeypatch) -> None:
+    # Create a test CSV in data/uploads/ under fake project root
+    import src.agent.tools as _tools
+    uploads = tmp_path / "data" / "uploads"
+    uploads.mkdir(parents=True)
+    csv_file = uploads / "test.csv"
+    csv_file.write_text("CICLO_ID,PD_ESTIMADA,LGD_ESTIMADA\nCIC_001,0.05,0.45\nCIC_002,0.10,0.50\n")
+    monkeypatch.setattr(_tools, "_PROJECT_ROOT", tmp_path)
+    from src.agent.tools import _t_analyze_uploaded_data
+    out = _t_analyze_uploaded_data("test.csv")
+    assert out["row_count"] == 2
+    assert "PD_ESTIMADA" in out["columns"]
+    assert len(out["preview"]) == 2
+    assert "PD_ESTIMADA" in out["stats"]
+
+
+def test_analyze_uploaded_data_with_filter(tmp_path, monkeypatch) -> None:
+    import src.agent.tools as _tools
+    uploads = tmp_path / "data" / "uploads"
+    uploads.mkdir(parents=True)
+    csv_file = uploads / "data.csv"
+    csv_file.write_text("CICLO_ID,VALUE\nCIC_001,10\nCIC_002,20\nCIC_001,30\n")
+    monkeypatch.setattr(_tools, "_PROJECT_ROOT", tmp_path)
+    from src.agent.tools import _t_analyze_uploaded_data
+    out = _t_analyze_uploaded_data("data.csv", cycle_filter="CIC_001")
+    assert out["row_count"] == 2  # only CIC_001 rows
+
+
+def test_analyze_uploaded_data_missing_file(tmp_path, monkeypatch) -> None:
+    import src.agent.tools as _tools
+    uploads = tmp_path / "data" / "uploads"
+    uploads.mkdir(parents=True)
+    monkeypatch.setattr(_tools, "_PROJECT_ROOT", tmp_path)
+    from src.agent.tools import _t_analyze_uploaded_data
+    out = _t_analyze_uploaded_data("nonexistent.csv")
+    assert "error" in out
+
+
+def test_create_investigation_plan(monkeypatch) -> None:
+    """Test plan creation with a mocked GraphStore."""
+    from unittest.mock import MagicMock
+    import src.agent.tools as _tools
+
+    mock_store = MagicMock()
+    mock_store.get_node.return_value = None  # no linked nodes
+    monkeypatch.setattr(_tools, "_graph_store", mock_store)
+
+    from src.agent.tools import _t_create_investigation_plan
+    out = _t_create_investigation_plan(
+        target_field="LGD_ESTIMADA",
+        problem="LGD shows 0 for cycle 202312 on guaranteed segments",
+        steps=[
+            "Trace LGD_ESTIMADA dependencies",
+            "Check LGD floor regulation",
+            "Request data for cycle 202312",
+        ],
+        cycles=["202312"],
+    )
+    assert out["saved"] is True
+    assert "plan" in out
+    assert "LGD_ESTIMADA" in out["plan"]
+    assert "202312" in out["plan"]
+    mock_store.add_node.assert_called_once()
+
+
+def test_save_feedback(monkeypatch) -> None:
+    """Test feedback saving with a mocked GraphStore."""
+    from unittest.mock import MagicMock
+    import src.agent.tools as _tools
+
+    mock_store = MagicMock()
+    mock_store.get_node.return_value = None
+    monkeypatch.setattr(_tools, "_graph_store", mock_store)
+
+    from src.agent.tools import _t_save_feedback
+    out = _t_save_feedback(
+        feedback_type="correction",
+        content="The LGD floor is 0.25 not 0.20",
+        original_claim="LGD floor is 0.20 for CORP segment",
+        corrected_understanding="LGD floor for CORP changed to 0.25 in Circular 4/2022",
+        related_fields=["LGD_ESTIMADA"],
+    )
+    assert out["saved"] is True
+    # Verify the Insight node was created with priority=1.0
+    call_args = mock_store.add_node.call_args
+    node = call_args[0][0]
+    assert node.priority == 1.0
+    assert node.feedback_type == "correction"
+    assert "feedback" in node.tags
+
+
+def test_search_experience_priority_sort(monkeypatch) -> None:
+    """Verify search_experience returns feedback (priority=1.0) before auto-insights."""
+    from unittest.mock import MagicMock
+    from src.knowledge.ontology import Insight, NodeType
+    import src.agent.tools as _tools
+
+    auto_insight = Insight(
+        id="ins:auto", label="auto insight", summary="discovered", priority=0.5,
+    )
+    feedback_insight = Insight(
+        id="ins:fb", label="feedback insight", summary="corrected", priority=1.0,
+        feedback_type="correction",
+    )
+
+    mock_store = MagicMock()
+    mock_store.search_nodes.return_value = [auto_insight, feedback_insight]
+    monkeypatch.setattr(_tools, "_graph_store", mock_store)
+
+    from src.agent.tools import _t_search_experience
+    out = _t_search_experience("LGD", k=5)
+    assert out["count"] == 2
+    # Feedback should come first
+    assert out["results"][0]["id"] == "ins:fb"
+    assert out["results"][1]["id"] == "ins:auto"
