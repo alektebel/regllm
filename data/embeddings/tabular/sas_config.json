@@ -1,0 +1,221 @@
+{
+  "categorical_cols": [
+    "SEGMENTO",
+    "CALIBRATION_SEGMENT",
+    "PRODUCTO",
+    "TERMINACION",
+    "CAUSA_DEFAULT",
+    "COLATERAL_TIPO",
+    "ADJUDICACION_TIPO",
+    "ESTADO_CICLO"
+  ],
+  "numeric_cols": [
+    "OR_DISPTO",
+    "VALOR_COLATERAL_INICIAL",
+    "TIPO_INTERES_ORIGINAL",
+    "MES_CICLO",
+    "PD_ESTIMADA",
+    "LGD_ESTIMADA",
+    "LGD_REALIZADA",
+    "EAD",
+    "ECL",
+    "PROVISION",
+    "STAGE_IFRS9",
+    "CURE_FLAG",
+    "DPDS",
+    "RATING_GRADO",
+    "SALDO_PENDIENTE",
+    "TIPO_INTERES_ACTUAL",
+    "INTERESES_ACUMULADOS",
+    "FLUJO_RECUPERADO",
+    "COSTE_RECUPERACION",
+    "FLUJO_NETO",
+    "RECUPERACION_ACUMULADA",
+    "COSTE_TOTAL_ACUMULADO",
+    "ADJUDICACION_FLAG",
+    "ADJUDICACION_VALOR",
+    "VALOR_COLATERAL",
+    "LTV",
+    "TASA_DESCUENTO",
+    "RWA"
+  ],
+  "metadata_cols": [
+    "FECHA_DEFAULT",
+    "ID_CONTR_CICLO_LGD",
+    "ID_FUSION_FINAL",
+    "FECHA_REFERENCIA"
+  ],
+  "cat_values": {
+    "SEGMENTO": [
+      "CORP",
+      "MORTGAGE",
+      "RETAIL",
+      "SME"
+    ],
+    "CALIBRATION_SEGMENT": [
+      "CORP_LARGE",
+      "CORP_MID",
+      "CORP_SMALL",
+      "MORTGAGE_LTV_HIGH",
+      "MORTGAGE_LTV_LOW",
+      "MORTGAGE_LTV_MED",
+      "RETAIL_OTHER",
+      "RETAIL_REVOLVING",
+      "SME_MEDIUM",
+      "SME_MICRO",
+      "SME_SMALL"
+    ],
+    "PRODUCTO": [
+      "HIPOTECA",
+      "LINEA_CREDITO",
+      "PRESTAMO",
+      "TARJETA"
+    ],
+    "TERMINACION": [
+      "DACCION_PAGO",
+      "FALLIDO",
+      "LIQUIDACION",
+      "PAGO_VOLUNTARIO",
+      "SUBASTA",
+      "VENTA_CARTERA"
+    ],
+    "CAUSA_DEFAULT": [
+      "90_DIAS_VENCIDO",
+      "IMPROBABLE_PAGO",
+      "QUIEBRA"
+    ],
+    "COLATERAL_TIPO": [
+      "FINANCIERO",
+      "GARANTIA_PERSONAL",
+      "HIPOTECA",
+      "NINGUNA",
+      "PRENDA"
+    ],
+    "ADJUDICACION_TIPO": [
+      "DACION_PAGO",
+      "SUBASTA_INMOBILIARIA",
+      "SUBASTA_MUEBLE",
+      "VENTA_EXTRAJUDICIAL",
+      "VENTA_JUDICIAL"
+    ],
+    "ESTADO_CICLO": [
+      "CERRADO",
+      "ESTIMACION",
+      "RECUPERACION"
+    ]
+  },
+  "num_params": {
+    "OR_DISPTO": {
+      "min": 3089.92,
+      "range": 9971251.88
+    },
+    "VALOR_COLATERAL_INICIAL": {
+      "min": 0.0,
+      "range": 7331853.24
+    },
+    "TIPO_INTERES_ORIGINAL": {
+      "min": 0.01528,
+      "range": 0.23438
+    },
+    "MES_CICLO": {
+      "min": 1.0,
+      "range": 83.0
+    },
+    "PD_ESTIMADA": {
+      "min": 0.0003,
+      "range": 0.9997
+    },
+    "LGD_ESTIMADA": {
+      "min": 0.05376373,
+      "range": 0.94623627
+    },
+    "LGD_REALIZADA": {
+      "min": 0.05359046,
+      "range": 0.94640954
+    },
+    "EAD": {
+      "min": 2806.16,
+      "range": 8389751.379999999
+    },
+    "ECL": {
+      "min": 4.27,
+      "range": 6121370.99
+    },
+    "PROVISION": {
+      "min": 4.27,
+      "range": 6121370.99
+    },
+    "STAGE_IFRS9": {
+      "min": 1.0,
+      "range": 2.0
+    },
+    "CURE_FLAG": {
+      "min": 0.0,
+      "range": 1.0
+    },
+    "DPDS": {
+      "min": 30.0,
+      "range": 2490.0
+    },
+    "RATING_GRADO": {
+      "min": 1.0,
+      "range": 9.0
+    },
+    "SALDO_PENDIENTE": {
+      "min": 121.88,
+      "range": 9974219.92
+    },
+    "TIPO_INTERES_ACTUAL": {
+      "min": 0.01517,
+      "range": 0.23449
+    },
+    "INTERESES_ACUMULADOS": {
+      "min": 13.4,
+      "range": 11085067.6
+    },
+    "FLUJO_RECUPERADO": {
+      "min": 0.0,
+      "range": 2626696.12
+    },
+    "COSTE_RECUPERACION": {
+      "min": 0.0,
+      "range": 123832.69
+    },
+    "FLUJO_NETO": {
+      "min": 0.0,
+      "range": 2509986.18
+    },
+    "RECUPERACION_ACUMULADA": {
+      "min": 0.0,
+      "range": 8241710.6
+    },
+    "COSTE_TOTAL_ACUMULADO": {
+      "min": 0.0,
+      "range": 257770.19
+    },
+    "ADJUDICACION_FLAG": {
+      "min": 0.0,
+      "range": 1.0
+    },
+    "ADJUDICACION_VALOR": {
+      "min": 0.0,
+      "range": 2860156.97
+    },
+    "VALOR_COLATERAL": {
+      "min": 0.0,
+      "range": 7305505.93
+    },
+    "LTV": {
+      "min": 0.0,
+      "range": 3.188509
+    },
+    "TASA_DESCUENTO": {
+      "min": 0.015137,
+      "range": 0.039708
+    },
+    "RWA": {
+      "min": 181.48,
+      "range": 779649.15
+    }
+  }
+}
