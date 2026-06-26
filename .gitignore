@@ -55,8 +55,10 @@ data/docs/embeddings.json
 
 # Training / ML artifacts (large)
 training/output/
+autoresearch/output/
 mlruns/
 unsloth_compiled_cache/
 data/embeddings/
 data/sessions/
 data/eval_results*.json
+autoresearch/mlflow.db
