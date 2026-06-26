@@ -429,19 +429,19 @@ class TestEGPUploadEndpoint:
         resp = client.post(
             "/agent/sas/upload-egp",
             files={"file": ("test_project.egp", egp_bytes, "application/octet-stream")},
-            data={"version": "v3"},
+            data={"session_id": "test_session"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["blocks_extracted"] >= 5
-        assert len(data["saved"]) >= 5
-        assert data["version"] == "v3"
+        assert len(data["blocks_metadata"]) >= 5
+        assert data["session_id"] == "test_session"
 
     def test_upload_non_egp_rejected(self, client):
         resp = client.post(
             "/agent/sas/upload-egp",
             files={"file": ("test.sas", b"DATA x; RUN;", "text/plain")},
-            data={"version": "v3"},
+            data={"session_id": "test_session"},
         )
         assert resp.status_code == 400
 
@@ -452,7 +452,7 @@ class TestEGPUploadEndpoint:
         resp = client.post(
             "/agent/sas/upload",
             files={"files": ("project.egp", egp_bytes, "application/octet-stream")},
-            data={"version": "v2"},
+            data={"session_id": "test_session_2"},
         )
         assert resp.status_code == 200
         data = resp.json()

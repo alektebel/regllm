@@ -76,7 +76,7 @@ def test_dispatches_tool_then_finalises() -> None:
             backend="ollama", model="scripted",
             tool_calls=[{
                 "id": "c0", "name": "inspect_lineage",
-                "arguments": {"target": "ECL", "sas_version": "v3"},
+                "arguments": {"target": "ECL", "session_id": "default"},
             }],
         ),
         ChatResponse(
@@ -114,7 +114,7 @@ def test_loop_guard_breaks_on_repeated_call() -> None:
         backend="ollama", model="scripted",
         tool_calls=[{
             "id": "c", "name": "inspect_lineage",
-            "arguments": {"target": "ECL", "sas_version": "v3"},
+            "arguments": {"target": "ECL", "session_id": "default"},
         }],
     )
     # Repeat the same tool call indefinitely — agent should detect the loop
@@ -126,16 +126,17 @@ def test_loop_guard_breaks_on_repeated_call() -> None:
 
 def test_max_iters_triggers_synthesis() -> None:
     # 5 distinct tool calls, never terminates → max_iters reached after 3
+    targets = ["ECL", "LGD_ESTIMADA", "PD_ESTIMADA", "EAD", "RWA"]
     distinct = [
         ChatResponse(
             text="",
             backend="ollama", model="scripted",
             tool_calls=[{
                 "id": f"c{i}", "name": "inspect_lineage",
-                "arguments": {"target": "ECL", "sas_version": v},
+                "arguments": {"target": t, "session_id": "default"},
             }],
         )
-        for i, v in enumerate(["v3", "v2", "v3", "v2", "v3"])
+        for i, t in enumerate(targets)
     ]
     agent = SASDiffAgent(client=_ScriptedLLM(distinct), max_iters=3)
     events = _collect(agent, "exhaust me")

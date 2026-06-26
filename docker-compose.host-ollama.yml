@@ -28,3 +28,6 @@ services:
     depends_on: !reset []
     environment:
       OLLAMA_URL: "http://host.docker.internal:11434"
+      # Olmo 7B SFT via training/serve_peft_agent.py on the host (port 8767)
+      REGLLM_LLM: "${REGLLM_LLM:-auto}"
+      LITERT_URL: "${LITERT_URL:-http://host.docker.internal:8767/v1}"

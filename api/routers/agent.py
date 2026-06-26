@@ -3,7 +3,7 @@
 Endpoints
 ---------
 POST /agent/ask                    SSE stream of agent events for one question
-POST /agent/sas/upload             Upload .sas files into data/sas/{v2|v3}/
+POST /agent/sas/upload             Upload .sas/.egp files into data/sas/sessions/{session_id}/
 POST /agent/docs/reindex           Rebuild the BM25 docs index
 GET  /agent/status                 Counts + active LLM backend/model
 """
@@ -38,7 +38,10 @@ class AskRequest(BaseModel):
     max_iters: int = 15
     temperature: float = 0.1
     session_id: str | None = None
+    sas_session_id: str | None = "debug_lgd"  # SAS code folder under data/sas/sessions/
     context: list[dict] | None = None  # injected system messages (e.g. upload notifications)
+    model: str | None = None           # override Ollama model (e.g. "llama3.2")
+    tool_names: list[str] | None = None  # restrict to subset of tools
 
 
 # ── /agent/ask  (SSE) ────────────────────────────────────────────────────────
@@ -55,7 +58,10 @@ async def _stream(
     max_iters: int,
     temperature: float,
     session_id: str | None = None,
+    sas_session_id: str | None = "debug_lgd",
     context: list[dict] | None = None,
+    model: str | None = None,
+    tool_names: list[str] | None = None,
 ) -> AsyncIterator[bytes]:
     from src.agent import SASDiffAgent
 
@@ -63,6 +69,9 @@ async def _stream(
         max_iters=max_iters,
         temperature=temperature,
         session_id=session_id,
+        sas_session_id=sas_session_id,
+        model=model,
+        tool_names=tool_names,
     )
 
     # Build effective question with any injected context
@@ -95,7 +104,10 @@ async def ask(req: AskRequest) -> StreamingResponse:
             max_iters=req.max_iters,
             temperature=req.temperature,
             session_id=req.session_id,
+            sas_session_id=req.sas_session_id,
             context=req.context,
+            model=req.model,
+            tool_names=req.tool_names,
         ),
         media_type="text/event-stream",
         headers={
@@ -174,39 +186,25 @@ async def upload_data(
 
 # ── /agent/sas/upload ────────────────────────────────────────────────────────
 
-
-@router.post("/sas/upload")
-async def upload_sas(
-    files: list[UploadFile] = File(...),
-    version: str = Form(...),
-) -> dict:
-    if version not in {"v2", "v3"}:
-        raise HTTPException(400, "version must be 'v2' or 'v3'")
-    target_dir = _SAS_ROOT / version
-    target_dir.mkdir(parents=True, exist_ok=True)
-    saved: list[str] = []
-    for f in files:
-        ext = Path(f.filename or "").suffix.lower()
-        if ext not in {".sas", ".egp"}:
-            raise HTTPException(400, f"Only .sas and .egp files allowed (got {ext!r})")
-        if ext == ".egp":
-            # Parse .egp in a temp file → extract SAS blocks → save as .sas
-            extracted = _extract_egp(f, target_dir)
-            saved.extend(extracted)
-        else:
-            target = target_dir / Path(f.filename or "").name
-            with target.open("wb") as out:
-                shutil.copyfileobj(f.file, out)
-            saved.append(target.name)
-    return {"version": version, "saved": saved, "folder": str(target_dir)}
+_SAS_SESSIONS_ROOT = _SAS_ROOT / "sessions"
 
 
-def _extract_egp(upload: UploadFile, target_dir: Path) -> list[str]:
-    """Parse an .egp upload into individual .sas files in target_dir."""
+def _sanitize_filename(name: str) -> str:
+    """Convert a task name to a safe filename component."""
+    import re
+    name = re.sub(r"[^\w\s-]", "", name)
+    name = re.sub(r"[\s]+", "_", name).strip("_")
+    return name[:60] or "unnamed"
+
+
+def _extract_egp(
+    upload: UploadFile, target_dir: Path,
+) -> list[dict]:
+    """Parse an .egp upload into individual .sas files + metadata."""
     import tempfile
     from src.sas_parser import SASParser
 
-    saved: list[str] = []
+    blocks_metadata: list[dict] = []
     egp_stem = Path(upload.filename or "project").stem
 
     with tempfile.NamedTemporaryFile(suffix=".egp", delete=False) as tmp:
@@ -223,60 +221,101 @@ def _extract_egp(upload: UploadFile, target_dir: Path) -> list[str]:
                 "The .egp file may be empty or in an unsupported format.",
             )
         for i, block in enumerate(blocks):
-            # Sanitize task name into a filename
             safe_name = _sanitize_filename(block.task_name or f"block_{i}")
             fname = f"{egp_stem}_{safe_name}.sas"
             out_path = target_dir / fname
             out_path.write_text(block.code, encoding="utf-8")
-            saved.append(fname)
+            blocks_metadata.append({
+                "filename": fname,
+                "task_name": block.task_name or f"block_{i}",
+                "block_type": block.block_type,
+                "order": i,
+                "line_count": len(block.code.splitlines()),
+            })
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    return saved
+    return blocks_metadata
 
 
-def _sanitize_filename(name: str) -> str:
-    """Convert a task name to a safe filename component."""
-    import re
-    name = re.sub(r"[^\w\s-]", "", name)
-    name = re.sub(r"[\s]+", "_", name).strip("_")
-    return name[:60] or "unnamed"
+def _write_manifest(
+    target_dir: Path, source_file: str, blocks_metadata: list[dict],
+) -> None:
+    """Write a project manifest alongside extracted .sas files."""
+    from datetime import datetime
+    manifest = {
+        "source_file": source_file,
+        "extracted_at": datetime.now().isoformat(),
+        "blocks": blocks_metadata,
+    }
+    (target_dir / "_project_manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8",
+    )
+
+
+@router.post("/sas/upload")
+async def upload_sas(
+    files: list[UploadFile] = File(...),
+    session_id: str = Form("default"),
+) -> dict:
+    """Upload .sas or .egp files into data/sas/sessions/{session_id}/."""
+    target_dir = _SAS_SESSIONS_ROOT / session_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[str] = []
+    all_metadata: list[dict] = []
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in {".sas", ".egp"}:
+            raise HTTPException(400, f"Only .sas and .egp files allowed (got {ext!r})")
+        if ext == ".egp":
+            metadata = _extract_egp(f, target_dir)
+            all_metadata.extend(metadata)
+            saved.extend(m["filename"] for m in metadata)
+            _write_manifest(target_dir, f.filename or "project.egp", metadata)
+        else:
+            target = target_dir / Path(f.filename or "").name
+            with target.open("wb") as out:
+                shutil.copyfileobj(f.file, out)
+            saved.append(target.name)
+    return {
+        "session_id": session_id,
+        "saved": saved,
+        "blocks_metadata": all_metadata,
+        "folder": str(target_dir),
+    }
 
 
 @router.post("/sas/upload-egp")
 async def upload_egp(
     file: UploadFile = File(...),
-    version: str = Form(...),
+    session_id: str = Form("default"),
 ) -> dict:
     """Upload a .egp (SAS Enterprise Guide project) file.
 
     Extracts all SAS code blocks from the project and saves them as
-    individual .sas files into data/sas/{version}/.
+    individual .sas files into data/sas/sessions/{session_id}/.
     """
-    if version not in {"v2", "v3"}:
-        raise HTTPException(400, "version must be 'v2' or 'v3'")
     ext = Path(file.filename or "").suffix.lower()
     if ext != ".egp":
         raise HTTPException(400, f"Only .egp files allowed (got {ext!r})")
 
-    target_dir = _SAS_ROOT / version
+    target_dir = _SAS_SESSIONS_ROOT / session_id
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    saved = _extract_egp(file, target_dir)
+    blocks_metadata = _extract_egp(file, target_dir)
+    _write_manifest(target_dir, file.filename or "project.egp", blocks_metadata)
     return {
-        "version": version,
+        "session_id": session_id,
         "source_file": file.filename,
-        "blocks_extracted": len(saved),
-        "saved": saved,
+        "blocks_extracted": len(blocks_metadata),
+        "blocks_metadata": blocks_metadata,
         "folder": str(target_dir),
     }
 
 
-@router.delete("/sas/{version}/{name}")
-def delete_sas(version: str, name: str) -> dict:
-    if version not in {"v2", "v3"}:
-        raise HTTPException(400, "version must be 'v2' or 'v3'")
-    target = _SAS_ROOT / version / name
+@router.delete("/sas/{session_id}/{name}")
+def delete_sas(session_id: str, name: str) -> dict:
+    target = _SAS_SESSIONS_ROOT / session_id / name
     if not target.exists():
         raise HTTPException(404, f"{target} not found")
     target.unlink()
@@ -332,12 +371,15 @@ async def upload_docs(
 # ── /agent/status ────────────────────────────────────────────────────────────
 
 
-def _count_sas(version: str) -> dict:
-    folder = _SAS_ROOT / version
-    if not folder.exists():
-        return {"folder": str(folder), "count": 0, "files": []}
-    files = sorted(str(p.relative_to(folder)) for p in folder.rglob("*.sas"))
-    return {"folder": str(folder), "count": len(files), "files": files}
+def _count_sas_sessions() -> dict:
+    """Count SAS files per session."""
+    sessions: dict[str, dict] = {}
+    if _SAS_SESSIONS_ROOT.exists():
+        for d in sorted(_SAS_SESSIONS_ROOT.iterdir()):
+            if d.is_dir():
+                files = sorted(str(p.name) for p in d.rglob("*.sas"))
+                sessions[d.name] = {"count": len(files), "files": files}
+    return sessions
 
 
 @router.get("/status")
@@ -357,7 +399,7 @@ def status() -> dict:
     return {
         "llm": {"backend": backend, "model": model},
         "tools": list(TOOL_REGISTRY.keys()),
-        "sas": {"v2": _count_sas("v2"), "v3": _count_sas("v3")},
+        "sas_sessions": _count_sas_sessions(),
         "docs": {
             "root": str(_DOCS_ROOT),
             "sections": idx.section_count(),

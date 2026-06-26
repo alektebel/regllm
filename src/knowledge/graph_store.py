@@ -416,7 +416,11 @@ class GraphStore:
     def _row_to_node(self, row: list[Any]) -> KGNode:
         """Convert a query row [id, node_type, label, props] to a typed node."""
         nid, ntype_str, label, props_str = row[0], row[1], row[2], row[3]
-        props = json.loads(props_str) if props_str else {}
+        try:
+            props = json.loads(props_str) if props_str else {}
+        except json.JSONDecodeError:
+            logger.warning("Invalid JSON in props for node %s, using empty dict", nid)
+            props = {}
         node_type = NodeType(ntype_str)
         cls = NODE_CLASSES.get(node_type, KGNode)
         return cls(id=nid, node_type=node_type, label=label, **props)

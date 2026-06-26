@@ -22,6 +22,31 @@ import type {
 } from "@/app/page";
 
 const API = "/api";
+const DEFAULT_SAS_SESSION = "debug_lgd";
+
+const LLM_OPTIONS = [
+  { id: "peft:olmo3-7b", label: "Olmo 3 7B SFT (PEFT local)" },
+  { id: "regllm-4b-sft", label: "RegLLM 4B SFT (Ollama)" },
+  { id: "qwen2.5:14b-instruct-q4_K_M", label: "Qwen2.5 14B (Ollama)" },
+  { id: "regllm-olmo3-7b-sft", label: "Olmo 3 7B SFT (Ollama, tras export)" },
+] as const;
+
+const DEFAULT_LLM_MODEL = LLM_OPTIONS[0].id;
+
+const EXAMPLE_PROMPTS = [
+  {
+    label: "Comparar 3 ciclos fusionados",
+    text: "En debug_lgd compara CIC_00042, CIC_00043 y CIC_00044 (SW_FUSION=1, FUS_7712). ¿Valores exactos en BDD de LGD_ESTIMADA, MoC, ECL y OR_EAD? ¿Por qué 00044 tiene ECL y los otros no?",
+  },
+  {
+    label: "Investigar ECL missing",
+    text: "¿Por qué algunos ciclos tienen MoC y ECL missing? Usa trace_causal_chain y query_cycle_data con valores reales de la BDD.",
+  },
+  {
+    label: "Lineage LGD → ECL",
+    text: "Traza LGD_ESTIMADA desde la tabla de entrada hasta ECL: pasos del pipeline, fórmulas (expr) y un ciclo de ejemplo con query_cycle_data.",
+  },
+];
 
 interface Props {
   chat: ChatSession;
@@ -32,6 +57,7 @@ interface Props {
 
 export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar }: Props) {
   const [input, setInput] = useState("");
+  const [llmModel, setLlmModel] = useState(DEFAULT_LLM_MODEL);
   const [running, setRunning] = useState(false);
   const [streamingTools, setStreamingTools] = useState<ToolStep[]>([]);
   const [streamingText, setStreamingText] = useState("");
@@ -50,10 +76,10 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
     inputRef.current?.focus();
   }, [chat.id]);
 
-  async function send() {
-    const q = input.trim();
+  async function send(message?: string) {
+    const q = (message ?? input).trim();
     if (!q || running) return;
-    setInput("");
+    if (!message) setInput("");
     setRunning(true);
     setStreamingTools([]);
     setStreamingText("");
@@ -84,6 +110,18 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
         body: JSON.stringify({
           question: q,
           session_id: chat.id,
+          sas_session_id: DEFAULT_SAS_SESSION,
+          model: llmModel,
+          tool_names: [
+            "trace_causal_chain",
+            "query_cycle_data",
+            "get_sas_formula",
+            "trace_dependencies",
+            "inspect_lineage",
+            "search_docs",
+            "search_regulation",
+            "get_field_definition",
+          ],
           max_iters: 15,
           temperature: 0.1,
         }),
@@ -198,6 +236,25 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+          {chat.messages.length === 0 && !running && (
+            <div className="text-center py-8 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Pregunta sobre campos, normativa o código SAS del pipeline LGD.
+                Verás el razonamiento y las herramientas en tiempo real.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {EXAMPLE_PROMPTS.map((ex) => (
+                  <button
+                    key={ex.label}
+                    onClick={() => send(ex.text)}
+                    className="text-xs px-3 py-1.5 rounded-full border border-border/60 bg-card/60 hover:bg-muted/40 text-left"
+                  >
+                    {ex.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {chat.messages.map((msg, i) => (
             <MessageBubble key={`${msg.ts}-${i}`} msg={msg} />
           ))}
@@ -238,8 +295,8 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" />
                     {streamingThoughts.length > 0 || streamingTools.length > 0
-                      ? "Reasoning..."
-                      : "Thinking..."}
+                      ? "Razonando..."
+                      : "Pensando..."}
                   </div>
                 )}
               </div>
@@ -253,14 +310,30 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
       {/* Input */}
       <div className="shrink-0 border-t border-border bg-card/40 px-4 py-3">
         <div className="max-w-3xl mx-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <label htmlFor="llm-model" className="text-[10px] text-muted-foreground shrink-0">
+              Modelo
+            </label>
+            <select
+              id="llm-model"
+              value={llmModel}
+              disabled={running}
+              onChange={(e) => setLlmModel(e.target.value)}
+              className="flex-1 text-xs rounded-md border border-border bg-background px-2 py-1"
+            >
+              {LLM_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-end gap-2 bg-muted/30 border border-border rounded-xl px-3 py-2">
-            <UploadButton sessionId={chat.id} />
+            <UploadButton sessionId={chat.id} onAutoSend={send} />
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about a field, regulation, or SAS code..."
+              placeholder="Pregunta sobre un campo, normativa o código SAS..."
               rows={1}
               disabled={running}
               className="flex-1 bg-transparent resize-none text-sm focus:outline-none min-h-[24px] max-h-[120px]"
@@ -277,7 +350,7 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
               </button>
             ) : (
               <button
-                onClick={send}
+                onClick={() => send()}
                 disabled={!input.trim()}
                 className="p-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-30"
                 title="Send"
@@ -287,7 +360,10 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
             )}
           </div>
           <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-            Local LLM via Ollama. All data stays on your machine.
+            LLM: {LLM_OPTIONS.find((o) => o.id === llmModel)?.label ?? llmModel} · sesión SAS: {DEFAULT_SAS_SESSION}
+            {llmModel.startsWith("peft:") && (
+              <> · requiere <code className="text-[9px]">serve_peft_agent.py</code></>
+            )}
           </p>
         </div>
       </div>
@@ -330,7 +406,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
             {/* Plan */}
             {msg.plan && (
               <div className="border border-primary/30 bg-primary/5 rounded-lg px-3 py-2 text-xs">
-                <div className="text-[10px] uppercase tracking-wider text-primary/70 mb-1">Investigation Plan</div>
+                <div className="text-[10px] uppercase tracking-wider text-primary/70 mb-1">Plan de investigación</div>
                 <pre className="whitespace-pre-wrap font-mono text-[11px]">{msg.plan}</pre>
               </div>
             )}
@@ -379,7 +455,7 @@ function ThoughtsBlock({ thoughts }: { thoughts: string[] }) {
         className="flex items-center gap-1.5 text-muted-foreground/60 hover:text-muted-foreground"
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <span className="italic">Reasoning ({thoughts.length} step{thoughts.length === 1 ? "" : "s"})</span>
+        <span className="italic">Razonamiento ({thoughts.length} paso{thoughts.length === 1 ? "" : "s"})</span>
       </button>
       {open && (
         <div className="mt-1 ml-4.5 space-y-1 border-l-2 border-border/30 pl-3">
@@ -438,7 +514,7 @@ function DataRequestCard({ req }: { req: DataRequest }) {
     <div className="border border-amber-500/30 bg-amber-500/5 rounded-lg px-3 py-2 text-xs space-y-2">
       <div className="flex items-center gap-2 text-amber-400">
         <Upload className="h-3.5 w-3.5" />
-        <span className="font-medium">Data needed</span>
+        <span className="font-medium">Datos necesarios</span>
       </div>
       <p className="text-muted-foreground">{req.reason}</p>
       <div className="space-y-1">
@@ -460,20 +536,65 @@ function DataRequestCard({ req }: { req: DataRequest }) {
 
 // ── Upload button ───────────────────────────────────────────────────────────
 
-function UploadButton({ sessionId }: { sessionId: string }) {
+function UploadButton({
+  sessionId,
+  onAutoSend,
+}: {
+  sessionId: string;
+  onAutoSend?: (msg: string) => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
   async function handleUpload(files: FileList) {
     setUploading(true);
     try {
-      const form = new FormData();
-      for (const f of Array.from(files)) form.append("files", f);
-      form.append("session_id", sessionId);
-      const r = await fetch(`${API}/agent/data/upload`, { method: "POST", body: form });
-      if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
-      const data = await r.json();
-      alert(`Uploaded ${data.files?.length ?? 0} file(s). You can now ask the agent to analyze them.`);
+      const fileArr = Array.from(files);
+      const hasEgp = fileArr.some((f) => f.name.toLowerCase().endsWith(".egp"));
+      const hasSas = fileArr.some((f) => f.name.toLowerCase().endsWith(".sas"));
+
+      if (hasEgp || hasSas) {
+        // SAS / EGP upload → session-scoped
+        for (const f of fileArr) {
+          const ext = f.name.toLowerCase().split(".").pop();
+          if (ext !== "egp" && ext !== "sas") continue;
+          const form = new FormData();
+          if (ext === "egp") {
+            form.append("file", f);
+            form.append("session_id", sessionId);
+            const r = await fetch(`${API}/agent/sas/upload-egp`, { method: "POST", body: form });
+            if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+            const data = await r.json();
+            // Auto-send analysis message
+            if (onAutoSend && data.blocks_metadata?.length) {
+              const taskList = data.blocks_metadata
+                .map((b: { order: number; task_name: string; block_type: string; line_count: number }) =>
+                  `${b.order + 1}. ${b.task_name} (${b.block_type}, ${b.line_count} lines)`)
+                .join("\n");
+              onAutoSend(
+                `I uploaded the SAS Enterprise Guide project "${data.source_file}" (${data.blocks_extracted} code blocks):\n${taskList}\n\nAnalyze this project: describe its structure, validate the code, and trace key field lineages.`
+              );
+            }
+          } else {
+            form.append("files", f);
+            form.append("session_id", sessionId);
+            const r = await fetch(`${API}/agent/sas/upload`, { method: "POST", body: form });
+            if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+            if (onAutoSend) {
+              onAutoSend(`I uploaded the SAS file "${f.name}". Analyze the code: validate it and trace key field lineages.`);
+            }
+          }
+        }
+      } else {
+        // CSV/XLSX data upload
+        const form = new FormData();
+        for (const f of fileArr) form.append("files", f);
+        form.append("session_id", sessionId);
+        const r = await fetch(`${API}/agent/data/upload`, { method: "POST", body: form });
+        if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+        const data = await r.json();
+        alert(`Uploaded ${data.files?.length ?? 0} file(s). You can now ask the agent to analyze them.`);
+      }
     } catch (e) {
       alert(`Upload error: ${(e as Error).message}`);
     } finally {
@@ -487,7 +608,7 @@ function UploadButton({ sessionId }: { sessionId: string }) {
         ref={fileRef}
         type="file"
         multiple
-        accept=".csv,.xlsx,.xls"
+        accept=".csv,.xlsx,.xls,.egp,.sas"
         className="hidden"
         onChange={(e) => e.target.files && handleUpload(e.target.files)}
       />
@@ -495,7 +616,7 @@ function UploadButton({ sessionId }: { sessionId: string }) {
         onClick={() => fileRef.current?.click()}
         disabled={uploading}
         className="p-1.5 rounded hover:bg-muted/40 text-muted-foreground hover:text-foreground disabled:opacity-50"
-        title="Upload data (CSV/XLSX)"
+        title="Upload data (CSV/XLSX) or SAS code (.sas/.egp)"
       >
         {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
       </button>

@@ -52,3 +52,11 @@ frontend/tsconfig.tsbuildinfo
 data/changelog/graph.json
 data/knowledge/
 data/docs/embeddings.json
+
+# Training / ML artifacts (large)
+training/output/
+mlruns/
+unsloth_compiled_cache/
+data/embeddings/
+data/sessions/
+data/eval_results*.json

@@ -41,7 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import agent, diff, embeddings, kb, kg, sas  # noqa: E402
+from api.routers import agent, diff, embeddings, kb, kg, sas, tabular  # noqa: E402
 
 app.include_router(sas.router)
 app.include_router(diff.router)
@@ -49,6 +49,7 @@ app.include_router(kb.router)
 app.include_router(kg.router)
 app.include_router(agent.router)
 app.include_router(embeddings.router)
+app.include_router(tabular.router)
 
 
 @app.get("/health")

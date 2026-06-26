@@ -62,19 +62,16 @@ services:
       dockerfile: Dockerfile
     image: regllm-api:latest
     container_name: regllm-api
-    ports:
-      - "${API_PORT:-8000}:8000"
+    network_mode: host
     environment:
       LOG_LEVEL: INFO
       CORS_ORIGINS: "http://localhost:${WEB_PORT:-3010},http://localhost:3000"
       REGLLM_LLM: "auto"
-      OLLAMA_URL: "http://ollama:11434"
-      OLLAMA_MODEL: "${OLLAMA_MODEL:-none}"
-      LITERT_URL: "http://host.docker.internal:9379/v1"
+      OLLAMA_URL: "http://localhost:11434"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5:14b-instruct-q4_K_M}"
+      LITERT_URL: "http://localhost:9379/v1"
       LITERT_MODEL: "gemma4-12b,gpu"
       REGLLM_LLM_TIMEOUT: "240"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
     healthcheck:

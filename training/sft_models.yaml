@@ -1,0 +1,33 @@
+# Mid-size SFT targets for RegLLM tool-calling (16 GB VRAM, Unsloth 4-bit).
+#
+# Note: Qwen3.6 has 27B / 35B-A3B only — no official 8B. We use Qwen3-8B-Instruct.
+
+models:
+  olmo3-7b:
+    hf_id: "unsloth/Olmo-3-7B-Instruct-unsloth-bnb-4bit"
+    ollama_name: "regllm-olmo3-7b-sft"
+    label: "Olmo 3 7B Instruct"
+    lora_r: 32
+    lora_alpha: 32
+
+  qwen3-8b:
+    hf_id: "Qwen/Qwen3-8B"
+    ollama_name: "regllm-qwen3-8b-sft"
+    label: "Qwen3 8B Instruct (no Qwen3.6-8B on HF)"
+    lora_r: 32
+    lora_alpha: 32
+
+  # Alias — user asked for qwen3.6 8b
+  qwen3.6-8b:
+    hf_id: "unsloth/Qwen3-8B-Instruct-bnb-4bit"
+    ollama_name: "regllm-qwen3-8b-sft"
+    label: "Qwen3 8B (stand-in for Qwen3.6-8B)"
+    lora_r: 32
+    lora_alpha: 32
+
+defaults:
+  train_file: "training/data/agent_sft_train.jsonl"
+  eval_file: "training/data/agent_sft_eval.jsonl"
+  epochs: 3
+  max_seq_length: 2048
+  learning_rate: 1.0e-4

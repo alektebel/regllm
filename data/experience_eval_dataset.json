@@ -1,0 +1,1692 @@
+[
+  {
+    "id": "exp_ret_001",
+    "category": "experience_retention",
+    "scenario": "exact_label_recall",
+    "difficulty": "easy",
+    "description": "El label del insight contiene exactamente el término buscado. Test básico de substring matching.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "SW_FUSION=1 causa LGD_ESTIMADA missing en fusionados",
+        "summary": "Bug documentado: cuando SW_FUSION=1, el catálogo del contrato fusionado se pierde y LGD_ESTIMADA resulta missing. Esto cascada a MoC y ECL también missing.",
+        "priority": 0.7,
+        "tags": ["bug", "LGD", "SW_FUSION", "fusion"]
+      },
+      {
+        "type": "experience",
+        "label": "Investigación: MoC y ECL missing por SW_FUSION=1",
+        "question": "¿Por qué algunos ciclos tienen MoC y ECL missing?",
+        "answer_summary": "Bug en proj_03_suelos_lgd.sas:33-37. SW_FUSION=1 → catálogo absorbido → LGD missing → MoC missing → ECL missing."
+      }
+    ],
+    "question": "¿Qué sabemos sobre el efecto de SW_FUSION en el pipeline?",
+    "expected_recall_behavior": {
+      "search_experience_query": "SW_FUSION",
+      "should_find_labels": ["SW_FUSION=1 causa LGD_ESTIMADA missing en fusionados"],
+      "explanation": "El label contiene 'SW_FUSION' como substring → match directo"
+    },
+    "golden_answer": "Según experiencia previa, SW_FUSION=1 causa que LGD_ESTIMADA resulte missing porque el catálogo del contrato fusionado se pierde en proj_03_suelos_lgd.sas:33-37. Esto provoca que MoC (0.05 × LGD) y ECL (PD × LGD × EAD) también sean missing. Es un bug documentado del pipeline que habría que corregir con un COALESCE o CASE WHEN.",
+    "judge_criteria": {
+      "retrieves_relevant_experience": "¿El agente llamó a search_experience con un query que encuentra el insight relevante?",
+      "applies_learning": "¿La respuesta menciona el bug de SW_FUSION y su efecto en cascada?",
+      "cites_source": "¿Menciona explícitamente que es conocimiento de experiencia previa?",
+      "scoring_rubric": {"0": "No responde o alucina", "1": "Menciona SW_FUSION pero no el bug", "2": "Menciona el bug sin conectar con experiencia previa", "3": "Recupera experiencia y menciona el bug", "4": "Como 3 + explica cascada a MoC y ECL", "5": "Como 4 + propone solución (COALESCE) y cita fuente"},
+      "pass_condition": "Menciona el bug SW_FUSION→LGD missing y referencia experiencia previa (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_002",
+    "category": "experience_retention",
+    "scenario": "partial_label_recall",
+    "difficulty": "easy",
+    "description": "El query del usuario es una palabra clave parcial contenida en el label.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "LGD floor CORP aumentó de 45% a 50% en Circular 4/2022",
+        "summary": "El suelo de LGD para exposiciones corporativas (CORP) sin colateral real pasó de 0.45 a 0.50 según Circular 4/2022 que modifica Circular 6/2016.",
+        "priority": 0.7,
+        "tags": ["LGD", "floor", "CORP", "Circular 4/2022"]
+      }
+    ],
+    "question": "¿Cuál es el suelo de LGD para créditos corporativos?",
+    "expected_recall_behavior": {
+      "search_experience_query": "LGD",
+      "should_find_labels": ["LGD floor CORP aumentó de 45% a 50% en Circular 4/2022"],
+      "explanation": "El label contiene 'LGD' como substring"
+    },
+    "golden_answer": "Según experiencia previa, el suelo de LGD para CORP es 0.50 (50%), actualizado por Circular 4/2022 desde el 0.45 anterior. Esto se implementa en proj_03_suelos_lgd.sas:13-16.",
+    "judge_criteria": {
+      "retrieves_relevant_experience": "¿Llamó a search_experience con query que contiene 'LGD'?",
+      "applies_learning": "¿Menciona el valor correcto 0.50 para CORP?",
+      "cites_source": "¿Menciona Circular 4/2022 como fuente del cambio?",
+      "scoring_rubric": {"0": "No responde", "1": "Menciona LGD floor sin valor", "2": "Da valor incorrecto", "3": "Da valor correcto 0.50", "4": "Como 3 + cita Circular 4/2022", "5": "Como 4 + referencia experiencia previa explícitamente"},
+      "pass_condition": "Responde con LGD floor CORP = 0.50 (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_003",
+    "category": "experience_retention",
+    "scenario": "partial_label_recall_fuzzy",
+    "difficulty": "medium",
+    "description": "El query del usuario es una abreviatura o sinónimo parcial que aún así aparece en el label.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Hipoteca LGD floor 30% según CRR Art.154(3)",
+        "summary": "Para exposiciones hipotecarias, el suelo de LGD es 30% según CRR Artículo 154(3). Implementado en proj_03_suelos_lgd.sas.",
+        "priority": 0.6,
+        "tags": ["LGD", "hipoteca", "mortgage", "CRR", "Art.154"]
+      }
+    ],
+    "question": "¿Qué dice la CRR sobre el suelo de pérdida para hipotecas?",
+    "expected_recall_behavior": {
+      "search_experience_query": "hipoteca", 
+      "should_find_labels": ["Hipoteca LGD floor 30% según CRR Art.154(3)"],
+      "explanation": "El label contiene 'Hipoteca' aunque la pregunta usa 'hipotecas' → el substring 'hipoteca' hace match"
+    },
+    "golden_answer": "Según experiencia previa, CRR Art.154(3) establece un suelo de LGD del 30% para exposiciones hipotecarias. Implementado en proj_03_suelos_lgd.sas:13-16.",
+    "judge_criteria": {
+      "retrieves_relevant_experience": "¿Buscó experiencia previa sobre hipotecas/LGD floor?",
+      "correct_answer": "¿Menciona 30% y CRR Art.154(3)?",
+      "scoring_rubric": {"0": "No responde", "1": "Habla de LGD sin cita regulatoria", "2": "Menciona 30% pero sin fuente", "3": "30% + CRR Art.154(3)", "4": "Como 3 + experiencia previa", "5": "Como 4 + referencia a implementación SAS"},
+      "pass_condition": "Respuesta correcta con fuente (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_004",
+    "category": "experience_retention",
+    "scenario": "priority_ranking",
+    "difficulty": "medium",
+    "description": "Existen múltiples insights sobre el mismo campo. El feedback (priority=1.0) debe aparecer antes que los automáticos.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "PD floor es 0.05% según Circular 4/2022",
+        "summary": "El suelo de PD es 0.05% (0.0005) para todas las exposiciones según Circular 4/2022.",
+        "priority": 0.5,
+        "tags": ["PD", "floor"]
+      },
+      {
+        "type": "insight",
+        "label": "[feedback] Corrección: PD floor es 0.03% no 0.05% para retail",
+        "summary": "Corrección del usuario: el PD floor para exposiciones retail es 0.03% (no 0.05%). El 0.05% aplica solo a corporativo y soberano.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "PD", "floor", "retail"],
+        "original_claim": "PD floor es 0.05% para todas las exposiciones",
+        "corrected_understanding": "PD floor para retail es 0.03%, para CORP/soberano es 0.05%"
+      }
+    ],
+    "question": "¿Cuál es el suelo de PD aplicable?",
+    "expected_recall_behavior": {
+      "search_experience_query": "PD floor",
+      "should_find_labels": [
+        "[feedback] Corrección: PD floor es 0.03% no 0.05% para retail",
+        "PD floor es 0.05% según Circular 4/2022"
+      ],
+      "expected_first_result": "[feedback] Corrección: PD floor es 0.03% no 0.05% para retail",
+      "explanation": "El feedback tiene priority=1.0 y debe ordenarse antes que el insight automático (priority=0.5)"
+    },
+    "golden_answer": "Según experiencia previa, el PD floor depende del segmento: retail 0.03% (corrección recibida), CORP y soberano 0.05% (Circular 4/2022). La corrección es importante porque el insight automático generalizaba incorrectamente.",
+    "judge_criteria": {
+      "retrieves_feedback": "¿Recuperó el insight de feedback (priority=1.0)?",
+      "applies_correction": "¿Distingue entre retail (0.03%) y CORP/soberano (0.05%)?",
+      "scoring_rubric": {"0": "No responde", "1": "Da solo un valor sin distinguir", "2": "Menciona 0.05% pero no retail", "3": "Distingue retail 0.03% vs CORP 0.05%", "4": "Como 3 + menciona que es corrección de feedback", "5": "Como 4 + cita fuente regulatoria específica"},
+      "pass_condition": "Respuesta distingue segmentos con valores correctos (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_005",
+    "category": "experience_retention",
+    "scenario": "empty_results_graceful",
+    "difficulty": "easy",
+    "description": "El query no tiene matching en experiencias previas. El agente debe manejar el caso vacío sin alucinar.",
+    "setup_experiences": [],
+    "question": "¿Qué experiencia tenemos con el tratamiento de derivados de crédito (CDS) en el pipeline?",
+    "expected_recall_behavior": {
+      "search_experience_query": "CDS",
+      "should_find_labels": [],
+      "explanation": "No hay experiencias previas sobre CDS. El agente debe indicar que no tiene conocimiento previo."
+    },
+    "golden_answer": "No hay experiencias previas registradas sobre CDS en el pipeline. Puedo investigarlo usando mis herramientas: trace_dependencies, search_docs, search_regulation. ¿Quieres que lo investigue?",
+    "judge_criteria": {
+      "handles_empty": "¿Reconoce que no hay experiencia previa sin inventar?",
+      "offers_alternative": "¿Ofrece investigar usando otras herramientas?",
+      "scoring_rubric": {"0": "Alucina una respuesta falsa", "1": "Se queda callado sin respuesta", "2": "Dice no saber pero no ofrece alternativa", "3": "Dice no tener experiencia previa y ofrece investigar", "4": "Como 3 + ya inicia la investigación", "5": "Como 4 + sugiere fuentes específicas"},
+      "pass_condition": "No alucina, reconoce falta de experiencia (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_006",
+    "category": "experience_retention",
+    "scenario": "semantic_gap",
+    "difficulty": "hard",
+    "description": "La experiencia usa un término técnico pero el usuario pregunta con sinónimo coloquial. El substring matching actual NO encontraría esto (documenta una limitación del sistema).",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "DPDS = 0 significa ciclo en fase de recuperación ordinaria",
+        "summary": "Cuando DPDS=0, el ciclo está en 'recuperación ordinaria' según Art.8 Circular 6/2016. El provision period mínimo es 24 meses.",
+        "priority": 0.6,
+        "tags": ["DPDS", "fase", "recuperación", "provision_period"]
+      }
+    ],
+    "question": "¿Qué significa tener DPDS=0 en términos de clasificación del ciclo?",
+    "expected_recall_behavior": {
+      "search_experience_query": "pagos al día",
+      "should_find_labels": [],
+      "explanation": "LIMITACIÓN ACTUAL: 'pagos al día' no aparece en ningún label. El label dice 'DPDS = 0 significa ciclo en fase de recuperación ordinaria'. No hay match porque el label no contiene 'pagos' ni 'al día'. Esto documenta la necesidad de búsqueda semántica."
+    },
+    "golden_answer_ideal": "Aunque la pregunta usa 'pagos al día', la experiencia previa está etiquetada como 'DPDS=0'. Este es un caso donde el substring matching falla. Idealmente, el agente debería buscar también por sinónimos o usar búsqueda semántica. Alternativa: intentar search_experience con 'DPDS' o 'recuperación ordinaria'.",
+    "judge_criteria": {
+      "identifies_gap": "¿El agente reconoce que no encontró experiencia directa?",
+      "alternative_search": "¿Intentó términos alternativos (DPDS, recuperación, fase)?",
+      "scoring_rubric": {"0": "Alucina", "1": "Dice no saber y se detiene", "2": "Intenta 1 término alternativo", "3": "Intenta 2+ términos alternativos y encuentra", "4": "Como 3 + explica la discrepancia semántica", "5": "Como 4 + sugiere mejora de búsqueda semántica"},
+      "pass_condition": "Intenta términos alternativos (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_007",
+    "category": "experience_retention",
+    "scenario": "cross_entity_recall",
+    "difficulty": "medium",
+    "description": "La experiencia está linkeada a una columna/regulación en el grafo. El query menciona la columna, no el insight directamente.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "OR_EAD_TIT inflado por JOIN no único en proj_02",
+        "summary": "Bug documentado: OR_EAD_TIT se infla porque el JOIN con garantías no es 1:1. Un contrato con múltiples garantías duplica OR_EAD_TIT.",
+        "priority": 0.7,
+        "tags": ["bug", "EAD", "OR_EAD_TIT", "JOIN"],
+        "related_fields": ["OR_EAD_TIT", "OR_EAD"]
+      }
+    ],
+    "question": "¿Hay problemas conocidos con OR_EAD_TIT?",
+    "expected_recall_behavior": {
+      "search_experience_query": "OR_EAD_TIT",
+      "should_find_labels": ["OR_EAD_TIT inflado por JOIN no único en proj_02"],
+      "explanation": "El label contiene 'OR_EAD_TIT' como substring → match directo con el nombre del campo"
+    },
+    "golden_answer": "Sí, hay un bug documentado: OR_EAD_TIT se infla porque el JOIN con la tabla de garantías en proj_02_enriquecimiento_ead.sas:28-39 no es 1:1. Un contrato con N garantías produce N filas, duplicando OR_EAD_TIT. Esto arrastra a EAD y ECL.",
+    "judge_criteria": {
+      "retrieves_bug": "¿Encontró el bug de OR_EAD_TIT?",
+      "explains_cause": "¿Explica que es por JOIN no único?",
+      "scoring_rubric": {"0": "No responde", "1": "Menciona OR_EAD_TIT sin bug", "2": "Menciona posible problema genérico", "3": "Bug de JOIN no único identificado", "4": "Como 3 + explica efecto en EAD/ECL", "5": "Como 4 + propone solución (DISTINCT o agregación)"},
+      "pass_condition": "Identifica bug de JOIN no único (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_008",
+    "category": "experience_retention",
+    "scenario": "quirk_memory",
+    "difficulty": "medium",
+    "description": "El agente descubrió un quirk (comportamiento inesperado) en una sesión anterior y debería recordarlo.",
+    "setup_experiences": [
+      {
+        "type": "quirk",
+        "label": "COLATERAL_FIN aparece como COLATERAL_TIPO vacío en salida V2→V3",
+        "description": "Los colaterales tipo FINANCIERO se renombraron a COLATERAL_FIN en V3 pero el shim no se aplicó retroactivamente. En salidas V2 aparece como COLATERAL_TIPO=''.",
+        "severity": "medium",
+        "tags": ["colateral", "renaming", "V2", "V3", "shim"],
+        "related_fields": ["COLATERAL_TIPO", "COLATERAL_FIN"]
+      }
+    ],
+    "question": "¿Hay algún problema con los colaterales financieros en el pipeline?",
+    "expected_recall_behavior": {
+      "search_experience_query": "colateral",
+      "should_find_labels": ["COLATERAL_FIN aparece como COLATERAL_TIPO vacío en salida V2→V3"],
+      "explanation": "El label contiene 'COLATERAL' como substring → match"
+    },
+    "golden_answer": "Sí, hay un quirk documentado: los colaterales tipo FINANCIERO se renombraron a COLATERAL_FIN pero el cambio no tiene shim retroactivo. En salidas V2, COLATERAL_TIPO aparece vacío para estos contratos. Habría que aplicar la reclasificación antes de calcular LGD floor.",
+    "judge_criteria": {
+      "recalls_quirk": "¿Menciona el renombrado FINANCIERO→COLATERAL_FIN?",
+      "explains_impact": "¿Explica el impacto en LGD floor?",
+      "scoring_rubric": {"0": "No responde", "1": "Menciona colaterales sin detalle", "2": "Menciona renombrado sin impacto", "3": "Explica quirk y su impacto", "4": "Como 3 + referencia changelog", "5": "Como 4 + propone shim"},
+      "pass_condition": "Menciona el renombrado y su impacto (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_009",
+    "category": "experience_retention",
+    "scenario": "negative_knowledge",
+    "difficulty": "hard",
+    "description": "El agente aprendió que algo NO funciona de cierta manera. Debe recordar el conocimiento negativo.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[feedback] El cálculo de cure rate NO aplica a corporativo, solo hipotecas",
+        "summary": "Corrección: el cure rate (×0.95) documentado en changelog 2025-q1-lgd-cure.md aplica solo a hipotecas. No debe aplicarse a segmento CORP ni NINGUNA.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "cure", "LGD", "hipoteca", "CORP"],
+        "original_claim": "El cure rate aplica a todos los segmentos",
+        "corrected_understanding": "El cure rate ×0.95 aplica solo a hipotecas"
+      }
+    ],
+    "question": "¿El cure rate de LGD aplica a exposiciones corporativas?",
+    "expected_recall_behavior": {
+      "search_experience_query": "cure rate",
+      "should_find_labels": ["[feedback] El cálculo de cure rate NO aplica a corporativo, solo hipotecas"],
+      "explanation": "El label contiene 'cure rate' como substring"
+    },
+    "golden_answer": "No, el cure rate (×0.95) NO aplica a corporativo. Según feedback recibido, solo aplica a hipotecas según changelog 2025-q1-lgd-cure.md. Aplicarlo a CORP sería incorrecto.",
+    "judge_criteria": {
+      "correct_negative": "¿Responde correctamente que NO aplica a CORP?",
+      "cites_feedback": "¿Menciona que es conocimiento de feedback previo?",
+      "scoring_rubric": {"0": "Dice que sí aplica (incorrecto)", "1": "Responde confuso", "2": "Dice que no aplica sin fuente", "3": "Dice que no aplica + fuente changelog", "4": "Como 3 + menciona feedback", "5": "Como 4 + distingue segmentos correctamente"},
+      "pass_condition": "Responde correctamente que NO aplica a CORP (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_010",
+    "category": "experience_retention",
+    "scenario": "multi_session_accumulation",
+    "difficulty": "hard",
+    "description": "El agente tuvo dos sesiones previas que acumulan conocimiento. Debe sintetizar ambas.",
+    "setup_experiences": [
+      {
+        "type": "experience",
+        "label": "Sesión 1: Análisis de PD floor en el pipeline",
+        "session_id": "ses_001",
+        "question": "¿Dónde se aplica el PD floor?",
+        "answer_summary": "PD floor 0.0005 aplicado en proj_03_suelos_lgd.sas:20-22 después de la recalibración de ratings."
+      },
+      {
+        "type": "experience",
+        "label": "Sesión 2: Recalibración PD ratings 1-2 ×1.15",
+        "session_id": "ses_002",
+        "question": "¿Qué cambió en la recalibración de PD?",
+        "answer_summary": "Changelog 2025-q1-pd-recalibration.md: ratings 1 y 2 se multiplican por 1.15 antes de aplicar floor."
+      },
+      {
+        "type": "insight",
+        "label": "Flujo PD: rating→recalibración×1.15→floor 0.0005→PD_ESTIMADA",
+        "summary": "El pipeline completo de PD: rating_raw se recalibra (×1.15 para ratings 1-2), luego se aplica PD floor 0.0005, el resultado es PD_ESTIMADA.",
+        "priority": 0.6,
+        "tags": ["PD", "floor", "recalibración"]
+      }
+    ],
+    "question": "¿Cómo se calcula PD_ESTIMADA en el pipeline?",
+    "expected_recall_behavior": {
+      "search_experience_query": "PD_ESTIMADA",
+      "should_find_labels": ["Flujo PD: rating→recalibración×1.15→floor 0.0005→PD_ESTIMADA"],
+      "explanation": "El label contiene 'PD_ESTIMADA'"
+    },
+    "golden_answer": "Según experiencia acumulada de dos sesiones: PD_ESTIMADA se calcula como: (1) rating_raw, (2) recalibración ×1.15 para ratings 1-2 (changelog 2025-q1-pd-recalibration), (3) aplicación de floor 0.0005 (proj_03:20-22). El pipeline completo está en proj_03_suelos_lgd.sas.",
+    "judge_criteria": {
+      "synthesizes_multiple": "¿Combina información de recalibración Y floor?",
+      "correct_flow": "¿El orden rating→recalibración→floor es correcto?",
+      "scoring_rubric": {"0": "No responde", "1": "Menciona solo floor", "2": "Menciona solo recalibración", "3": "Menciona ambos pero orden incorrecto", "4": "Flujo completo y correcto", "5": "Como 4 + citas a changelog y líneas SAS"},
+      "pass_condition": "Flujo completo rating→recalibración→floor (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_011",
+    "category": "experience_retention",
+    "scenario": "conflicting_insights",
+    "difficulty": "hard",
+    "description": "Existen dos insights contradictorios sobre el mismo tema. El agente debe identificar la contradicción o saber cuál prevalece.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Stage 3 multiplicador LGD 1.20 SÍ está implementado en proj_03",
+        "summary": "El multiplicador 1.20 para Stage 3 se aplica en proj_03_suelos_lgd.sas línea 30 después del floor de LGD.",
+        "priority": 0.5,
+        "tags": ["LGD", "Stage 3", "multiplicador"]
+      },
+      {
+        "type": "insight",
+        "label": "[feedback] Stage 3 multiplicador 1.20 NO implementado, es un gap regulatorio",
+        "summary": "Corrección: el multiplicador 1.20 sobre LGD_FLOOR_APLICADO para Stage 3 NO está implementado en el pipeline. Es un gap regulatorio identificado. El insight anterior era incorrecto.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "LGD", "Stage 3", "gap"],
+        "original_claim": "Stage 3 multiplicador 1.20 SÍ está implementado",
+        "corrected_understanding": "Stage 3 multiplicador 1.20 NO está implementado - es gap regulatorio"
+      }
+    ],
+    "question": "¿El multiplicador de Stage 3 sobre LGD está implementado?",
+    "expected_recall_behavior": {
+      "search_experience_query": "Stage 3",
+      "should_find_labels": [
+        "[feedback] Stage 3 multiplicador 1.20 NO implementado, es un gap regulatorio",
+        "Stage 3 multiplicador LGD 1.20 SÍ está implementado en proj_03"
+      ],
+      "expected_first_result": "[feedback] Stage 3 multiplicador 1.20 NO implementado, es un gap regulatorio",
+      "explanation": "El feedback (priority=1.0) debe prevalecer y corregir el insight automático (0.5)"
+    },
+    "golden_answer": "NO está implementado. Según feedback recibido, el multiplicador 1.20 para Stage 3 sobre LGD_FLOOR_APLICADO es un gap regulatorio. El insight automático anterior era incorrecto. Esto requiere implementación futura para cumplir con CRR.",
+    "judge_criteria": {
+      "identifies_conflict": "¿Identifica que hay información contradictoria?",
+      "resolves_correctly": "¿Concluye que NO está implementado (prevalece feedback)?",
+      "scoring_rubric": {"0": "Responde que SÍ (incorrecto)", "1": "Confuso sin conclusión clara", "2": "Responde que NO sin mencionar contradicción", "3": "NO implementado + menciona gap regulatorio", "4": "Como 3 + explica contradicción con insight previo", "5": "Como 4 + cita feedback como fuente autoritativa"},
+      "pass_condition": "Conclusión correcta: NO implementado (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_012",
+    "category": "experience_retention",
+    "scenario": "temporal_awareness",
+    "difficulty": "hard",
+    "description": "Un insight ha sido superseded por uno más reciente. El agente debe usar el más actual.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "LGD floor NINGUNA era 0.45 antes de Circular 4/2022",
+        "summary": "Antes de la modificación por Circular 4/2022, el suelo de LGD para segmento NINGUNA (sin colateral) era 0.45.",
+        "priority": 0.5,
+        "tags": ["LGD", "floor", "NINGUNA", "histórico"]
+      },
+      {
+        "type": "insight",
+        "label": "LGD floor NINGUNA subió a 0.50 con Circular 4/2022",
+        "summary": "Circular 4/2022 modificó Circular 6/2016: el suelo de LGD para NINGUNA (sin colateral real) pasó de 0.45 a 0.50.",
+        "priority": 0.7,
+        "tags": ["LGD", "floor", "NINGUNA", "Circular 4/2022"]
+      }
+    ],
+    "question": "¿Cuál es el suelo de LGD para exposiciones sin colateral?",
+    "expected_recall_behavior": {
+      "search_experience_query": "LGD floor NINGUNA",
+      "should_find_labels": [
+        "LGD floor NINGUNA subió a 0.50 con Circular 4/2022",
+        "LGD floor NINGUNA era 0.45 antes de Circular 4/2022"
+      ],
+      "explanation": "Ambos insights contienen el substring. El agente debe identificar cuál es el vigente."
+    },
+    "golden_answer": "Actualmente es 0.50 según Circular 4/2022 (que modificó Circular 6/2016). Históricamente era 0.45, pero el vigente es 0.50. Implementado en proj_03_suelos_lgd.sas.",
+    "judge_criteria": {
+      "correct_current": "¿Da el valor vigente (0.50)?",
+      "mentions_temporal": "¿Menciona que hubo un cambio de 0.45→0.50?",
+      "scoring_rubric": {"0": "Responde 0.45 (obsoleto)", "1": "Confunde valores", "2": "Responde 0.50 sin contexto histórico", "3": "0.50 + menciona cambio desde 0.45", "4": "Como 3 + cita Circular 4/2022", "5": "Como 4 + referencia implementación SAS"},
+      "pass_condition": "Valor vigente correcto 0.50 (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_013",
+    "category": "experience_retention",
+    "scenario": "long_tail_retrieval",
+    "difficulty": "medium",
+    "description": "Insight sobre un campo poco común que debería ser recuperable aunque no sea frecuente.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "CURE_FLAG activa reducción LGD solo para hipotecas con garantía real",
+        "summary": "CURE_FLAG=1 aplica una reducción del 5% (×0.95) sobre LGD_ESTIMADA solo para hipotecas con garantía real documentada. Para otros colaterales, CURE_FLAG se ignora.",
+        "priority": 0.5,
+        "tags": ["CURE_FLAG", "hipoteca", "garantía", "LGD"]
+      }
+    ],
+    "question": "¿Cómo afecta CURE_FLAG al cálculo de LGD?",
+    "expected_recall_behavior": {
+      "search_experience_query": "CURE_FLAG",
+      "should_find_labels": ["CURE_FLAG activa reducción LGD solo para hipotecas con garantía real"],
+      "explanation": "El label contiene 'CURE_FLAG' → match directo aunque el campo sea poco común"
+    },
+    "golden_answer": "Según experiencia previa, CURE_FLAG=1 aplica ×0.95 sobre LGD_ESTIMADA solo para hipotecas con garantía real documentada. Para otros segmentos o colaterales, CURE_FLAG se ignora.",
+    "judge_criteria": {
+      "retrieves_rare": "¿Encontró el insight sobre CURE_FLAG?",
+      "correct_scope": "¿Explica correctamente que solo aplica a hipotecas?",
+      "scoring_rubric": {"0": "No menciona CURE_FLAG", "1": "Menciona CURE_FLAG sin explicación", "2": "Dice que aplica ×0.95 pero sin alcance", "3": "×0.95 + solo hipotecas", "4": "Como 3 + garantía real", "5": "Como 4 + changelog 2025-q1-lgd-cure"},
+      "pass_condition": "Explica alcance y efecto (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_014",
+    "category": "experience_retention",
+    "scenario": "feedback_incorporation",
+    "difficulty": "medium",
+    "description": "El usuario dio feedback correctivo en el pasado. El agente debe aplicarlo sin que se le vuelva a corregir.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[feedback] EAD usada en ECL es EAD_TOTAL no OR_EAD_TIT",
+        "summary": "Corrección: la fórmula ECL = PD × LGD × EAD usa EAD_TOTAL (EAD después de ajustes CRM), no OR_EAD_TIT (EAD antes de ajustes).",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "EAD", "EAD_TOTAL", "OR_EAD_TIT", "ECL"],
+        "original_claim": "EAD en ECL es OR_EAD_TIT",
+        "corrected_understanding": "EAD en ECL es EAD_TOTAL"
+      }
+    ],
+    "question": "¿Qué EAD se usa en el cálculo de ECL?",
+    "expected_recall_behavior": {
+      "search_experience_query": "EAD ECL",
+      "should_find_labels": ["[feedback] EAD usada en ECL es EAD_TOTAL no OR_EAD_TIT"],
+      "explanation": "El label contiene 'EAD' y 'ECL' como substrings"
+    },
+    "golden_answer": "Según feedback recibido, la EAD usada en ECL (PD × LGD × EAD) es EAD_TOTAL (después de ajustes CRM), no OR_EAD_TIT (EAD bruta antes de ajustes).",
+    "judge_criteria": {
+      "correct_ead": "¿Responde EAD_TOTAL en lugar de OR_EAD_TIT?",
+      "cites_feedback": "¿Menciona que es por feedback/corrección previa?",
+      "scoring_rubric": {"0": "Responde OR_EAD_TIT (incorrecto)", "1": "Confunde ambas", "2": "Responde EAD_TOTAL sin fuente", "3": "EAD_TOTAL + mención a corrección previa", "4": "Como 3 + explica diferencia entre ambas", "5": "Como 4 + referencia línea SAS"},
+      "pass_condition": "Respuesta correcta EAD_TOTAL (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_015",
+    "category": "experience_retention",
+    "scenario": "cross_tool_synthesis",
+    "difficulty": "hard",
+    "description": "El agente debe combinar búsqueda de experiencia con otras herramientas (inspect_lineage, search_docs) para dar una respuesta completa.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "VENTANA_OBSERVACION_YEARS depende del segmento según EBA GL 2017/16",
+        "summary": "La ventana de observación para PD varía por segmento: CORP≥5 años, hipotecas≥7 años, retail≥5 años. Definción en EBA GL 2017/16 §133.",
+        "priority": 0.6,
+        "tags": ["PD", "ventana", "observación", "EBA"]
+      }
+    ],
+    "question": "¿Cuál es la ventana de observación mínima para PD en hipotecas y dónde se configura en el pipeline?",
+    "expected_recall_behavior": {
+      "search_experience_query": "ventana observación",
+      "should_find_labels": ["VENTANA_OBSERVACION_YEARS depende del segmento según EBA GL 2017/16"],
+      "explanation": "Label contiene 'ventana' y 'observación'"
+    },
+    "golden_answer": "Según experiencia previa citando EBA GL 2017/16 §133, la ventana mínima para hipotecas es ≥7 años. Para verificarlo en el pipeline: usar inspect_lineage(field=VENTANA_OBSERVACION_YEARS) para ver dónde se define.",
+    "judge_criteria": {
+      "retrieves_experience": "¿Encontró el insight sobre ventanas?",
+      "combines_tools": "¿Usó inspect_lineage o search_docs además de search_experience?",
+      "scoring_rubric": {"0": "No responde", "1": "Solo experiencia sin verificar en pipeline", "2": "Experiencia + 1 tool adicional", "3": "Respuesta completa con experiencia y verificación", "4": "Como 3 + cita regulatoria EBA GL", "5": "Como 4 + línea de código exacta"},
+      "pass_condition": "Combina experiencia previa con verificación en pipeline (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_016",
+    "category": "experience_retention",
+    "scenario": "case_insensitivity",
+    "difficulty": "easy",
+    "description": "El usuario escribe el término en mayúsculas vs. minúsculas. El substring matching debe funcionar aunque el label use diferente capitalización.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "no_conformes: ciclos que no cumplen floors mínimos regulatorios",
+        "summary": "La tabla no_conformes contiene ciclos que no pasan validación de floors PD/LGD mínimos. Se genera en proj_03_suelos_lgd.sas:45-50.",
+        "priority": 0.5,
+        "tags": ["no_conformes", "validación", "floors"]
+      }
+    ],
+    "question": "¿Qué son los NO_CONFORMES?",
+    "expected_recall_behavior": {
+      "search_experience_query": "NO_CONFORMES",
+      "should_find_labels": ["no_conformes: ciclos que no cumplen floors mínimos regulatorios"],
+      "explanation": "Aunque el label usa minúsculas 'no_conformes' y la pregunta usa mayúsculas 'NO_CONFORMES', el CONTAINS de KuzuDB debería ser case-insensitive dependiendo de la collation. Esto documenta si el matching es case-sensitive o no."
+    },
+    "golden_answer": "Los no_conformes son ciclos que no cumplen los floors mínimos regulatorios de PD o LGD. Se generan en proj_03_suelos_lgd.sas:45-50 como tabla de validación.",
+    "judge_criteria": {
+      "handles_case": "¿Encontró el insight independientemente del casing?",
+      "correct_explanation": "¿Explica correctamente qué son los no_conformes?",
+      "scoring_rubric": {"0": "No encuentra y alucina", "1": "No encuentra pero responde por otros medios", "2": "Encuentra por casing correcto", "3": "Encuentra y explica correctamente", "4": "Como 3 + referencia a línea SAS", "5": "Como 4 + menciona criterios exactos de validación"},
+      "pass_condition": "Encuentra el insight independientemente del casing (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_017",
+    "category": "experience_retention",
+    "scenario": "multi_hop_knowledge",
+    "difficulty": "hard",
+    "description": "El agente debe usar search_experience para encontrar un insight y luego navegar a través del grafo (RELATES_TO edges) para descubrir información relacionada no mencionada en el label.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "MoC calculado como 5% de LGD_ESTIMADA en proj_03:38",
+        "summary": "Margin of Conservatism (MoC) = 0.05 × LGD_ESTIMADA. Aplicado en proj_03_suelos_lgd.sas línea 38.",
+        "priority": 0.6,
+        "tags": ["MoC", "LGD", "conservadurismo"],
+        "related_fields": ["MoC", "LGD_ESTIMADA"]
+      },
+      {
+        "type": "insight",
+        "label": "ECL = PD_ESTIMADA × LGD_CON_MOC × EAD en proj_03:42",
+        "summary": "Expected Credit Loss = PD_ESTIMADA × (LGD_ESTIMADA + MoC) × EAD. Línea 42 de proj_03_suelos_lgd.sas.",
+        "priority": 0.6,
+        "tags": ["ECL", "cálculo"],
+        "related_fields": ["ECL", "PD_ESTIMADA", "LGD_CON_MOC", "EAD"]
+      }
+    ],
+    "question": "¿Cómo se relaciona MoC con ECL?",
+    "expected_recall_behavior": {
+      "search_experience_query": "MoC",
+      "should_find_labels": ["MoC calculado como 5% de LGD_ESTIMADA en proj_03:38"],
+      "explanation": "El label contiene 'MoC'"
+    },
+    "golden_answer": "MoC (5% de LGD_ESTIMADA) es un input directo de ECL: ECL = PD × (LGD + MoC) × EAD. MoC se suma a LGD_ESTIMADA para formar LGD_CON_MOC, que es el numerador de ECL.",
+    "judge_criteria": {
+      "connects_concepts": "¿Explica la relación MoC→LGD_CON_MOC→ECL?",
+      "chain_correct": "¿Menciona la cadena correcta: MoC = 0.05×LGD, LGD_CON_MOC = LGD+MoC, ECL = PD×LGD_CON_MOC×EAD?",
+      "scoring_rubric": {"0": "No relaciona", "1": "Solo MoC sin ECL", "2": "Solo ECL sin MoC", "3": "Menciona que MoC alimenta ECL", "4": "Cadena completa MoC→LGD_CON_MOC→ECL", "5": "Como 4 + citas exactas de líneas SAS"},
+      "pass_condition": "Explica la relación MoC → LGD_CON_MOC → ECL (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_018",
+    "category": "experience_retention",
+    "scenario": "save_and_immediately_recall",
+    "difficulty": "hard",
+    "description": "El agente acaba de guardar un insight (save_insight) y debe poder recuperarlo inmediatamente después en la misma sesión.",
+    "setup_experiences": [],
+    "question": "Acabo de descubrir que el campo SW_FUSION=1 provoca que LGD_ESTIMADA sea missing. Quiero guardar este hallazgo. Luego: ¿qué sabemos sobre SW_FUSION?",
+    "expected_recall_behavior": {
+      "actions_required": ["save_insight(insight='SW_FUSION=1 provoca LGD missing...')", "search_experience(query='SW_FUSION')"],
+      "explanation": "El agente debe (1) guardar el insight con save_insight, (2) inmediatamente después llamar a search_experience y verificar que encuentra el insight que acaba de guardar."
+    },
+    "golden_answer": "He guardado el hallazgo. Confirmo que al buscar 'SW_FUSION' encuentro el insight recién guardado: 'SW_FUSION=1 provoca LGD missing en fusionados'. El sistema de experiencia funciona correctamente.",
+    "judge_criteria": {
+      "calls_save_insight": "¿Llamó a save_insight con el hallazgo?",
+      "calls_search_experience": "¿Llamó a search_experience después de guardar?",
+      "confirms_recall": "¿Confirmó que el insight está disponible?",
+      "scoring_rubric": {"0": "No guarda ni busca", "1": "Solo guarda sin verificar", "2": "Guarda y busca pero no confirma", "3": "Guarda, busca y confirma", "4": "Como 3 + verifica campos relacionados", "5": "Como 4 + verifica edges RELATES_TO"},
+      "pass_condition": "Guarda y verifica recuperación (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_019",
+    "category": "experience_retention",
+    "scenario": "cross_language_recall",
+    "difficulty": "hard",
+    "description": "El insight está en español pero el usuario pregunta en inglés (o viceversa). El sistema actual no maneja traducción.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "LGD floor for HIPOTECA is 30% per CRR Art.154(3)",
+        "summary": "Mortgage LGD floor = 0.30 according to CRR Article 154(3). Implemented in SAS pipeline.",
+        "priority": 0.5,
+        "tags": ["LGD", "mortgage", "CRR"]
+      }
+    ],
+    "question": "¿Cuál es el suelo de pérdida para hipotecas según la CRR?",
+    "expected_recall_behavior": {
+      "search_experience_query": "hipoteca",
+      "should_find_labels": [],
+      "explanation": "LIMITACIÓN ACTUAL: El label está en inglés ('HIPOTECA', 'mortgage', 'floor') pero la pregunta usa español ('suelo de pérdida', 'hipotecas'). 'hipoteca' no aparece como substring en el label. El label contiene 'HIPOTECA' (mayúsculas) que podría hacer match parcial si la búsqueda es case-insensitive."
+    },
+    "golden_answer_ideal": "El insight está etiquetado en inglés ('LGD floor for HIPOTECA'). Una búsqueda con 'hipoteca' podría no encontrarlo si el matching es case-sensitive. El agente debería intentar también con 'mortgage', 'LGD floor', o 'CRR'.",
+    "judge_criteria": {
+      "tries_alternatives": "¿Intentó términos alternativos en inglés?",
+      "finds_eventually": "¿Encuentra el insight por algún término (CRR, LGD)?",
+      "scoring_rubric": {"0": "No encuentra y alucina", "1": "No encuentra y dice no saber", "2": "Encuentra por término genérico (CRR/LGD)", "3": "Encuentra y responde correctamente", "4": "Como 3 + nota la discrepancia de idioma", "5": "Como 4 + sugiere mejora multilingüe"},
+      "pass_condition": "Encuentra la información por algún término (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_020",
+    "category": "experience_retention",
+    "scenario": "experience_maintenance",
+    "difficulty": "medium",
+    "description": "El agente debe poder actualizar un insight existente cuando encuentra nueva información que lo contradice.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "PROVISION_PERIOD_MONTHS mínimo 24 meses para fase 2",
+        "summary": "Para ciclos en fase 2 (DPDS>0 y ≤12), el provision period mínimo es 24 meses según Art.12 Circular 6/2016.",
+        "priority": 0.5,
+        "tags": ["provision_period", "fase 2", "DPDS"]
+      }
+    ],
+    "question": "He verificado con el equipo de negocio: para fase 2 el provision period mínimo son 36 meses, no 24. ¿Cómo actualizo este conocimiento?",
+    "expected_recall_behavior": {
+      "actions_required": ["save_feedback(feedback_type='correction', ...)"],
+      "explanation": "El usuario está reportando un error en el conocimiento existente. El agente debe (a) reconocer la corrección, (b) usar save_feedback para persistirla con priority=1.0, (c) explicar que el nuevo conocimiento prevalecerá."
+    },
+    "golden_answer": "Corrijo: según confirmación del equipo de negocio, el provision period mínimo para fase 2 es 36 meses, no 24. Voy a guardar esta corrección con save_feedback para que prevalezca en futuras consultas.",
+    "judge_criteria": {
+      "calls_save_feedback": "¿Usó save_feedback con correction?",
+      "acknowledges_error": "¿Reconoció que el insight anterior era incorrecto?",
+      "priority_set": "¿La corrección tendrá priority=1.0?",
+      "scoring_rubric": {"0": "Ignora la corrección", "1": "Reconoce pero no guarda", "2": "Guarda como insight normal (sin feedback)", "3": "Guarda como feedback correction", "4": "Como 3 + explica que prevalecerá", "5": "Como 4 + verifica recuperación inmediata"},
+      "pass_condition": "Usa save_feedback con tipo correction (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_021",
+    "category": "experience_retention",
+    "scenario": "cross_system_reconciliation",
+    "difficulty": "medium",
+    "description": "Experiencia sobre conciliación entre SAP y SAS. El agente debe recuperar conocimiento sobre diferencias sistemáticas entre sistemas.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Diferencias sistemáticas EAD SAP→SAS: filtro fecha elimina contratos pre-2020",
+        "summary": "La conciliación mensual muestra diferencia constante ~2.3% en EAD. Causa: extracto SAP exporta todos los contratos activos, pero job SAS filtra WHERE FECHA_ALTA >= '2020-01-01', perdiendo ~28M€ en EAD de contratos anteriores.",
+        "priority": 0.7,
+        "tags": ["cross-system", "SAP", "SAS", "EAD", "conciliation"]
+      }
+    ],
+    "question": "He visto que el EAD total en SAS es ~2% menor que en SAP. ¿Hay experiencia previa sobre esto?",
+    "expected_recall_behavior": {
+      "search_experience_query": "SAP SAS EAD conciliación",
+      "should_find_labels": ["Diferencias sistemáticas EAD SAP→SAS: filtro fecha elimina contratos pre-2020"],
+      "explanation": "El label contiene 'SAP', 'SAS', 'EAD'. El query con estos términos debería encontrar el insight."
+    },
+    "golden_answer": "Sí, hay una experiencia documentada: la diferencia sistemática de ~2.3% en EAD entre SAP y SAS se debe a un filtro WHERE FECHA_ALTA >= '2020-01-01' en el job de importación SAS que excluye contratos anteriores a 2020 (~28M€ en EAD). El fix sería eliminar o documentar ese filtro.",
+    "judge_criteria": {
+      "retrieves_relevant": "¿Encontró el insight sobre SAP/SAS?",
+      "identifies_cause": "¿Identifica el filtro de fecha como causa?",
+      "quantifies": "¿Menciona ~2.3% y ~28M€?",
+      "scoring_rubric": {"0": "No encuentra experiencia", "1": "Menciona diferencia pero sin causa", "2": "Identifica el filtro de fecha", "3": "Causa + impacto cuantificado", "4": "Como 3 + sugiere fix", "5": "Como 4 + verifica si el fix ya se implementó"},
+      "pass_condition": "Identifica el filtro como causa (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_022",
+    "category": "experience_retention",
+    "scenario": "cross_encoding_quirk",
+    "difficulty": "medium",
+    "description": "Experiencia sobre encoding entre SAS y Hadoop. El agente debe recuperar un quirk sobre problemas de encoding.",
+    "setup_experiences": [
+      {
+        "type": "quirk",
+        "label": "Problema de encoding SAS→Hadoop: caracteres latinos corrompidos",
+        "description": "Pipeline exporta a Hadoop en LATIN1 pero Hadoop espera UTF-8. Caracteres como ó, é, ñ, í en campos como SEGMENTO causan fallos en JOINs con tablas Hadoop. Fix: configurar SAS_ENCODING=UTF-8 antes de exportar.",
+        "severity": "medium",
+        "tags": ["cross-system", "encoding", "Hadoop", "SAS", "UTF-8"]
+      }
+    ],
+    "question": "Algunos JOINs con tablas de Hadoop están fallando para ciertos contratos. ¿Hay algo documentado sobre esto?",
+    "expected_recall_behavior": {
+      "search_experience_query": "encoding SAS Hadoop",
+      "should_find_labels": ["Problema de encoding SAS→Hadoop: caracteres latinos corrompidos"],
+      "explanation": "El label contiene 'encoding', 'SAS', 'Hadoop'."
+    },
+    "golden_answer": "Sí, hay un quirk documentado: la exportación SAS usa LATIN1 pero Hadoop espera UTF-8. Los caracteres especiales (ó, é, ñ) se corrompen, causando que JOINs con tablas Hadoop fallen silenciosamente. El fix es configurar SAS_ENCODING=UTF-8 antes de la exportación.",
+    "judge_criteria": {
+      "retrieves_quirk": "¿Encontró el quirk de encoding?",
+      "explains_cause": "¿Explica LATIN1 vs UTF-8?",
+      "offers_fix": "¿Propone configurar SAS_ENCODING?",
+      "scoring_rubric": {"0": "No encuentra", "1": "Menciona encoding sin detalle", "2": "Identifica causa LATIN1 vs UTF-8", "3": "Causa + impacto en JOINs", "4": "Como 3 + propone fix", "5": "Como 4 + verifica si el fix ya se aplicó"},
+      "pass_condition": "Identifica LATIN1/UTF-8 como causa (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_023",
+    "category": "experience_retention",
+    "scenario": "performance_insight",
+    "difficulty": "medium",
+    "description": "Experiencia sobre problemas de performance en SAS. El agente debe recuperar un insight sobre CROSS JOIN implícito.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "CROSS JOIN implícito en agregación mensual causa OOM en SAS",
+        "summary": "Query runaway en agregación: JOIN por SEGMENTO entre cycles (50k) y cycles_hist (500k) genera 6.25M filas implícitas, causando Out of Memory tras 47 min. Fix: usar PROC MEANS con CLASS en vez de CROSS JOIN.",
+        "priority": 0.5,
+        "tags": ["performance", "SAS", "OOM", "JOIN"]
+      }
+    ],
+    "question": "El proceso de agregación mensual está fallando con error de memoria. ¿Hay algo en experiencias previas?",
+    "expected_recall_behavior": {
+      "search_experience_query": "memory SAS agregación",
+      "should_find_labels": ["CROSS JOIN implícito en agregación mensual causa OOM en SAS"],
+      "explanation": "Query con 'memory' y 'SAS' debería encontrar el insight."
+    },
+    "golden_answer": "Sí, hay un insight documentado: un CROSS JOIN implícito entre cycles (50k) y cycles_hist (500k) por SEGMENTO generó 6.25M filas y causó OOM tras 47 min. El fix es usar PROC MEANS con CLASS en lugar de JOIN directo, o hacer merge explícito con BY después de resumir.",
+    "judge_criteria": {
+      "retrieves_perf": "¿Encontró el insight de performance?",
+      "explains_cause": "¿Explica el CROSS JOIN implícito?",
+      "proposes_fix": "¿Sugiere PROC MEANS con CLASS?",
+      "scoring_rubric": {"0": "No encuentra", "1": "Menciona memoria pero sin causa", "2": "Identifica CROSS JOIN como causa", "3": "Causa + cardinalidades (50k, 500k)", "4": "Como 3 + sugiere fix", "5": "Como 4 + verifica si es el mismo query"},
+      "pass_condition": "Identifica el CROSS JOIN como causa (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_024",
+    "category": "experience_retention",
+    "scenario": "data_quality_range_check",
+    "difficulty": "medium",
+    "description": "Experiencia sobre LGD fuera de rango [0,1]. El agente debe recuperar conocimiento sobre validación de rango.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "LGD_ESTIMADA y LGD_REALIZADA fuera de rango [0,1] en 2.3% de ciclos",
+        "summary": "El 2.3% de ciclos tienen LGD fuera de [0,1]. Causas: recovery mal calculado (<0), bug SUM en fusiones (>1). El truncamiento silencioso MAX(0,MIN(1,LGD)) enmascara bugs upstream.",
+        "priority": 0.7,
+        "tags": ["data quality", "LGD", "rango", "validación"]
+      }
+    ],
+    "question": "Estoy viendo valores de LGD_ESTIMADA de 1.35 para algunos contratos. ¿Es esto normal o hay un problema?",
+    "expected_recall_behavior": {
+      "search_experience_query": "LGD fuera de rango",
+      "should_find_labels": ["LGD_ESTIMADA y LGD_REALIZADA fuera de rango [0,1] en 2.3% de ciclos"],
+      "explanation": "Query con 'LGD' y 'rango' encuentra el insight."
+    },
+    "golden_answer": "No es normal. Según experiencia previa, ~2.3% de ciclos tienen LGD fuera de [0,1]. Las causas conocidas son: recovery rate mal calculado (valores <0) y bug de SUM en agregación con fusiones (valores >1 como el que ves). El truncamiento silencioso (MAX/MIN) enmascara estos bugs. Recomiendo investigar la causa upstream.",
+    "judge_criteria": {
+      "retrieves_dq_insight": "¿Encontró el insight de DQ?",
+      "identifies_cause": "¿Menciona bug de SUM o recovery mal calculado?",
+      "warns_truncation": "¿Advierte que el truncamiento enmascara bugs?",
+      "scoring_rubric": {"0": "No encuentra experiencia", "1": "Dice que no es normal sin contexto", "2": "Menciona que hay insight sobre LGD fuera de rango", "3": "Explica causas posibles", "4": "Como 3 + advierte sobre truncamiento", "5": "Como 4 + propone debuggear upstream"},
+      "pass_condition": "Encuentra el insight y explica causas (score ≥ 3)"
+    }
+  },
+  {
+    "id": "exp_ret_025",
+    "category": "experience_retention",
+    "scenario": "bug_vs_quirk_discrimination",
+    "difficulty": "hard",
+    "description": "El agente tiene un bug y un quirk sobre el mismo campo. Debe discriminar cuándo aplica cada uno según la pregunta.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "SW_FUSION=1 causa LGD_ESTIMADA missing en fusionados",
+        "summary": "Bug: cuando SW_FUSION=1, el catálogo del contrato fusionado se pierde y LGD_ESTIMADA resulta missing.",
+        "priority": 0.7,
+        "tags": ["bug", "LGD", "SW_FUSION"]
+      },
+      {
+        "type": "quirk",
+        "label": "Missing LGD auto-corregido por floor hipotecario 0.30 en SAS",
+        "description": "Cuando COLATERAL_TIPO=HIPOTECA, el floor LGD < 0.30 THEN LGD = 0.30 accidentalmente corrige el missing de SW_FUSION. Esto ENMASCARA el bug para hipotecas.",
+        "severity": "medium",
+        "tags": ["quirk", "LGD", "auto-correction", "hipoteca"]
+      }
+    ],
+    "question": "¿Por qué los contratos hipotecarios con SW_FUSION=1 NO muestran LGD missing, pero los no-hipotecarios sí?",
+    "expected_recall_behavior": {
+      "search_experience_query": "SW_FUSION hipoteca missing",
+      "should_find_labels": [
+        "SW_FUSION=1 causa LGD_ESTIMADA missing en fusionados",
+        "Missing LGD auto-corregido por floor hipotecario 0.30 en SAS"
+      ],
+      "explanation": "Requiere recuperar AMBOS (bug + quirk) y sintetizar la respuesta."
+    },
+    "golden_answer": "Hay dos fenómenos combinados: (1) el bug SW_FUSION=1 causa LGD missing en TODOS los contratos fusionados. (2) Pero para hipotecas, el floor SAS (IF LGD < 0.30 THEN LGD = 0.30) corrige accidentalmente el missing porque en SAS missing < 0.30 es TRUE. Por eso solo ves el bug en no-hipotecas: el quirk lo enmascara para hipotecas.",
+    "judge_criteria": {
+      "retrieves_both": "¿Recuperó el bug Y el quirk?",
+      "synthesizes": "¿Explica la interacción entre ambos?",
+      "identifies_mask": "¿Explica que el quirk ENMASACA el bug para hipotecas?",
+      "scoring_rubric": {"0": "Solo menciona uno de los dos", "1": "Menciona ambos pero no los relaciona", "2": "Explica que el floor hipotecario corrige missing", "3": "Explica que esto enmascara el bug para hipotecas", "4": "Como 3 + explica la comparación SAS (missing < 0.30 = TRUE)", "5": "Como 4 + sugiere loguear correcciones automáticas"},
+      "pass_condition": "Explica la interacción bug + quirk (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_026",
+    "category": "experience_retention",
+    "scenario": "experience_to_regulation_link",
+    "difficulty": "hard",
+    "description": "Experiencia sobre multiplicador Stage 3 ligada a regulación. El agente debe conectar la experiencia con su base regulatoria.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[feedback] Stage 3 multiplicador 1.20 NO implementado, gap regulatorio",
+        "summary": "Corrección: el multiplicador 1.20 sobre LGD_FLOOR_APLICADO para Stage 3 NO está implementado. Es un gap regulatorio.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "LGD", "Stage 3", "gap"]
+      },
+      {
+        "type": "insight",
+        "label": "Art.16 Circular 6/2016 exige multiplicador 1.20 para Stage 3",
+        "summary": "Base regulatoria del gap: Circular 6/2016 Art.16 establece multiplicador 1.20 sobre LGD_FLOOR_APLICADO para exposiciones Stage 3.",
+        "priority": 0.7,
+        "tags": ["BdE", "circular", "Stage 3", "LGD", "multiplicador"],
+        "related_articles": ["circular_6_2016_art_16"]
+      }
+    ],
+    "question": "¿Cuál es la base regulatoria para el multiplicador de Stage 3? El feedback dice que no está implementado, pero ¿dónde está exigido?",
+    "expected_recall_behavior": {
+      "search_experience_query": "Stage 3 multiplicador Circular 6/2016",
+      "should_find_labels": [
+        "[feedback] Stage 3 multiplicador 1.20 NO implementado, gap regulatorio",
+        "Art.16 Circular 6/2016 exige multiplicador 1.20 para Stage 3"
+      ],
+      "explanation": "Dos insights conectados: el feedback documenta el gap, el insight regulatorio da la base legal."
+    },
+    "golden_answer": "El multiplicador Stage 3 está exigido en el Artículo 16 de la Circular 6/2016 del Banco de España. Según experiencia previa: (1) hay un feedback que confirma que NO está implementado en el pipeline (gap identificado), y (2) la base regulatoria es el Art.16 que exige LGD_PRE_MOC = LGD_FLOOR_APLICADO × 1.20 para Stage 3. El gap requiere implementación para cumplimiento regulatorio.",
+    "judge_criteria": {
+      "retrieves_both": "¿Encontró feedback + insight regulatorio?",
+      "cites_article": "¿Menciona Art.16 Circular 6/2016?",
+      "connects": "¿Explica que el Art.16 es la base del gap documentado?",
+      "scoring_rubric": {"0": "Solo menciona el gap sin base legal", "1": "Menciona el Art.16 pero sin conectar con el gap", "2": "Conecta el gap con su base regulatoria", "3": "Como 2 + explica qué exige el Art.16", "4": "Como 3 + diferencia entre gap y requisito", "5": "Como 4 + propone plan de implementación"},
+      "pass_condition": "Conecta gap con base regulatoria (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_027",
+    "category": "experience_retention",
+    "scenario": "multi_segment_floor_discrimination",
+    "difficulty": "hard",
+    "description": "Múltiples floors (PD, LGD, provision_period) con valores diferentes por segmento. El agente debe discriminar exactamente cuál aplica.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "PD floor: CORP 0.05%, retail 0.03% (Circular 4/2022 + EBA Q&A)",
+        "summary": "PD floor segmentado: CORP/soberano 0.05%, retail 0.03%. Base: Circular 4/2022 modifica Art.15 para retail, CRR Art.161 para CORP.",
+        "priority": 0.8,
+        "tags": ["PD", "floor", "CORP", "retail", "Circular 4/2022"]
+      },
+      {
+        "type": "insight",
+        "label": "LGD floor: HIPOTECA 0.30, CORP/NINGUNA 0.50 (CRR Art.154/161)",
+        "summary": "LGD floor por segmento: HIPOTECA 0.30 (CRR Art.154), CORP y NINGUNA 0.50 (CRR Art.161).",
+        "priority": 0.7,
+        "tags": ["LGD", "floor", "HIPOTECA", "CORP"]
+      },
+      {
+        "type": "insight",
+        "label": "Provision period fase 2: CORP 24m, HIPOTECA 36m, RETAIL 12m",
+        "summary": "Provision period fase 2 segmentado según Circular 6/2016 Art.12: CORP 24 meses, HIPOTECA 36 meses, RETAIL 12 meses.",
+        "priority": 0.6,
+        "tags": ["provision_period", "fase 2", "segmentado"]
+      }
+    ],
+    "question": "Tengo un contrato HIPOTECA en Stage 3 (deteriorado) con SW_FUSION=1. ¿Qué floors y periodos aplican?",
+    "expected_recall_behavior": {
+      "search_experience_query": "HIPOTECA floor provision period",
+      "should_find_labels": [
+        "LGD floor: HIPOTECA 0.30, CORP/NINGUNA 0.50 (CRR Art.154/161)",
+        "Provision period fase 2: CORP 24m, HIPOTECA 36m, RETAIL 12m"
+      ],
+      "explanation": "Requiere recuperar floors específicos para HIPOTECA, no para otros segmentos."
+    },
+    "golden_answer": "Para un contrato HIPOTECA: (1) LGD floor = 0.30 (CRR Art.154(3), no el 0.50 de CORP). (2) PD floor = 0.05% (hipotecas no son retail a efectos de floor). (3) Como está en Stage 3, provision period = 0 (Stage 3 no tiene provision period, es toda la vida). (4) Además, si SW_FUSION=1, hay que verificar que LGD_ESTIMADA no sea missing por el bug documentado. (5) El multiplicador 1.20 de Stage 3 no está implementado (gap).",
+    "judge_criteria": {
+      "retrieves_correct_floor": "¿Usa LGD floor 0.30 para HIPOTECA (no 0.50)?",
+      "notes_stage3": "¿Menciona implicaciones de Stage 3?",
+      "integrates_knowledge": "¿Combina floors, provision period, y bug SW_FUSION?",
+      "scoring_rubric": {"0": "Da floors genéricos sin discriminar segmento", "1": "Menciona LGD floor correcto pero ignora Stage 3", "2": "LGD floor correcto + nota Stage 3", "3": "Como 2 + provision period", "4": "Como 3 + menciona multiplicador no implementado", "5": "Como 4 + integra bug SW_FUSION + plan de acción"},
+      "pass_condition": "LGD floor correcto para HIPOTECA + Stage 3 (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_028",
+    "category": "experience_retention",
+    "scenario": "experience_decay_temporal",
+    "difficulty": "hard",
+    "description": "Experiencia sobrecalibración que puede estar desactualizada. El agente debe evaluar si la experiencia sigue siendo válida.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Backtesting LGD 2024: calibración sobreestima LGD en CORP y subestima en HIPOTECA",
+        "summary": "Backtesting anual mostró sesgo significativo: CORP +0.11, HIPOTECA -0.07. Posible causa: tasa de recuperación fija 0.4 inadecuada.",
+        "priority": 0.7,
+        "tags": ["backtesting", "LGD", "calibración", "sesgo", "2024"]
+      },
+      {
+        "type": "insight",
+        "label": "[feedback] Tasa de recuperación fija 0.4 solo válida para promedio global",
+        "summary": "Corrección: la tasa 0.4 es correcta como promedio pero por segmento: CORP=0.38, HIPOTECA=0.52, RETAIL=0.29. Usar tasa fija distorsiona LGD_REALIZADA.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "recovery", "LGD", "tasa_fija", "segmento"]
+      }
+    ],
+    "question": "Estamos en 2026. El backtesting de LGD 2024 mostró sesgos. ¿Debemos preocuparnos o ese análisis ya está desactualizado?",
+    "expected_recall_behavior": {
+      "search_experience_query": "backtesting LGD calibración",
+      "should_find_labels": [
+        "Backtesting LGD 2024: calibración sobreestima LGD en CORP y subestima en HIPOTECA"
+      ],
+      "explanation": "La experiencia es de 2024. El agente debe considerar si sigue siendo relevante en 2026."
+    },
+    "golden_answer": "El backtesting de 2024 mostró sesgos significativos en CORP (+0.11) y HIPOTECA (-0.07). Sin embargo, desde entonces se identificó que la causa principal era la tasa de recuperación fija 0.4 (feedback recibido). Si ese feedback ya se implementó (tasas por segmento), el backtesting 2025-26 debería mostrar mejora. Recomiendo: (1) ejecutar backtesting 2025-26 con datos actualizados, (2) si la tasa por segmento ya se implementó, los sesgos deberían haberse reducido, (3) si no se implementó, el problema persiste y es más grave con el tiempo.",
+    "judge_criteria": {
+      "identifies_decay": "¿Reconoce que la experiencia puede estar desactualizada?",
+      "connects_feedback": "¿Vincula con el feedback de tasa de recuperación?",
+      "recommends_update": "¿Sugiere ejecutar backtesting actualizado?",
+      "scoring_rubric": {"0": "Toma la experiencia de 2024 como verdad absoluta", "1": "Menciona que es de 2024 pero no sugiere actualizar", "2": "Reconoce posible desactualización + recomienda actualizar", "3": "Como 2 + conecta con feedback de tasa recuperación", "4": "Como 3 + propone plan de acción concreto", "5": "Como 4 + sugiere verificar si el fix ya se implementó"},
+      "pass_condition": "Reconoce desactualización y recomienda actualizar (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_029",
+    "category": "experience_retention",
+    "scenario": "cross_language_spanish_english",
+    "difficulty": "hard",
+    "description": "Insight en inglés, usuario pregunta en español. El agente debe superar la barrera idiomática usando términos alternativos.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "IFRS 9 staging: SICR window must be segment-specific per EBA GL 2017/16",
+        "summary": "EBA GL 2017/16 §148 requires SICR evaluation with segment-specific windows: mortgages 24 months, corporate 12 months, retail 6 months.",
+        "priority": 0.7,
+        "tags": ["IFRS9", "staging", "SICR", "EBA", "mortgage"]
+      }
+    ],
+    "question": "¿Cómo se determina la ventana de SICR para hipotecas según la normativa europea?",
+    "expected_recall_behavior": {
+      "search_experience_query": "SICR IFRS9 hipotecas",
+      "should_find_labels": ["IFRS 9 staging: SICR window must be segment-specific per EBA GL 2017/16"],
+      "explanation": "El label está en inglés pero 'SICR' aparece en ambos. 'hipotecas' en español debería coincidir con 'mortgage' si hay match parcial."
+    },
+    "golden_answer": "Según EBA GL 2017/16 §148 (experiencia documentada), la ventana SICR debe ser específica por segmento: hipotecas 24 meses, corporativo 12 meses, retail 6 meses. La ventana fija de 12 meses que usa el pipeline es incorrecta para hipotecas (debería ser 24).",
+    "judge_criteria": {
+      "tries_alternatives": "¿Intentó términos en inglés además de español?",
+      "finds_correct": "¿Encontró el insight sobre SICR windows?",
+      "correct_values": "¿Da los valores correctos (24m hipotecas)?",
+      "scoring_rubric": {"0": "No encuentra por barrera idiomática", "1": "Encuentra por término común (SICR, EBA, IFRS9)", "2": "Responde correctamente con valores", "3": "Como 2 + cita EBA GL 2017/16", "4": "Como 3 + explica implicación para pipeline", "5": "Como 4 + sugiere mejora multilingüe"},
+      "pass_condition": "Encuentra el insight y da valores correctos (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_030",
+    "category": "experience_retention",
+    "scenario": "data_freshness_operational",
+    "difficulty": "medium",
+    "description": "Experiencia operativa: datos de cierre no están completos hasta D+3. El agente debe aplicar este conocimiento a un problema actual.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[feedback] Datos de cierre contable incompletos hasta D+3 laborables",
+        "summary": "Corrección: los datos de cierre (FECHA_CIERRE) no están completos hasta D+3. Ejecutar reporting antes produce ECL con datos parciales (diferencia ~0.3-0.8%).",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "ops", "freshness", "cierre", "ECL"]
+      }
+    ],
+    "question": "El reporting ECL de este mes dio un resultado diferente al esperado. ¿Podría ser por los datos?",
+    "expected_recall_behavior": {
+      "search_experience_query": "datos cierre incompletos reporting",
+      "should_find_labels": ["[feedback] Datos de cierre contable incompletos hasta D+3 laborables"],
+      "explanation": "Debe conectar el problema actual con la experiencia operativa."
+    },
+    "golden_answer": "Sí, según experiencia previa (feedback), los datos de cierre no están completos hasta D+3 laborables. Si el reporting se ejecutó antes, es probable que use datos parciales (diferencia típica 0.3-0.8%). Recomiendo: (1) verificar la fecha de ejecución, (2) si fue D+1 o D+2, esperar a D+3 y re-ejecutar, (3) implementar verificación de completitud antes de ejecutar.",
+    "judge_criteria": {
+      "retrieves_freshness": "¿Encontró el insight sobre freshness?",
+      "applies_to_current": "¿Aplica el conocimiento al problema actual?",
+      "quantifies": "¿Menciona D+3 y 0.3-0.8%?",
+      "scoring_rubric": {"0": "No relaciona con experiencia previa", "1": "Menciona freshness sin cuantificar", "2": "Conecta con D+3 y datos parciales", "3": "Como 2 + cuantifica diferencia típica", "4": "Como 3 + recomienda verificar fecha ejecución", "5": "Como 4 + propone verificación automática de completitud"},
+      "pass_condition": "Conecta con la experiencia de D+3 (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_031",
+    "category": "experience_retention",
+    "scenario": "model_validation_calibration",
+    "difficulty": "hard",
+    "description": "Experiencia sobre calibración PD con central tendency. El agente debe recuperar y aplicar conocimiento sobre constraints de calibración.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "PD central tendency constraint no aplicado post-recalibración ×1.15",
+        "summary": "EBA GL 2017/16 §6.2 requiere que PD media ponderada no se desvíe >±5% del default rate LTP. La recalibración ×1.15 produce desviación de +14.9% que no se ajusta.",
+        "priority": 0.6,
+        "tags": ["PD", "calibración", "central tendency", "EBA", "recalibración"]
+      }
+    ],
+    "question": "Después de aplicar la recalibración ×1.15 a ratings 1-2, ¿hay que verificar algo más según normativa EBA?",
+    "expected_recall_behavior": {
+      "search_experience_query": "central tendency recalibración",
+      "should_find_labels": ["PD central tendency constraint no aplicado post-recalibración ×1.15"],
+      "explanation": "El insight sobre central tendency responde exactamente a esta pregunta."
+    },
+    "golden_answer": "Sí, EBA GL 2017/16 §6.2 requiere verificar que la PD media ponderada post-recalibración no se desvíe más de ±5% del default rate observado a largo plazo. Según experiencia previa, la recalibración ×1.15 produce una desviación de +14.9% (0.747% vs 0.65% observado). Habría que aplicar un shrinkage factor (0.65/0.747) para ajustar.",
+    "judge_criteria": {
+      "retrieves_constraint": "¿Encontró el insight de central tendency?",
+      "cites_eba": "¿Menciona EBA GL 2017/16 §6.2?",
+      "explains_adjustment": "¿Explica el shrinkage factor?",
+      "scoring_rubric": {"0": "Dice que no hay que verificar nada más", "1": "Menciona central tendency sin detalle", "2": "Cita EBA GL §6.2 y el ±5%", "3": "Explica la desviación concreta (+14.9%)", "4": "Como 3 + propone shrinkage factor", "5": "Como 4 + sugiere implementar verificación automática"},
+      "pass_condition": "Menciona central tendency y ±5% (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_032",
+    "category": "experience_retention",
+    "scenario": "email_as_experience_source",
+    "difficulty": "medium",
+    "description": "Experiencia proveniente de un email de auditoría. El agente debe tratar el email como fuente autoritativa de conocimiento.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[feedback] Hallazgo auditoría: PD floor retail debe ser 0.03% (Circular 4/2022)",
+        "summary": "Email de auditoría externa (AUD-2025-047): PD floor retail = 0.03% según Circular 4/2022. Pipeline usa 0.05% incorrecto. Severidad: Media. Plazo: Q3-2025.",
+        "priority": 1.0,
+        "feedback_type": "finding",
+        "tags": ["feedback", "email", "auditoría", "PD", "floor", "retail"]
+      }
+    ],
+    "question": "El auditor externo nos preguntó por qué nuestro PD floor retail es 0.05%. ¿Hay algún hallazgo previo sobre esto?",
+    "expected_recall_behavior": {
+      "search_experience_query": "auditoría PD floor retail",
+      "should_find_labels": ["[feedback] Hallazgo auditoría: PD floor retail debe ser 0.03% (Circular 4/2022)"],
+      "explanation": "El hallazgo de auditoría está documentado como feedback."
+    },
+    "golden_answer": "Sí, hay un hallazgo de auditoría documentado (AUD-2025-047): el PD floor retail debe ser 0.03% según Circular 4/2022, pero el pipeline usa 0.05% para todos los segmentos. El auditor ya lo identificó con severidad media y plazo Q3-2025. Habría que informarles que el hallazgo está registrado y en proceso de corrección.",
+    "judge_criteria": {
+      "retrieves_finding": "¿Encontró el hallazgo de auditoría?",
+      "cites_source": "¿Menciona que es de email de auditoría?",
+      "details": "¿Da detalles (AUD-2025-047, severidad, plazo)?",
+      "scoring_rubric": {"0": "No encuentra el hallazgo", "1": "Menciona PD floor retail 0.03% sin fuente", "2": "Cita el hallazgo de auditoría", "3": "Como 2 + da detalles del hallazgo", "4": "Como 3 + sugiere respuesta al auditor", "5": "Como 4 + verifica estado de implementación"},
+      "pass_condition": "Encuentra y cita el hallazgo de auditoría (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_033",
+    "category": "experience_retention",
+    "scenario": "bcbs239_lineage_gap",
+    "difficulty": "hard",
+    "description": "Experiencia sobre BCBS 239 data lineage. El agente debe evaluar cobertura de lineage contra estándar regulatorio.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "BCBS 239 Principio 2: data lineage incompleto para ECL y RWA",
+        "summary": "Auto-evaluación BCBS 239 muestra lineage incompleto: ECL trazado hasta proj_03 pero no upstream, origen de ratings no documentado, transformaciones sin metadatos.",
+        "priority": 0.7,
+        "tags": ["BCBS239", "lineage", "data governance", "ECL", "RWA"]
+      }
+    ],
+    "question": "Necesito demostrar a los auditores que tenemos trazabilidad completa de ECL. ¿Qué documentación tenemos?",
+    "expected_recall_behavior": {
+      "search_experience_query": "BCBS239 lineage ECL",
+      "should_find_labels": ["BCBS 239 Principio 2: data lineage incompleto para ECL y RWA"],
+      "explanation": "El insight documenta el estado actual del lineage."
+    },
+    "golden_answer": "Según experiencia previa (auto-evaluación BCBS 239), nuestro lineage es PARCIAL: ECL está trazado hasta proj_03 (PD × LGD × EAD), pero el origen upstream de ratings no está documentado, y las transformaciones SAS no tienen metadatos. Para demostrar trazabilidad completa a los auditores necesitaríamos: (1) documentar origen de ratings, (2) añadir metadatos a cada transformación SAS, (3) vincular cada columna COREP a su cálculo completo. El gap está identificado pero no resuelto.",
+    "judge_criteria": {
+      "retrieves_gap": "¿Encontró el insight de BCBS 239?",
+      "honest_assessment": "¿Reconoce que el lineage es incompleto (no dice que está completo)?",
+      "specific_gaps": "¿Menciona gaps específicos (ratings, metadatos)?",
+      "scoring_rubric": {"0": "Dice que el lineage está completo (incorrecto)", "1": "Menciona BCBS 239 sin detalle", "2": "Reconoce lineage incompleto", "3": "Como 2 + enumera gaps específicos", "4": "Como 3 + propone plan de acción", "5": "Como 4 + prioriza acciones por riesgo"},
+      "pass_condition": "Reconoce lineage incompleto con gaps (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_034",
+    "category": "experience_retention",
+    "scenario": "kba_gl_monitoring_irb",
+    "difficulty": "hard",
+    "description": "Experiencia sobre cambio de normativa EBA de 2017 a 2022. El agente debe aplicar la normativa más reciente.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "EBA/GL/2022/01: monitoring IRB semestral, backtesting EAD, umbral ±5%",
+        "summary": "Nueva GL 2022/01 actualiza 2017/16: frecuencia backtesting pasa a semestral, EAD requiere backtesting con CCF, umbral materialidad baja a ±5%, reporting trimestral a supervisor.",
+        "priority": 0.6,
+        "tags": ["EBA", "monitoring", "IRB", "backtesting", "2022"]
+      }
+    ],
+    "question": "Estamos configurando el monitoring de modelos IRB para este año. ¿Con qué frecuencia hay que hacer backtesting según normativa?",
+    "expected_recall_behavior": {
+      "search_experience_query": "EBA GL monitoring backtesting frecuencia",
+      "should_find_labels": ["EBA/GL/2022/01: monitoring IRB semestral, backtesting EAD, umbral ±5%"],
+      "explanation": "El insight documenta la nueva frecuencia requerida."
+    },
+    "golden_answer": "Según EBA/GL/2022/01 (que actualiza la 2017/16), el backtesting debe ser SEMESTRAL (no anual como antes). Además: (1) ahora también requiere backtesting de EAD con CCF, (2) el umbral de materialidad es ±5% (antes ±10%), (3) el reporting al supervisor es trimestral. La GL 2022/01 es más exigente en frecuencia y alcance.",
+    "judge_criteria": {
+      "retrieves_gl": "¿Encontró el insight de EBA GL 2022/01?",
+      "correct_frequency": "¿Responde semestral (no anual)?",
+      "cites_changes": "¿Menciona cambios adicionales (EAD, ±5%, trimestral)?",
+      "scoring_rubric": {"0": "Responde anual (normativa antigua)", "1": "Menciona semestral sin detalles", "2": "Semestral + un cambio adicional", "3": "Semestral + múltiples cambios", "4": "Como 3 + distingue 2017/16 vs 2022/01", "5": "Como 4 + propone plan de actualización del scheduler"},
+      "pass_condition": "Responde semestral (score ≥ 1)"
+    }
+  },
+  {
+    "id": "exp_ret_035",
+    "category": "experience_retention",
+    "scenario": "provision_period_segment_matrix",
+    "difficulty": "hard",
+    "description": "Experiencia sobre matriz de provision period segmentada. El agente debe recuperar la matriz correcta y aplicarla.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[feedback] Matriz provision_period no segmentada: CORP=24m, HIPOTECA=36m, RETAIL=12m",
+        "summary": "Corrección: provision period fase 2 debe ser por segmento según Circular 6/2016 Art.12. Pipeline usa 24m fijo para todos, incorrecto.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "provision_period", "fase 2", "segmentado"]
+      }
+    ],
+    "question": "¿Cuántos meses de provision period aplican para un contrato RETAIL en fase 2?",
+    "expected_recall_behavior": {
+      "search_experience_query": "provision period retail fase 2",
+      "should_find_labels": ["[feedback] Matriz provision_period no segmentada: CORP=24m, HIPOTECA=36m, RETAIL=12m"],
+      "explanation": "El feedback contiene la matriz completa."
+    },
+    "golden_answer": "Para RETAIL en fase 2, el provision period es 12 meses según Circular 6/2016 Art.12. La matriz completa es: CORP=24m, HIPOTECA=36m, RETAIL=12m. El pipeline actualmente usa 24m para todos (incorrecto para retail y para hipotecas).",
+    "judge_criteria": {
+      "retrieves_matrix": "¿Encontró el feedback con la matriz?",
+      "correct_value": "¿Responde 12m para retail (no 24m)?",
+      "cites_article": "¿Menciona Circular 6/2016 Art.12?",
+      "scoring_rubric": {"0": "Responde 24m (valor incorrecto del pipeline)", "1": "Responde 12m sin contexto", "2": "12m + menciona que es por segmento", "3": "12m + cita Circular 6/2016 Art.12", "4": "Como 3 + da matriz completa", "5": "Como 4 + verifica si el pipeline ya está corregido"},
+      "pass_condition": "Responde 12m (score ≥ 1)"
+    }
+  },
+  {
+    "id": "exp_ret_036",
+    "category": "experience_retention",
+    "scenario": "inter_experience_synthesis",
+    "difficulty": "hard",
+    "description": "El agente tiene múltiples insights sobre el mismo pipeline step que deben sintetizarse para dar una respuesta completa.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "SW_FUSION=1 causa LGD_ESTIMADA missing en fusionados",
+        "summary": "Bug: SW_FUSION=1 → catálogo absorbido → LGD missing.",
+        "priority": 0.7,
+        "tags": ["bug", "LGD", "SW_FUSION"]
+      },
+      {
+        "type": "insight",
+        "label": "Missing LGD auto-corregido por floor hipotecario 0.30 en SAS",
+        "summary": "Quirk: floor hipotecario corrige missing accidentalmente.",
+        "priority": 0.5,
+        "tags": ["quirk", "LGD", "auto-correction", "hipoteca"]
+      },
+      {
+        "type": "insight",
+        "label": "SUM en lugar de MAX para LGD_ESTIMADA en agregación con fusiones",
+        "summary": "Bug: agregación usa SUM(LGD) en lugar de MAX(LGD), valores fuera de [0,1].",
+        "priority": 0.7,
+        "tags": ["bug", "LGD", "aggregation", "SUM"]
+      }
+    ],
+    "question": "Quiero entender todos los problemas conocidos de LGD_ESTIMADA en el pipeline. ¿Cuáles son?",
+    "expected_recall_behavior": {
+      "search_experience_query": "LGD_ESTIMADA bug problema",
+      "should_find_labels": [
+        "SW_FUSION=1 causa LGD_ESTIMADA missing en fusionados",
+        "Missing LGD auto-corregido por floor hipotecario 0.30 en SAS",
+        "SUM en lugar de MAX para LGD_ESTIMADA en agregación con fusiones"
+      ],
+      "explanation": "Debe recuperar MÚLTIPLES insights y sintetizarlos."
+    },
+    "golden_answer": "Hay 3 problemas documentados con LGD_ESTIMADA: (1) Bug SW_FUSION=1 → catálogo absorbido → LGD missing en contratos fusionados (proj_03:33-37). (2) Quirk: para hipotecas, el floor 0.30 corrige accidentalmente el missing (SAS: missing < 0.30 = TRUE), ENMASCARANDO el bug para ese segmento. (3) Bug de agregación: SUM(LGD) en lugar de MAX(LGD) produce valores fuera de [0,1] cuando hay fusiones con filas duplicadas.",
+    "judge_criteria": {
+      "retrieves_all_three": "¿Recuperó los 3 insights?",
+      "synthesizes": "¿Los presenta como problemas relacionados?",
+      "identifies_interaction": "¿Explica que el quirk ENMASACA el bug?",
+      "scoring_rubric": {"0": "Solo menciona 1 problema", "1": "Menciona 2 problemas sin relación", "2": "Menciona los 3 problemas", "3": "Como 2 + los organiza por tipo (bug vs quirk)", "4": "Como 3 + explica interacciones entre ellos", "5": "Como 4 + prioriza cuál resolver primero"},
+      "pass_condition": "Menciona al menos 2 de 3 problemas (score ≥ 1)"
+    }
+  },
+  {
+    "id": "exp_ret_037",
+    "category": "experience_retention",
+    "scenario": "regulatory_multi_source_conciliation",
+    "difficulty": "hard",
+    "description": "Múltiples fuentes regulatorias convergen en el mismo requisito. El agente debe conciliarlas.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Circular 4/2022: PD floor retail 0.03% (modifica Circular 6/2016 Art.15)",
+        "summary": "BdE Circular 4/2022 modifica Art.15 de Circular 6/2016: PD floor retail baja a 0.03%.",
+        "priority": 0.7,
+        "tags": ["BdE", "Circular 4/2022", "PD", "floor", "retail"]
+      },
+      {
+        "type": "insight",
+        "label": "EBA Q&A 2023-12 confirma: PD floor retail 0.03% vs CORP 0.05%",
+        "summary": "EBA Q&A confirma que PD floor 0.03% retail es específico de Art.154 CRR, no aplica a CORP que mantiene 0.05% por Art.161.",
+        "priority": 0.7,
+        "tags": ["EBA", "Q&A", "PD", "floor", "retail", "CORP"]
+      }
+    ],
+    "question": "He visto que la Circular 4/2022 dice PD floor retail 0.03%, y también la EBA Q&A 2023-12 dice lo mismo. ¿Son fuentes independientes o una cita a la otra?",
+    "expected_recall_behavior": {
+      "search_experience_query": "PD floor retail 0.03% Circular EBA",
+      "should_find_labels": [
+        "Circular 4/2022: PD floor retail 0.03% (modifica Circular 6/2016 Art.15)",
+        "EBA Q&A 2023-12 confirma: PD floor retail 0.03% vs CORP 0.05%"
+      ],
+      "explanation": "Dos insights sobre el mismo requisito pero fuentes distintas. Debe conciliarlas."
+    },
+    "golden_answer": "Son fuentes independientes que convergen: (1) La Circular 4/2022 del BdE modifica la Circular 6/2016 y establece el 0.03% para retail como norma española. (2) La EBA Q&A 2023-12 confirma que esta segmentación (retail 0.03% vs CORP 0.05%) es correcta según CRR Art.154 vs Art.161. No es que una cite a la otra: la Circular implementa el CRR a nivel nacional, y la EBA aclara la interpretación del CRR. Ambas coinciden y se refuerzan mutuamente.",
+    "judge_criteria": {
+      "retrieves_both": "¿Encontró ambas fuentes?",
+      "explains_relationship": "¿Explica que son independientes pero convergentes?",
+      "no_confusion": "¿No dice que una depende de la otra?",
+      "scoring_rubric": {"0": "Solo menciona una fuente", "1": "Menciona ambas como redundantes", "2": "Explica que son independientes", "3": "Como 2 + explica convergencia", "4": "Como 3 + distingue nivel nacional vs europeo", "5": "Como 4 + sugiere documentar ambas como evidencia para auditoría"},
+      "pass_condition": "Menciona ambas fuentes como independientes (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_038",
+    "category": "experience_retention",
+    "scenario": "negative_knowledge_compound",
+    "difficulty": "hard",
+    "description": "Múltiples conocimientos negativos (lo que NO hacer) sobre el mismo tema. El agente debe consolidarlos.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[feedback] Cure rate ×0.95 NO aplica a CORP, solo hipotecas",
+        "summary": "Corrección: cure rate solo hipotecas según changelog 2025-q1-lgd-cure.md.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "cure", "LGD", "hipoteca", "CORP"]
+      },
+      {
+        "type": "insight",
+        "label": "[feedback] PD floor 0.03% retail NO aplica a CORP (Art.161 CRR)",
+        "summary": "Corrección: PD floor retail es 0.03%, CORP/soberano es 0.05% según CRR.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "PD", "floor", "retail", "CORP"]
+      },
+      {
+        "type": "insight",
+        "label": "[feedback] Provision period 36m hipoteca NO aplica a CORP (solo 24m)",
+        "summary": "Corrección: provision period fase 2 es segmentado, no uniforme.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "provision_period", "hipoteca", "CORP"]
+      }
+    ],
+    "question": "Estoy revisando parámetros de CORP. ¿Qué cosas sé que NO aplican a CORP aunque inicialmente se pensó que sí?",
+    "expected_recall_behavior": {
+      "search_experience_query": "feedback CORP no aplica",
+      "should_find_labels": [
+        "[feedback] Cure rate ×0.95 NO aplica a CORP, solo hipotecas",
+        "[feedback] PD floor 0.03% retail NO aplica a CORP (Art.161 CRR)",
+        "[feedback] Provision period 36m hipoteca NO aplica a CORP (solo 24m)"
+      ],
+      "explanation": "Debe recuperar múltiples feedbacks negativos sobre CORP."
+    },
+    "golden_answer": "Para CORP, hay 3 correcciones documentadas: (1) Cure rate ×0.95 NO aplica a CORP — solo hipotecas. (2) PD floor NO es 0.03% para CORP — CORP mantiene 0.05% (Art.161 CRR), el 0.03% es solo retail. (3) Provision period fase 2 NO es 36m para CORP — CORP usa 24m (36m es solo hipotecas). En todos los casos, el pipeline inicialmente aplicaba el mismo valor a todos los segmentos y hubo que corregir.",
+    "judge_criteria": {
+      "retrieves_all_three": "¿Recuperó los 3 feedbacks negativos?",
+      "correct_values": "¿Da los valores correctos para CORP?",
+      "identifies_pattern": "¿Identifica el patrón de correcciones por segmento?",
+      "scoring_rubric": {"0": "No encuentra o no aplica a CORP", "1": "Menciona 1 corrección", "2": "Menciona 2 correcciones", "3": "Menciona 3 correcciones", "4": "Como 3 + da valores correctos para CORP", "5": "Como 4 + identifica patrón de segmentación como causa raíz"},
+      "pass_condition": "Menciona al menos 2 correcciones (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_039",
+    "category": "experience_retention",
+    "scenario": "audit_trail_compliance",
+    "difficulty": "hard",
+    "description": "El agente debe demostrar trazabilidad regulatoria usando experiencias previas para responder a un requerimiento de auditoría.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Art.16 Circular 6/2016 exige multiplicador 1.20 para Stage 3",
+        "summary": "Base regulatoria del multiplicador Stage 3.",
+        "priority": 0.7,
+        "tags": ["BdE", "circular", "Stage 3", "LGD", "multiplicador"],
+        "related_articles": ["circular_6_2016_art_16"]
+      },
+      {
+        "type": "insight",
+        "label": "[feedback] Stage 3 multiplicador 1.20 NO implementado, gap regulatorio",
+        "summary": "Corrección: el multiplicador no está implementado. Es un gap.",
+        "priority": 1.0,
+        "feedback_type": "correction",
+        "tags": ["feedback", "LGD", "Stage 3", "gap"]
+      },
+      {
+        "type": "insight",
+        "label": "BCBS 239 Principio 2: data lineage incompleto para ECL y RWA",
+        "summary": "Auto-evaluación BCBS 239 muestra lineage incompleto.",
+        "priority": 0.7,
+        "tags": ["BCBS239", "lineage", "data governance"]
+      }
+    ],
+    "question": "El supervisor nos pide evidencia de que conocemos los gaps regulatorios de Stage 3 y tenemos plan de acción. ¿Qué podemos mostrar?",
+    "expected_recall_behavior": {
+      "search_experience_query": "Stage 3 gap regulatorio",
+      "should_find_labels": [
+        "[feedback] Stage 3 multiplicador 1.20 NO implementado, gap regulatorio",
+        "Art.16 Circular 6/2016 exige multiplicador 1.20 para Stage 3"
+      ],
+      "explanation": "Debe demostrar que el gap está identificado Y tiene base regulatoria."
+    },
+    "golden_answer": "Podemos mostrar que: (1) Tenemos el gap de Stage 3 documentado como feedback (priority 1.0) — evidencia de que conocemos el problema. (2) Tenemos la base regulatoria documentada (Art.16 Circular 6/2016) que exige el multiplicador 1.20 — evidencia de que entendemos el requisito. (3) Tenemos documentado que el lineage BCBS 239 está incompleto — evidencia de autoevaluación. Sin embargo, NO tenemos documentado un plan de acción con fechas y responsable. Recomendaría crear un insight con el plan de implementación y fechas.",
+    "judge_criteria": {
+      "retrieves_gap_and_regulation": "¿Encuentra gap + base regulatoria?",
+      "identifies_missing_plan": "¿Identifica que falta plan de acción?",
+      "proposes_action": "¿Propone crear plan de acción documentado?",
+      "scoring_rubric": {"0": "Solo responde que no hay implementación", "1": "Menciona el gap pero no la base regulatoria", "2": "Menciona gap + base regulatoria", "3": "Como 2 + menciona BCBS 239", "4": "Como 3 + identifica que falta plan de acción", "5": "Como 4 + propone crear y documentar el plan"},
+      "pass_condition": "Menciona gap + base regulatoria (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_040",
+    "category": "experience_retention",
+    "scenario": "experience_self_improvement",
+    "difficulty": "hard",
+    "description": "El agente debe identificar que su experiencia está incompleta y sugerir cómo mejorarla.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "OR_EAD_TIT inflado por JOIN no único en proj_02",
+        "summary": "Bug: JOIN con garantías no es 1:1, duplica OR_EAD_TIT.",
+        "priority": 0.7,
+        "tags": ["bug", "EAD", "OR_EAD_TIT", "JOIN"]
+      }
+    ],
+    "question": "El bug de OR_EAD_TIT está documentado, pero ¿sabemos realmente cuántos contratos afecta y cuál es el impacto cuantitativo en ECL?",
+    "expected_recall_behavior": {
+      "search_experience_query": "OR_EAD_TIT bug impacto",
+      "should_find_labels": ["OR_EAD_TIT inflado por JOIN no único en proj_02"],
+      "explanation": "El insight actual documenta el bug pero no cuantifica el impacto."
+    },
+    "golden_answer": "El bug está documentado cualitativamente (JOIN 1:N con garantías duplica OR_EAD_TIT), pero la experiencia actual NO incluye: (1) cuántos contratos se ven afectados, (2) cuál es el rango de sobrestimación de EAD, (3) impacto cuantitativo en ECL y RWA. Esta es una limitación de la experiencia actual. Recomiendo complementar el insight con un análisis cuantitativo: ejecutar el pipeline con y sin DISTINCT, medir diferencia, y actualizar la experiencia con datos concretos.",
+    "judge_criteria": {
+      "identifies_gap": "¿Identifica que falta cuantificación?",
+      "honest_limitation": "¿Reconoce que la experiencia actual es incompleta?",
+      "proposes_enrichment": "¿Propone enriquecer la experiencia con datos?",
+      "scoring_rubric": {"0": "Responde solo con lo que ya está documentado", "1": "Menciona que falta cuantificación", "2": "Explica qué falta medir (n contratos, impacto ECL)", "3": "Como 2 + propone cómo medirlo", "4": "Como 3 + sugiere update del insight existente", "5": "Como 4 + propone enriquecer con datos de ejecución real"},
+      "pass_condition": "Identifica que falta cuantificación (score ≥ 1)"
+    }
+  },
+  {
+    "id": "exp_ret_041",
+    "category": "experience_retention",
+    "scenario": "segment_field_consistency",
+    "difficulty": "hard",
+    "description": "Experiencia sobre inconsistencia del campo SEGMENTO entre tablas. El agente debe aplicarla a una investigación actual.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "SEGMENTO inconsistente entre tabla maestra y operativa (3.6% contratos)",
+        "summary": "El 3.6% de contratos tienen SEGMENTO distinto en maestro_contratos vs ciclos_recuperacion. Causa: maestra es snapshot estático, operativa se actualiza mensual.",
+        "priority": 0.6,
+        "tags": ["data quality", "SEGMENTO", "inconsistencia", "maestro"]
+      }
+    ],
+    "question": "El mismo contrato aparece como HIPOTECA en una tabla y CORP en otra. ¿Es esto un problema conocido?",
+    "expected_recall_behavior": {
+      "search_experience_query": "SEGMENTO inconsistencia tabla maestra",
+      "should_find_labels": ["SEGMENTO inconsistente entre tabla maestra y operativa (3.6% contratos)"],
+      "explanation": "El insight documenta exactamente este problema."
+    },
+    "golden_answer": "Sí, es un problema conocido: el 3.6% de contratos (~5,486) tienen SEGMENTO inconsistente entre la tabla maestra (snapshot estático) y la operativa (actualizada mensual desde SAP). Esto afecta el cálculo de LGD floor, PD floor, y provision period que dependen del segmento. Recomiendo usar la tabla operativa como fuente autoritativa por ser más actual, y documentar la discrepancia.",
+    "judge_criteria": {
+      "retrieves_dq_issue": "¿Encontró el insight de inconsistencia?",
+      "explains_cause": "¿Explica por qué ocurre (maestra estática vs operativa dinámica)?",
+      "recommends_action": "¿Recomienda usar tabla operativa?",
+      "scoring_rubric": {"0": "Dice que no es conocido", "1": "Menciona que puede haber inconsistencia", "2": "Confirma que es conocido y da causa", "3": "Como 2 + cuantifica (3.6%)", "4": "Como 3 + recomienda acción", "5": "Como 4 + verifica impacto en floors y provision period"},
+      "pass_condition": "Confirma problema conocido y explica causa (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_042",
+    "category": "experience_retention",
+    "scenario": "default_definition_compliance",
+    "difficulty": "hard",
+    "description": "Experiencia sobre definición de default CRR Art.178. El agente debe evaluar cumplimiento del pipeline.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Definición de default CRR Art.178 no alineada con pipeline",
+        "summary": "Pipeline solo implementa criterio (a) DPDS>=90. Faltan (b) improbable pago, (c) quiebra, (d) reestructuración, (e) default del garantizador. DEFAULT_FLAG infraestima defaults.",
+        "priority": 0.6,
+        "tags": ["CRR", "default", "definition", "DPDS", "Art.178"]
+      }
+    ],
+    "question": "¿Nuestra definición de default cumple con CRR Art.178? ¿Necesitamos añadir más criterios?",
+    "expected_recall_behavior": {
+      "search_experience_query": "default definition CRR Art.178 pipeline",
+      "should_find_labels": ["Definición de default CRR Art.178 no alineada con pipeline"],
+      "explanation": "El insight analiza el cumplimiento del pipeline con Art.178."
+    },
+    "golden_answer": "No, no cumple completamente. CRR Art.178 requiere 5 criterios pero el pipeline solo implementa 1: DPDS>=90 (criterio a). Faltan: (b) improbabiliad de pago (juicio de experto), (c) quiebra/suspensión, (d) reestructuración forzosa, (e) default del garantizador. Esto significa que DEFAULT_FLAG infraestima defaults, y por tanto PD estimada es optimista. El criterio (b) requiere un proceso semiautomático con revisión del equipo de riesgos.",
+    "judge_criteria": {
+      "retrieves_art178": "¿Encontró el insight sobre CRR Art.178?",
+      "identifies_gap": "¿Identifica que solo 1 de 5 criterios está implementado?",
+      "explains_impact": "¿Explica que DEFAULT_FLAG infraestima defaults?",
+      "scoring_rubric": {"0": "Dice que cumple completamente (incorrecto)", "1": "Menciona que puede faltar algún criterio", "2": "Identifica que falta el criterio (b)", "3": "Enumera criterios faltantes", "4": "Como 3 + explica impacto en PD", "5": "Como 4 + propone plan de implementación"},
+      "pass_condition": "Identifica que faltan criterios (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_043",
+    "category": "experience_retention",
+    "scenario": "recovery_rate_empirical",
+    "difficulty": "hard",
+    "description": "Experiencia sobre análisis empírico de recovery rates. El agente debe aplicar datos observados vs supuestos del pipeline.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Recovery rates observados 2024 vs tasa fija 0.4 por segmento",
+        "summary": "Análisis empírico 7,701 contratos: CORP recovery medio 0.38, HIPOTECA 0.52, RETAIL 0.29. Tasa fija 0.4 solo válida como promedio global. Dispersión alta por segmento.",
+        "priority": 0.6,
+        "tags": ["excel", "recovery", "LGD", "empírico", "segmento"]
+      }
+    ],
+    "question": "El backtesting muestra LGD_REALIZADA = 0.60 para todos los segmentos. ¿Eso es correcto o debería variar?",
+    "expected_recall_behavior": {
+      "search_experience_query": "recovery rate segmento observado 2024",
+      "should_find_labels": ["Recovery rates observados 2024 vs tasa fija 0.4 por segmento"],
+      "explanation": "El insight explica por qué LGD_REALIZADA no debería ser uniforme."
+    },
+    "golden_answer": "No, LGD_REALIZADA = 0.60 para todos indica que se está usando la tasa de recuperación fija 0.4 (LGD = 1 - 0.4 = 0.6). Según el análisis empírico de 7,701 contratos, el recovery rate varía por segmento: CORP 0.38 (LGD=0.62), HIPOTECA 0.52 (LGD=0.48), RETAIL 0.29 (LGD=0.71). La tasa fija 0.4 solo es válida como promedio global y no refleja la realidad económica de cada segmento.",
+    "judge_criteria": {
+      "retrieves_empirical": "¿Encontró el insight de recovery rates?",
+      "identifies_fixed_rate": "¿Identifica que 0.60 viene de tasa fija 0.4?",
+      "gives_segment_values": "¿Da recovery rates por segmento?",
+      "scoring_rubric": {"0": "Dice que 0.60 es correcto", "1": "Nota que debería variar pero no da valores", "2": "Explica que es por tasa fija 0.4", "3": "Como 2 + da valores por segmento", "4": "Como 3 + explica impacto en LGD_REALIZADA", "5": "Como 4 + propone parametrizar recovery por segmento"},
+      "pass_condition": "Identifica la tasa fija 0.4 como causa (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_044",
+    "category": "experience_retention",
+    "scenario": "external_data_source_experience",
+    "difficulty": "medium",
+    "description": "Experiencia sobre Excel con datos de provision period matrix. El agente debe usar conocimiento de fuentes externas al pipeline SAS.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[EXCEL] Matriz provision_period segmentada CORP=24m, HIPOTECA=36m, RETAIL=12m",
+        "summary": "Fuente: PROVISION_PERIOD_VALIDATION.xlsx. Matriz correcta vs pipeline (24m fijo incorrecto). Base: Circular 6/2016 Art.12.",
+        "priority": 0.6,
+        "tags": ["excel", "provision_period", "matriz", "segmentado"]
+      }
+    ],
+    "question": "He oído que hay un Excel con los provision period correctos. ¿Qué dice y cómo se compara con el pipeline?",
+    "expected_recall_behavior": {
+      "search_experience_query": "Excel provision period matriz",
+      "should_find_labels": ["[EXCEL] Matriz provision_period segmentada CORP=24m, HIPOTECA=36m, RETAIL=12m"],
+      "explanation": "El insight referencia un Excel como fuente de datos."
+    },
+    "golden_answer": "Sí, hay un Excel (PROVISION_PERIOD_VALIDATION.xlsx) con la matriz correcta según Circular 6/2016 Art.12: CORP fase 2 = 24m, HIPOTECA = 36m, RETAIL = 12m. El pipeline usa 24m fijo para TODOS, que es incorrecto para hipotecas (deberían ser 36m) y retail (12m). La discrepancia está documentada como feedback.",
+    "judge_criteria": {
+      "retrieves_excel_knowledge": "¿Encontró el insight del Excel?",
+      "compares_pipeline": "¿Compara con el pipeline actual?",
+      "gives_matrix": "¿Da la matriz completa?",
+      "scoring_rubric": {"0": "No conoce el Excel", "1": "Menciona el Excel sin contenido", "2": "Da valores de la matriz", "3": "Como 2 + compara con pipeline", "4": "Como 3 + cita Circular 6/2016 Art.12", "5": "Como 4 + sugiere corregir pipeline"},
+      "pass_condition": "Da la matriz y la compara con pipeline (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_045",
+    "category": "experience_retention",
+    "scenario": "kirb_securitization_flow",
+    "difficulty": "hard",
+    "description": "Experiencia sobre cálculo KIRB incorrecto en securitizaciones. El agente debe recuperar y explicar el bug.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "KIRB usa OR_EAD en lugar de EAD_TOTAL en securitizaciones",
+        "summary": "Bug: KIRB = (LGD*PD*OR_EAD)/OR_EAD en vez de usar EAD_TOTAL. Cuando hay CRM, OR_EAD > EAD_TOTAL y KIRB se subestima. Impacto: ~33% menor en ejemplo concreto.",
+        "priority": 0.6,
+        "tags": ["KIRB", "EAD", "securitización", "COREP", "bug"]
+      }
+    ],
+    "question": "¿El cálculo de KIRB usa la EAD correcta? He visto que usa OR_EAD pero debería usar EAD_TOTAL.",
+    "expected_recall_behavior": {
+      "search_experience_query": "KIRB OR_EAD EAD_TOTAL",
+      "should_find_labels": ["KIRB usa OR_EAD en lugar de EAD_TOTAL en securitizaciones"],
+      "explanation": "El insight documenta exactamente este bug."
+    },
+    "golden_answer": "Sí, es un bug documentado: KIRB usa OR_EAD (EAD bruta antes de CRM) en lugar de EAD_TOTAL (EAD neta post-CRM). Cuando hay garantías, OR_EAD > EAD_TOTAL, y al usar OR_EAD en denominador, KIRB se subestima. En un ejemplo real con haircut CRM del 25%, KIRB era 0.45% vs el correcto 0.60% (33% mayor). El fix es cambiar OR_EAD por EAD_TOTAL en proj_04_kirb_securitization.sas:15.",
+    "judge_criteria": {
+      "retrieves_kirb": "¿Encontró el insight de KIRB?",
+      "explains_bug": "¿Explica OR_EAD vs EAD_TOTAL?",
+      "quantifies": "¿Da el ejemplo de impacto (33%)?",
+      "scoring_rubric": {"0": "No encuentra el insight", "1": "Confirma que usa OR_EAD incorrectamente", "2": "Explica por qué OR_EAD no es correcta", "3": "Como 2 + explica impacto (KIRB subestimado)", "4": "Como 3 + cuantifica el impacto", "5": "Como 4 + cita línea de código a corregir"},
+      "pass_condition": "Confirma el bug y explica OR_EAD vs EAD_TOTAL (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_046",
+    "category": "experience_retention",
+    "scenario": "rating_migration_experience",
+    "difficulty": "hard",
+    "description": "Experiencia sobre migración de ratings. El agente debe recuperar un hallazgo de model validation.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Matriz migración ratings CORP 2023→2024 muestra inestabilidad anómala",
+        "summary": "Tasa migración 2+ grados = 8.3% vs <3% esperado. Rating 1→4+ directo en 3.1%. Posible causa: poder discriminatorio bajo del rating (solo 4 clases).",
+        "priority": 0.6,
+        "tags": ["model validation", "ratings", "migration", "CORP", "EBA"]
+      }
+    ],
+    "question": "He notado que muchos contratos CORP saltan de rating 1 a rating 4+ directamente. ¿Hay algo documentado sobre esto?",
+    "expected_recall_behavior": {
+      "search_experience_query": "rating migración CORP inestabilidad",
+      "should_find_labels": ["Matriz migración ratings CORP 2023→2024 muestra inestabilidad anómala"],
+      "explanation": "El insight documenta exactamente este fenómeno."
+    },
+    "golden_answer": "Sí, hay una experiencia de model validation que documenta esto: la matriz de migración CORP 2023→2024 muestra una tasa de migración de 2+ grados del 8.3%, muy superior al umbral de estabilidad esperado (<3%). Específicamente, rating 1→4+ directo ocurre en 3.1% de casos (debería ser ~0%). La causa probable es que el sistema de rating tiene solo 4 clases, lo que da bajo poder discriminatorio. Recomendaría expandir a 7+ clases.",
+    "judge_criteria": {
+      "retrieves_migration": "¿Encontró el insight de migración?",
+      "gives_stats": "¿Da la cifra 8.3% o 3.1%?",
+      "explains_cause": "¿Menciona 4 clases insuficientes?",
+      "scoring_rubric": {"0": "No encuentra", "1": "Confirma el fenómeno sin datos", "2": "Da estadísticas del insight", "3": "Como 2 + explica causa posible", "4": "Como 3 + sugiere solución", "5": "Como 4 + conecta con impacto en PD_ESTIMADA y calibración"},
+      "pass_condition": "Da estadísticas del fenómeno (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_047",
+    "category": "experience_retention",
+    "scenario": "stale_insight_identification",
+    "difficulty": "hard",
+    "description": "El agente tiene un insight que puede estar desactualizado por cambios normativos. Debe identificar que necesita verificación.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "Ventana observación PD mínima: CORP≥5 años, hipotecas≥7 años, retail≥5 años",
+        "summary": "EBA GL 2017/16 §133 define ventanas mínimas de observación para calibración PD por segmento.",
+        "priority": 0.6,
+        "tags": ["PD", "ventana", "observación", "EBA"]
+      }
+    ],
+    "question": "¿Siguen siendo válidas las ventanas de observación PD de la EBA GL 2017/16 o la GL 2022/01 las cambió?",
+    "expected_recall_behavior": {
+      "search_experience_query": "ventana observación PD EBA",
+      "should_find_labels": ["Ventana observación PD mínima: CORP≥5 años, hipotecas≥7 años, retail≥5 años"],
+      "explanation": "El insight cita EBA GL 2017/16 pero existe una GL 2022/01 más reciente."
+    },
+    "golden_answer": "La experiencia actual cita EBA GL 2017/16 §133, pero existe la EBA/GL/2022/01 que actualiza ciertos aspectos del monitoring. Sin embargo, las ventanas de observación mínimas NO cambiaron con la 2022/01 — ese requisito sigue siendo el mismo. Lo que cambió fue la frecuencia de backtesting (a semestral), la inclusión de backtesting EAD, y el umbral de materialidad (±5%). Las ventanas de observación se mantienen.",
+    "judge_criteria": {
+      "retrieves_window": "¿Encontró el insight de ventanas?",
+      "checks_freshness": "¿Verifica si la GL 2022/01 afecta este requisito?",
+      "correct_assessment": "¿Concluye correctamente que no cambiaron?",
+      "scoring_rubric": {"0": "Asume que cambió sin verificar", "1": "Menciona que hay GL 2022/01 pero no sabe si afecta", "2": "Verifica y confirma que no cambió", "3": "Como 2 + explica qué SÍ cambió con 2022/01", "4": "Como 3 + distingue entre requisitos que cambiaron y no", "5": "Como 4 + sugiere añadir referencia a GL 2022/01 al insight existente"},
+      "pass_condition": "Verifica y responde correctamente (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_048",
+    "category": "experience_retention",
+    "scenario": "excel_dqc_outlier_detection",
+    "difficulty": "medium",
+    "description": "Experiencia sobre Excel con DQC de outliers. El agente debe recuperar conocimiento sobre control de calidad de datos.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[EXCEL] DQC LGD: 3.2% de ciclos son outliers univariantes por segmento",
+        "summary": "Análisis outliers LGD_ESTIMADA por segmento usando IQR. CORP: 2.1% outliers, HIPOTECA: 4.5%, RETAIL: 2.8%. Posibles causas: errores de cálculo, fusiones mal manejadas.",
+        "priority": 0.5,
+        "tags": ["excel", "DQC", "outliers", "LGD", "calidad"]
+      }
+    ],
+    "question": "En el control de calidad de LGD, ¿hay algún análisis de outliers por segmento?",
+    "expected_recall_behavior": {
+      "search_experience_query": "DQC outliers LGD segmento",
+      "should_find_labels": ["[EXCEL] DQC LGD: 3.2% de ciclos son outliers univariantes por segmento"],
+      "explanation": "El insight documenta el análisis de outliers."
+    },
+    "golden_answer": "Sí, hay un análisis DQC documentado (Excel) que muestra que el 3.2% de ciclos son outliers univariantes en LGD_ESTIMADA, con variación por segmento: HIPOTECA 4.5% (el más alto), RETAIL 2.8%, CORP 2.1%. Las causas posibles incluyen errores de cálculo y fusiones mal manejadas. Este análisis complementa los bugs conocidos de LGD.",
+    "judge_criteria": {
+      "retrieves_dqc": "¿Encontró el insight de DQC?",
+      "gives_segment_breakdown": "¿Da porcentajes por segmento?",
+      "connects_bugs": "¿Conecta con bugs conocidos de LGD?",
+      "scoring_rubric": {"0": "No encuentra", "1": "Menciona DQC de LGD sin detalle", "2": "Da el porcentaje global (3.2%)", "3": "Como 2 + desglose por segmento", "4": "Como 3 + conecta con bugs de LGD", "5": "Como 4 + sugiere investigar hipotecas (mayor tasa de outliers)"},
+      "pass_condition": "Da el porcentaje global (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_049",
+    "category": "experience_retention",
+    "scenario": "meeting_minutes_knowledge",
+    "difficulty": "medium",
+    "description": "Experiencia proveniente de actas de reunión. El agente debe tratar conocimiento de reuniones como fuente válida.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "[ACTA 2025-03-12] Gap floors LGD identificado: CORP y NINGUNA usan mismo floor 0.50",
+        "summary": "Acta reunión comité de modelos 2025-03-12: Se identificó que CORP y NINGUNA comparten floor 0.50. Discutir si NINGUNA debería tener floor más alto. Decisión: mantener 0.50 por ahora, revisar en 2026.",
+        "priority": 0.6,
+        "tags": ["acta", "reunión", "LGD", "floor", "CORP", "NINGUNA", "comité"]
+      }
+    ],
+    "question": "En una reunión del comité de modelos se habló sobre el floor de NINGUNA. ¿Qué se decidió?",
+    "expected_recall_behavior": {
+      "search_experience_query": "comité modelos NINGUNA floor",
+      "should_find_labels": ["[ACTA 2025-03-12] Gap floors LGD identificado: CORP y NINGUNA usan mismo floor 0.50"],
+      "explanation": "El insight documenta el acta de reunión. El agente debe buscar por 'comité' o 'acta' o 'reunión'."
+    },
+    "golden_answer": "Según el acta de la reunión del comité de modelos del 12 de marzo de 2025, se discutió si NINGUNA (sin colateral) debería tener un floor de LGD más alto que CORP (0.50). La decisión fue mantener 0.50 por ahora, pero revisarlo en 2026. Es una decisión pendiente de revisión.",
+    "judge_criteria": {
+      "retrieves_meeting": "¿Encontró el acta de reunión?",
+      "gives_decision": "¿Explica la decisión tomada?",
+      "notes_pending": "¿Menciona que la revisión está pendiente para 2026?",
+      "scoring_rubric": {"0": "No encuentra", "1": "Menciona que hubo reunión sin detalle", "2": "Explica el tema discutido", "3": "Da la decisión tomada", "4": "Como 3 + menciona revisión 2026", "5": "Como 4 + sugiere poner en agenda la revisión"},
+      "pass_condition": "Explica el tema y la decisión (score ≥ 2)"
+    }
+  },
+  {
+    "id": "exp_ret_050",
+    "category": "experience_retention",
+    "scenario": "comprehensive_knowledge_inventory",
+    "difficulty": "hard",
+    "description": "El usuario pide un inventario completo de todo lo que el agente sabe sobre el pipeline. El agente debe organizar y presentar su conocimiento de forma estructurada.",
+    "setup_experiences": [
+      {
+        "type": "insight",
+        "label": "SW_FUSION=1 causa LGD_ESTIMADA missing en fusionados",
+        "summary": "Bug en proj_03_suelos_lgd.sas:33-37.",
+        "priority": 0.7,
+        "tags": ["bug", "LGD", "SW_FUSION"]
+      },
+      {
+        "type": "insight",
+        "label": "PD floor: CORP 0.05%, retail 0.03% (Circular 4/2022 + EBA Q&A)",
+        "summary": "PD floor segmentado.",
+        "priority": 0.8,
+        "tags": ["PD", "floor"]
+      },
+      {
+        "type": "insight",
+        "label": "LGD floor: HIPOTECA 0.30, CORP/NINGUNA 0.50 (CRR Art.154/161)",
+        "summary": "LGD floor por segmento.",
+        "priority": 0.7,
+        "tags": ["LGD", "floor"]
+      },
+      {
+        "type": "insight",
+        "label": "OR_EAD_TIT inflado por JOIN no único en proj_02",
+        "summary": "Bug JOIN 1:N con garantías.",
+        "priority": 0.7,
+        "tags": ["bug", "EAD", "JOIN"]
+      },
+      {
+        "type": "insight",
+        "label": "[feedback] Stage 3 multiplicador NO implementado, gap regulatorio",
+        "summary": "Multiplicador 1.20 no implementado.",
+        "priority": 1.0,
+        "tags": ["feedback", "LGD", "Stage 3", "gap"]
+      }
+    ],
+    "question": "Haz un inventario completo de todo lo que sabemos sobre el pipeline. Organízalo por áreas (PD, LGD, EAD, ECL, staging) y dime qué gaps tenemos.",
+    "expected_recall_behavior": {
+      "search_experience_query": "",
+      "should_find_labels": [],
+      "explanation": "El agente debe usar múltiples queries para cubrir todo el conocimiento, no una sola búsqueda."
+    },
+    "golden_answer": "Aquí está el inventario completo organizado por áreas:\n\n**PD**: (1) PD floor segmentado: CORP 0.05%, retail 0.03% (Circular 4/2022 + EBA Q&A). (2) Flujo: rating → recalibración ×1.15 → floor → PD_ESTIMADA. (3) Gap: central tendency no verificado post-recalibración (desviación +14.9%).\n\n**LGD**: (1) Bug SW_FUSION=1 → LGD missing. (2) LGD floor: HIPOTECA 0.30, CORP/NINGUNA 0.50. (3) Quirk: floor hipotecario enmascara missing. (4) Bug: SUM vs MAX en agregación. (5) Gap: LGD downturn no implementado. (6) Gap: tasa recuperación fija 0.4 invalida backtesting.\n\n**EAD**: (1) Bug OR_EAD_TIT inflado por JOIN 1:N. (2) Bug KIRB usa OR_EAD vs EAD_TOTAL. (3) Cross-system: diferencia SAP→SAS por filtro fecha.\n\n**ECL**: (1) Fórmula: PD × LGD_CON_MOC × EAD. (2) Gap: Stage 3 multiplicador 1.20 no implementado. (3) Gap: BCBS 239 lineage incompleto.\n\n**Staging**: (1) Bug: ventana SICR fija 12m ignora segmentación. (2) Gap: provision period no segmentado (24m fijo).\n\n**Data Quality**: (1) SEGMENTO inconsistente 3.6%. (2) LGD fuera de rango 2.3%. (3) CRR Art.178 default definition incompleta.\n\n**Model Validation**: (1) Rating migration inestable. (2) Central tendency no verificado. (3) Recovery rate empírico por segmento.",
+    "judge_criteria": {
+      "covers_all_areas": "¿Cubre PD, LGD, EAD, ECL, staging, DQ, MV?",
+      "organized_structure": "¿Presenta organizado por área de conocimiento?",
+      "identifies_gaps": "¿Identifica gaps además de bugs conocidos?",
+      "comprehensiveness": "¿Menciona al menos 2 items por área?",
+      "scoring_rubric": {"0": "Lista desorganizada de 1-2 items", "1": "3-5 items organizados por área", "2": "6-10 items con estructura clara", "3": "10-15 items + gaps identificados", "4": "15+ items + gaps + prioridades", "5": "Completo, organizado, con gaps y acciones recomendadas"},
+      "pass_condition": "Cubre ≥3 áreas con ≥2 items cada una (score ≥ 2)"
+    }
+  }
+]

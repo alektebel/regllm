@@ -22,8 +22,91 @@ from typing import Any, AsyncIterator
 from src.knowledge import LocalLLMClient, get_client
 
 from .tools import TOOL_REGISTRY, dispatch_tool, tool_schemas
+from .prompts import LITE_SYSTEM_PROMPT as _LITE_SYSTEM_PROMPT
+from .formula_guard import check_formula_grounding
 
 logger = logging.getLogger(__name__)
+
+# Lite tool set for 4B SFT models (matches training/tool_utils.py)
+LITE_TOOL_NAMES = [
+    "trace_causal_chain", "query_cycle_data", "get_sas_formula",
+    "trace_dependencies", "inspect_lineage",
+    "search_docs", "search_regulation", "get_field_definition",
+]
+
+_TOOL_CALL_TAG = re.compile(
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL,
+)
+# Qwen2.5 via Ollama: _icall(\n{...},\n{}\n) — not matched by a single-line regex
+_TOOL_PAYLOAD = re.compile(
+    r'\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{(?:[^{}]|\[[^\]]*\])*\})\s*\}',
+    re.DOTALL,
+)
+_ICALL_TAG = re.compile(r"_icall\s*\(", re.I)
+
+
+def _parse_text_tool_calls(text: str) -> list[dict[str, Any]]:
+    """Fallback when Ollama puts tool calls in message content instead of tool_calls."""
+    calls: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    idx = 0
+
+    def _add(name: str, args: dict[str, Any]) -> None:
+        nonlocal idx
+        key = (name, json.dumps(args, sort_keys=True, default=str))
+        if not name or key in seen:
+            return
+        seen.add(key)
+        calls.append({"id": f"text_call_{idx}", "name": name, "arguments": args})
+        idx += 1
+
+    for m in _TOOL_CALL_TAG.finditer(text or ""):
+        try:
+            payload = json.loads(m.group(1))
+            _add(payload.get("name", ""), payload.get("arguments") or {})
+        except json.JSONDecodeError:
+            continue
+
+    for m in _TOOL_PAYLOAD.finditer(text or ""):
+        try:
+            _add(m.group(1), json.loads(m.group(2)))
+        except json.JSONDecodeError:
+            continue
+
+    return calls
+
+
+def _text_is_unexecuted_icall(text: str) -> bool:
+    """True when the model wrote _icall(...) in prose instead of using tool_calls."""
+    if not text or not _ICALL_TAG.search(text):
+        return False
+    return bool(_TOOL_PAYLOAD.search(text))
+
+
+_FAKE_TURN = re.compile(
+    r"<\|im_start\|>|</tool_response>|<tool_response>|role\s*:\s*user",
+    re.I,
+)
+
+
+def _looks_like_fake_turn(text: str) -> bool:
+    """GRPO/SFT artefact: model writes tool_response blocks instead of real tools."""
+    if not text:
+        return False
+    if _FAKE_TURN.search(text):
+        return True
+    if "<tool_response>" in text and not _TOOL_CALL_TAG.search(text):
+        return True
+    return False
+
+
+def _strip_template_junk(text: str) -> str:
+    t = text or ""
+    t = re.sub(r"<\|im_start\|>.*?(?:<\|im_end\|>|$)", "", t, flags=re.DOTALL)
+    t = re.sub(r"<tool_response>\s*\{.*?\}\s*</tool_response>", "", t, flags=re.DOTALL | re.I)
+    t = re.sub(r"<tool_response>.*?</tool_response>", "", t, flags=re.DOTALL | re.I)
+    t = re.sub(r"<tool_call>\s*\{.*?\}\s*</tool_call>", "", t, flags=re.DOTALL)
+    return t.strip()
 
 
 # ── Events streamed to the UI ────────────────────────────────────────────────
@@ -43,94 +126,75 @@ class AgentEvent:
 
 
 _SYSTEM_PROMPT = """\
-You are a regulatory compliance investigator for banking reporting
-databases (COREP/FINREP IRB). You have access to a knowledge graph
-linking EBA/BdE regulations, database columns, validation rules, SAS
-code lineage, and insights from past investigations. Your job is to
-take a problem described in natural language, investigate it
-methodically, and learn from the user's feedback.
+Eres un investigador de cumplimiento regulatorio para bases de datos de reporting
+bancario (COREP/FINREP IRB). Tienes acceso a un grafo de conocimiento que enlaza
+normativa EBA/BdE, columnas de base de datos, reglas de validación, lineage de
+código SAS e insights de investigaciones previas. Tu trabajo es tomar un problema
+descrito en lenguaje natural, investigarlo metódicamente y aprender del feedback.
 
-## Phase 1 — UNDERSTAND & PLAN
+IMPORTANTE: Responde SIEMPRE en español — pensamientos, planes, respuestas finales.
 
-Always start here. Before doing any analysis:
+SAS code is uploaded per session. Always pass the current session_id
+when calling SAS tools (inspect_lineage, trace_dependencies,
+backtrace_sas_field, validate_sas, describe_egp_project, compute_shapley).
 
-1. Call `search_experience(query)` to check for prior investigations
-   on this topic. Feedback insights (priority=1.0) are most important.
-2. Call `backtrace_sas_field(target)` to trace the target field's
-   dependency tree through the SAS code.
-3. Call `find_governing_rules(column)` for regulatory constraints on
-   the target field.
-4. Based on what you learn, formulate an investigation plan and call
-   `create_investigation_plan(target_field, problem, steps)` to
-   persist it. Stream your plan to the user as you go.
+## Glosario de campos (nombres exactos en el pipeline)
 
-## Phase 2 — DATA REQUIREMENTS
+- **MoC** = Margen de Conservadurismo (NO traduzcas como "Mooring Cost"). Campo: `MoC`.
+- **ECL** = Expected Credit Loss. **LGD_ESTIMADA**, **SW_FUSION**, **PD_ESTIMADA**, **EAD**.
+- Usa los nombres de campo EXACTOS del pipeline (MoC, no MO_C).
 
-From the dependency trace, identify what input data the user needs
-to provide for you to analyze the case:
+## Fase 1 — ENTENDER Y PLANIFICAR
 
-1. Call `formulate_data_request(extractions, reason)` specifying the
-   exact tables, fields, filters, and cycles needed.
-2. STOP and explain to the user what data you need and why. Wait for
-   them to upload it.
+Siempre empieza aquí. Antes de analizar:
 
-If the user has already uploaded data or sample CSVs are available,
-skip to Phase 3.
+1. Llama `search_experience(query)` solo si la pregunta es sobre conocimiento previo
+   guardado — NO para investigar bugs, lineage o campos missing en el pipeline.
+2. Llama `backtrace_sas_field(target, session_id)` para trazar dependencias SAS.
+3. Llama `find_governing_rules(column)` para restricciones regulatorias.
+4. Formula un plan y llama `create_investigation_plan(target_field, problem, steps)`.
 
-## Phase 3 — ANALYZE
+## Fase 2 — REQUISITOS DE DATOS
 
-Once data is available:
+Identifica qué datos necesita el usuario:
 
-1. If the user uploaded files, call `analyze_uploaded_data(file_path)`
-   to load and inspect the data.
-2. Call `compute_attribution(pk, target)` for gradient + Shapley
-   attribution on specific cycles.
-3. Call `trace_dependencies(target)` for the full calculation chain
-   with expressions.
-4. Call `compare_sas_versions(target)` to see V2 vs V3 code changes.
-5. Cross-reference findings against regulation using
-   `query_regulation`, `trace_regulation_chain`, and `search_docs`.
+1. Llama `formulate_data_request(extractions, reason)`.
+2. PARA y explica qué datos necesitas y por qué.
 
-## Phase 4 — CONCLUDE & LEARN
+## Fase 3 — ANALIZAR
 
-1. Write your final analysis with regulatory citations.
-2. If you discovered something useful, call `save_insight` to store
-   it for future sessions.
-3. If the user corrects you or confirms a non-obvious finding, call
-   `save_feedback(feedback_type, content, original_claim,
-   corrected_understanding)` immediately.
+Cuando haya datos disponibles:
 
-## Handling User Feedback
+1. `analyze_uploaded_data(file_path)` si hay archivos subidos.
+2. `compute_shapley(pk, target, session_id)` para atribución Shapley.
+3. `trace_dependencies(target, session_id)` para la cadena completa con expresiones.
+4. Cruza con normativa: `query_regulation`, `trace_regulation_chain`, `search_docs`.
 
-When the user says things like "no, that's wrong", "actually the issue
-is...", or "yes, exactly":
-- Call `save_feedback` with the appropriate type (correction,
-  confirmation, or clarification).
-- Adjust your analysis accordingly.
-- These feedback insights have priority=1.0 and will be recalled
-  first in future investigations.
+## Fase 4 — CONCLUSIÓN Y APRENDIZAJE
 
-## Answer Format
+1. Escribe el análisis final con citas regulatorias.
+2. `save_insight` si descubres algo útil.
+3. `save_feedback` si el usuario te corrige.
 
-Reply with a Markdown answer that includes a final JSON block:
+## Formato de respuesta
+
+Responde en Markdown en español, con un bloque JSON final:
 
 ```json
 {
-  "lineage_highlight": ["FIELD_A", "FIELD_B", "TARGET"],
+  "lineage_highlight": ["CAMPO_A", "CAMPO_B", "TARGET"],
   "citations": [
-    {"kind": "doc",        "path": "fields/X.md",   "heading": "Definition"},
-    {"kind": "regulation", "article": "art15",       "heading": "LGD floors"},
-    {"kind": "code",       "step": "work.foo",       "version": "v3"},
-    {"kind": "changelog",  "path": "2025-q1-...",    "heading": "..."}
+    {"kind": "doc",        "path": "fields/X.md",   "heading": "Definición"},
+    {"kind": "regulation", "article": "art15",       "heading": "Suelos LGD"},
+    {"kind": "code",       "step": "work.foo"}
   ]
 }
 ```
 
-The JSON is parsed by the UI to highlight the graph and render
-citation chips, so emit it even if some lists are empty.
-
-Constraints: prefer calling more tools over hallucinating values.
-Tool results are authoritative — never override them.
+Restricciones: prefiere llamar más herramientas antes que alucinar valores.
+Los resultados de herramientas son autoritativos — nunca los contradigas.
+NUNCA inventes fórmulas (ECL, MoC, OR_EADIL, etc.) que no aparezcan en tool results.
+Para "missing", "investiga" o "causa raíz": trace_dependencies e inspect_lineage son obligatorios.
 """
 
 
@@ -157,33 +221,50 @@ class SASDiffAgent:
         max_iters: int = 15,
         temperature: float = 0.1,
         session_id: str | None = None,
+        sas_session_id: str | None = "debug_lgd",
+        model: str | None = None,
+        tool_names: list[str] | None = None,
     ) -> None:
-        self.client = client or get_client()
+        self.model_override = model
+        if model and model.startswith("peft:"):
+            import os
+            peft_url = os.getenv("REGLLM_PEFT_URL", "http://127.0.0.1:8767/v1")
+            self.client = LocalLLMClient(prefer="litert", litert_url=peft_url, litert_model="peft")
+        elif model:
+            self.client = LocalLLMClient(ollama_model=model)
+        else:
+            self.client = client or get_client()
         self.max_iters = max_iters
         self.temperature = temperature
         self.session_id = session_id
+        self.sas_session_id = sas_session_id or "debug_lgd"
+        self.tool_names = tool_names
 
     async def run(self, question: str) -> AsyncIterator[AgentEvent]:
         backend = self.client.detect_backend()
+        active_tools = self.tool_names or list(TOOL_REGISTRY.keys())
         yield AgentEvent("status", {
             "stage": "started",
             "backend": backend,
             "model": (
-                self.client.litert_model if backend == "litert"
+                "peft" if (self.model_override and str(self.model_override).startswith("peft:"))
+                else self.client.litert_model if backend == "litert"
                 else self.client.ollama_model if backend == "ollama"
                 else "stub"
             ),
-            "tools": list(TOOL_REGISTRY.keys()),
+            "tools": active_tools,
             "question": question,
         })
 
+        system_prompt = _LITE_SYSTEM_PROMPT if self.tool_names else _SYSTEM_PROMPT
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": _seed_user_message(question)},
         ]
-        tools = tool_schemas()
+        tools = tool_schemas(self.tool_names)
         last_call_signature: str | None = None
         repeat_count = 0
+        formula_retries = 0
 
         for it in range(self.max_iters):
             try:
@@ -191,7 +272,7 @@ class SASDiffAgent:
                     self.client.chat_tools,
                     messages, tools,
                     temperature=self.temperature,
-                    max_tokens=2048,
+                    max_tokens=4096,
                 )
             except Exception as e:
                 logger.exception("LLM call failed")
@@ -199,9 +280,33 @@ class SASDiffAgent:
                 return
 
             calls = resp.tool_calls or []
+            if not calls and resp.text:
+                calls = _parse_text_tool_calls(resp.text)
+
+            if not calls and _looks_like_fake_turn(resp.text or ""):
+                yield AgentEvent("thought", {
+                    "iter": it,
+                    "text": "(modelo simuló tool_response — reintentando con herramientas reales)",
+                })
+                messages.append({"role": "assistant", "content": resp.text or ""})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "ERROR: No simules bloques <tool_response> ni roles user/assistant. "
+                        "Invoca herramientas reales (trace_dependencies, inspect_lineage) "
+                        "o responde en español con evidencia de tool results."
+                    ),
+                })
+                continue
+
             if calls:
-                # Emit the LLM's reasoning text as a "thought" event
                 thinking_text = (resp.text or "").strip()
+                if _text_is_unexecuted_icall(thinking_text):
+                    thinking_text = ""
+                elif _ICALL_TAG.search(thinking_text):
+                    thinking_text = _TOOL_PAYLOAD.sub("", thinking_text)
+                    thinking_text = re.sub(r"_icall\s*\([^)]*\)", "", thinking_text, flags=re.I)
+                    thinking_text = thinking_text.strip()
                 if thinking_text:
                     yield AgentEvent("thought", {"iter": it, "text": thinking_text})
 
@@ -237,6 +342,13 @@ class SASDiffAgent:
                 for call in calls:
                     name = call["name"]
                     args = call["arguments"] or {}
+                    # Force SAS session — ignore hallucinated session_id from the LLM
+                    if self.sas_session_id:
+                        spec = TOOL_REGISTRY.get(name)
+                        if spec and "session_id" in (
+                            spec.schema()["function"]["parameters"].get("properties", {})
+                        ):
+                            args["session_id"] = self.sas_session_id
                     yield AgentEvent("tool_call", {"iter": it, "tool": name, "args": args, "id": call["id"]})
                     result = await asyncio.to_thread(dispatch_tool, name, args)
                     yield AgentEvent("tool_result", {
@@ -260,7 +372,49 @@ class SASDiffAgent:
                 continue
 
             # No tool calls → final answer
-            text = (resp.text or "").strip()
+            text = _strip_template_junk(resp.text or "")
+            if _text_is_unexecuted_icall(text):
+                messages.append({"role": "assistant", "content": resp.text or ""})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "No escribas _icall(...) en texto. Usa function calling del API "
+                        "o una sola herramienta por turno. Luego responde citando rows."
+                    ),
+                })
+                continue
+            if not text or len(text) < 20:
+                messages.append({"role": "assistant", "content": resp.text or ""})
+                messages.append({
+                    "role": "user",
+                    "content": "Responde en español con tu análisis. Usa herramientas si aún no lo hiciste.",
+                })
+                continue
+
+            violations = check_formula_grounding(text, messages)
+            if violations and formula_retries < 2:
+                formula_retries += 1
+                yield AgentEvent("thought", {
+                    "iter": it,
+                    "text": (
+                        f"(verificador: fórmulas no ancladas — reintento {formula_retries}/2)"
+                    ),
+                })
+                messages.append({"role": "assistant", "content": text})
+                bullet = "\n".join(f"- {v}" for v in violations[:6])
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "ERROR: Tu respuesta cita fórmulas o archivos no verificados en los "
+                        "resultados de herramientas:\n"
+                        f"{bullet}\n\n"
+                        "Llama get_sas_formula(field=...) o trace_dependencies(target=...) "
+                        "y copia el campo expr literalmente. Si no hay expr, di que no consta "
+                        "en el SAS de esta sesión. Reescribe la respuesta."
+                    ),
+                })
+                continue
+
             messages.append({"role": "assistant", "content": text})
             parsed = _parse_final(text)
             yield AgentEvent("final", {
@@ -280,13 +434,13 @@ class SASDiffAgent:
         try:
             messages.append({
                 "role": "user",
-                "content": "Please now write the final markdown answer with the closing JSON block.",
+                "content": "Escribe ahora la respuesta final en markdown en español, con el bloque JSON de cierre.",
             })
             final_resp = await asyncio.to_thread(
                 self.client.chat,
                 messages,
                 temperature=self.temperature,
-                max_tokens=2048,
+                max_tokens=4096,
             )
             text = (final_resp.text or "").strip()
             parsed = _parse_final(text)

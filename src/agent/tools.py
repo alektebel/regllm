@@ -27,7 +27,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _SAS_ROOT = _PROJECT_ROOT / "data" / "sas"
 _SAMPLES = _PROJECT_ROOT / "data" / "samples"
 _DOCS_ROOT = _PROJECT_ROOT / "data" / "docs"
-_CSV_V2 = _SAMPLES / "cycles_v2.csv"
 _CSV_V3 = _SAMPLES / "cycles_v3.csv"
 _PK = "CICLO_ID"
 
@@ -43,12 +42,14 @@ _NUMERIC_COLS = {
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _load_sas(version: str) -> str:
-    """Load all `.sas` files under data/sas/{version}/, falling back to the
-    bundled sample if the folder is empty/missing."""
-    folder = _SAS_ROOT / version
+_SAS_SESSIONS_ROOT = _SAS_ROOT / "sessions"
+
+
+def _load_sas(session_id: str = "default") -> str:
+    """Load all `.sas` files for a session, falling back to bundled sample."""
+    folder = _SAS_SESSIONS_ROOT / session_id
     if folder.exists():
-        files = sorted(folder.rglob("*.sas"))
+        files = sorted(f for f in folder.rglob("*.sas") if f.name != "_project_manifest.json")
         if files:
             return "\n\n".join(f.read_text(encoding="utf-8") for f in files)
     sample = _SAMPLES / "sample_lgd.sas"
@@ -91,14 +92,14 @@ def _truncate(obj: Any, limit: int = 4000) -> Any:
 # ── Tool implementations ────────────────────────────────────────────────────
 
 
-def _t_find_row(pk: str, version: str = "v3") -> dict[str, Any]:
-    csv_path = _CSV_V2 if version.lower() == "v2" else _CSV_V3
+def _t_find_row(pk: str) -> dict[str, Any]:
+    csv_path = _CSV_V3
     rows = _read_csv(csv_path)
     pk_u = pk.upper()
     for r in rows:
         if str(r.get(_PK, "")).upper() == pk_u:
-            return {"found": True, "version": version, "pk": pk, "row": r}
-    return {"found": False, "version": version, "pk": pk, "row": None}
+            return {"found": True, "pk": pk, "row": r}
+    return {"found": False, "pk": pk, "row": None}
 
 
 def _approx_eq(a: Any, b: Any, tolerance: float) -> bool:
@@ -113,11 +114,10 @@ def _approx_eq(a: Any, b: Any, tolerance: float) -> bool:
 def _t_find_rows_by_field_value(
     field: str,
     value: Any,
-    version: str = "v3",
     tolerance: float = 1e-6,
     limit: int = 10,
 ) -> dict[str, Any]:
-    csv_path = _CSV_V2 if version.lower() == "v2" else _CSV_V3
+    csv_path = _CSV_V3
     rows = _read_csv(csv_path)
     field_u = field.upper()
     hits: list[dict[str, Any]] = []
@@ -126,22 +126,20 @@ def _t_find_rows_by_field_value(
             hits.append({"pk": r.get(_PK), field_u: r.get(field_u)})
             if len(hits) >= limit:
                 break
-    return {"version": version, "field": field_u, "value": value, "matches": hits, "total_scanned": len(rows)}
+    return {"field": field_u, "value": value, "matches": hits, "total_scanned": len(rows)}
 
 
-def _t_inspect_lineage(target: str, sas_version: str = "v3") -> dict[str, Any]:
+def _t_inspect_lineage(target: str, session_id: str = "default") -> dict[str, Any]:
     from src.sas_logic_tree import SASLogicTree
-    sas = _load_sas(sas_version)
+    sas = _load_sas(session_id)
     if not sas:
-        return {"error": f"no SAS found for version {sas_version}"}
+        return {"error": f"no SAS found for session {session_id}"}
     tree = SASLogicTree()
     nodes = tree.parse(sas)
     trace = tree.trace_lineage(nodes, target)
-    # Keep the tool result lean for the LLM: the full node/edge/data_step graph
-    # of a large macro program is huge and not needed for an ancestor trace.
     return {
         "target": trace["target"],
-        "sas_version": sas_version,
+        "session_id": session_id,
         "found": trace["found"],
         "ancestor_count": trace["ancestor_count"],
         "ancestors": trace["ancestors"][:80],
@@ -151,19 +149,19 @@ def _t_inspect_lineage(target: str, sas_version: str = "v3") -> dict[str, Any]:
 
 
 def _t_trace_dependencies(
-    target: str, sas_version: str = "v3", max_depth: int | None = None,
+    target: str, session_id: str = "default", max_depth: int | None = None,
 ) -> dict[str, Any]:
     """Full BFS dependency trace with edges (expressions, data steps)."""
     from src.sas_logic_tree import SASLogicTree
-    sas = _load_sas(sas_version)
+    sas = _load_sas(session_id)
     if not sas:
-        return {"error": f"no SAS found for version {sas_version}"}
+        return {"error": f"no SAS found for session {session_id}"}
     tree = SASLogicTree()
     nodes = tree.parse(sas)
     trace = tree.trace_lineage(nodes, target, max_depth=max_depth)
     return {
         "target": trace["target"],
-        "sas_version": sas_version,
+        "session_id": session_id,
         "found": trace["found"],
         "ancestor_count": trace["ancestor_count"],
         "layers": trace["layers"][:20],
@@ -172,50 +170,145 @@ def _t_trace_dependencies(
     }
 
 
-def _t_compute_attribution(pk: str, target: str, sas_version: str = "v3") -> dict[str, Any]:
-    from src.sas_diff import explain_field_diff
-    sas = _load_sas(sas_version)
+def _t_get_sas_formula(field: str, session_id: str = "default") -> dict[str, Any]:
+    """Return verified assignment expressions for a field from parsed SAS."""
+    from src.sas_logic_tree import SASLogicTree, _vars_in_expr
+    sas = _load_sas(session_id)
     if not sas:
-        return {"error": f"no SAS found for version {sas_version}"}
-    rows_v2 = _read_csv(_CSV_V2)
-    rows_v3 = _read_csv(_CSV_V3)
+        return {"error": f"no SAS found for session {session_id}"}
+    tree = SASLogicTree()
+    nodes = tree.parse(sas)
+    trace = tree.trace_lineage(nodes, field)
+    field_u = field.upper()
+
+    definitions: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for edge in trace.get("edges", []):
+        if edge.get("target", "").upper() != field_u:
+            continue
+        if edge.get("kind") != "assigns":
+            continue
+        expr = (edge.get("expr") or "").strip()
+        if not expr:
+            continue
+        step = edge.get("data_step") or ""
+        key = (step, expr)
+        if key in seen:
+            continue
+        seen.add(key)
+        definitions.append({
+            "data_step": step,
+            "expr": expr,
+            "inputs": sorted(_vars_in_expr(expr)),
+        })
+
+    return {
+        "field": field_u,
+        "session_id": session_id,
+        "found": bool(definitions) or trace.get("found", False),
+        "definitions": definitions,
+        "hint": (
+            "Copia expr literalmente al responder. "
+            "Si definitions está vacío, el campo no se asigna en esta sesión "
+            "(puede venir de tabla de entrada)."
+        ),
+    }
+
+
+def _t_trace_causal_chain(
+    target: str,
+    session_id: str = "default",
+    max_depth: int | None = None,
+    include_data: bool = True,
+    data_limit: int = 5,
+) -> dict[str, Any]:
+    """Full upstream chain with formulas, SAS comments and optional DB samples."""
+    from src.agent.causal_chain import build_causal_chain
+    from src.agent.pipeline_store import sample_for_causal_chain
+    from src.sas_logic_tree import SASLogicTree
+
+    sas = _load_sas(session_id)
+    if not sas:
+        return {"error": f"no SAS found for session {session_id}"}
+    tree = SASLogicTree()
+    nodes = tree.parse(sas)
+    trace = tree.trace_lineage(nodes, target, max_depth=max_depth)
+    out = build_causal_chain(trace, session_id, include_propagation=False)
+
+    if include_data:
+        chain_fields = [s["field"] for s in out.get("steps", [])]
+        # MoC in CSV vs MOC in compiler
+        chain_fields = [
+            "MoC" if f == "MOC" else f for f in chain_fields
+        ]
+        data = sample_for_causal_chain(
+            session_id, target, chain_fields, limit=data_limit,
+        )
+        out["data"] = data
+        if data.get("rows_missing_target") or data.get("rows_with_target"):
+            out["narrative"] += "\n\nValores reales en BD (muestra):"
+            for label, key in (
+                ("missing", "rows_missing_target"),
+                ("con valor", "rows_with_target"),
+            ):
+                for row in data.get(key, [])[:3]:
+                    pk = row.get(_PK, "?")
+                    vals = ", ".join(
+                        f"{k}={json.dumps(v) if v is not None else 'null'}"
+                        for k, v in row.items() if k != _PK
+                    )
+                    out["narrative"] += f"\n  • {pk} ({label}): {vals}"
+
+    return out
+
+
+def _t_query_cycle_data(
+    session_id: str = "default",
+    ciclo_id: str | None = None,
+    fields: list[str] | None = None,
+    missing_field: str | None = None,
+    filter_field: str | None = None,
+    filter_value: str | float | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Query actual pipeline output rows for the session (ground-truth values)."""
+    from src.agent.pipeline_store import query_cycle_data
+    return query_cycle_data(
+        session_id,
+        ciclo_id=ciclo_id,
+        fields=fields,
+        missing_field=missing_field,
+        filter_field=filter_field,
+        filter_value=filter_value,
+        limit=limit,
+    )
+
+
+def _t_compute_shapley(
+    pk: str, target: str, session_id: str = "default",
+) -> dict[str, Any]:
+    """Shapley value attribution for a specific cycle and target field."""
+    from src.sas_diff import explain_field_diff
+    sas = _load_sas(session_id)
+    if not sas:
+        return {"error": f"no SAS found for session {session_id}"}
+    rows = _read_csv(_CSV_V3)
     pk_u = pk.upper()
-    r_v2 = next((r for r in rows_v2 if str(r.get(_PK, "")).upper() == pk_u), None)
-    r_v3 = next((r for r in rows_v3 if str(r.get(_PK, "")).upper() == pk_u), None)
-    if not r_v2 or not r_v3:
-        return {"error": f"row {pk} not found in V2 or V3 sample CSVs"}
+    row = next((r for r in rows if str(r.get(_PK, "")).upper() == pk_u), None)
+    if not row:
+        return {"error": f"row {pk} not found in sample CSV"}
     rep = explain_field_diff(
-        sas_code=sas, row_v2=r_v2, row_v3=r_v3,
-        target=target, method="both",
+        sas_code=sas, row_v2=row, row_v3=row,
+        target=target, method="shapley",
     )
     out = rep.to_dict()
-    # Trim verbose fields, keep what the LLM needs
-    keep = {
+    return {
         "target": out["target"],
-        "y_v2": out["y_v2"], "y_v3": out["y_v3"], "delta_y": out["delta_y"],
-        "excluded_v2": out["excluded_v2"], "excluded_v3": out["excluded_v3"],
+        "session_id": session_id,
         "suspects": out["suspects"][:8],
         "field_deltas": out["field_deltas"][:20],
-        "branch_flips": [
-            {k: b[k] for k in ("condition", "data_step", "kind", "v2_taken", "v3_taken", "vars_in_condition")}
-            for b in out["branch_flips"]
-        ],
-        "gradient_top": (out.get("gradient", {}) or {}).get("attributions", [])[:8],
         "shapley_top": (out.get("shapley", {}) or {}).get("attributions", [])[:8],
     }
-    return keep
-
-
-def _t_compare_sas_versions(target: str | None = None) -> dict[str, Any]:
-    from src.agent.code_diff import compare
-    res = compare(target=target)
-    out = res.to_dict()
-    # Truncate diff text to keep the context lean
-    if len(out.get("unified_diff", "")) > 3500:
-        out["unified_diff"] = out["unified_diff"][:3500] + "\n... [truncated]"
-    # Don't let the LLM be flooded by a huge unchanged list
-    out["unchanged_steps"] = out["unchanged_steps"][:20]
-    return out
 
 
 def _t_search_docs(query: str, k: int = 5) -> dict[str, Any]:
@@ -321,16 +414,57 @@ def _t_get_schema_context(
     return {"query": query, "tables": results[:10]}
 
 
-def _t_validate_sas(sas_version: str = "v3") -> dict[str, Any]:
+def _t_describe_egp_project(session_id: str = "default") -> dict[str, Any]:
+    """Read the project manifest and return structure with code previews."""
+    manifest_path = _SAS_SESSIONS_ROOT / session_id / "_project_manifest.json"
+    if not manifest_path.exists():
+        # Fall back to listing .sas files in the session folder
+        folder = _SAS_SESSIONS_ROOT / session_id
+        if not folder.exists():
+            return {"error": f"no SAS session found: {session_id}"}
+        files = sorted(f for f in folder.rglob("*.sas"))
+        blocks = []
+        for i, f in enumerate(files):
+            code = f.read_text(encoding="utf-8")
+            blocks.append({
+                "filename": f.name,
+                "task_name": f.stem,
+                "order": i,
+                "line_count": len(code.splitlines()),
+                "preview": "\n".join(code.splitlines()[:10]),
+            })
+        return {"session_id": session_id, "source": "file_listing", "blocks": blocks}
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    blocks = []
+    for b in manifest.get("blocks", []):
+        sas_path = _SAS_SESSIONS_ROOT / session_id / b["filename"]
+        preview = ""
+        if sas_path.exists():
+            preview = "\n".join(sas_path.read_text(encoding="utf-8").splitlines()[:10])
+        blocks.append({
+            **b,
+            "preview": preview,
+        })
+    return {
+        "session_id": session_id,
+        "source_file": manifest.get("source_file", ""),
+        "extracted_at": manifest.get("extracted_at", ""),
+        "block_count": len(blocks),
+        "blocks": blocks,
+    }
+
+
+def _t_validate_sas(session_id: str = "default") -> dict[str, Any]:
     """Run static validation on parsed SAS code."""
     from src.sas_logic_tree import SASLogicTree
-    sas = _load_sas(sas_version)
+    sas = _load_sas(session_id)
     if not sas:
-        return {"error": f"no SAS found for version {sas_version}"}
+        return {"error": f"no SAS found for session {session_id}"}
     tree = SASLogicTree()
     nodes = tree.parse(sas)
     diags = tree.validate(nodes)
-    return {"sas_version": sas_version, "diagnostics": diags[:50], "total": len(diags)}
+    return {"session_id": session_id, "diagnostics": diags[:50], "total": len(diags)}
 
 
 # ── Registry ────────────────────────────────────────────────────────────────
@@ -359,7 +493,7 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "find_row": ToolSpec(
         name="find_row",
         description=(
-            "Fetch a specific cycle's full row from V2 or V3 sample data. "
+            "Fetch a specific cycle's full row from sample data. "
             "Use this once you know the primary key (CICLO_ID) to inspect "
             "every input field for that cycle."
         ),
@@ -367,7 +501,6 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
             "type": "object",
             "properties": {
                 "pk": {"type": "string", "description": "Cycle primary key, e.g. 'CIC_00031'"},
-                "version": {"type": "string", "enum": ["v2", "v3"], "default": "v3"},
             },
             "required": ["pk"],
         },
@@ -376,8 +509,8 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "find_rows_by_field_value": ToolSpec(
         name="find_rows_by_field_value",
         description=(
-            "Find cycles where a given field has approximately a given value "
-            "in V2 or V3. Useful when the user mentions a value but no PK."
+            "Find cycles where a given field has approximately a given value. "
+            "Useful when the user mentions a value but no PK."
         ),
         parameters={
             "type": "object",
@@ -387,7 +520,6 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
                     "description": "Numeric or string value to match.",
                     "anyOf": [{"type": "number"}, {"type": "string"}, {"type": "boolean"}],
                 },
-                "version": {"type": "string", "enum": ["v2", "v3"], "default": "v3"},
                 "tolerance": {"type": "number", "default": 1e-6, "description": "Numeric tolerance"},
                 "limit": {"type": "integer", "default": 10},
             },
@@ -398,15 +530,15 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "inspect_lineage": ToolSpec(
         name="inspect_lineage",
         description=(
-            "Return the data-flow ancestors (and full graph) of a target field "
-            "in the V2 or V3 SAS pipeline. Use this to understand which input "
-            "fields *can* affect the target before computing attributions."
+            "Return the data-flow ancestors of a target field in the SAS "
+            "pipeline. Use this to understand which input fields *can* affect "
+            "the target before computing attributions."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "target": {"type": "string"},
-                "sas_version": {"type": "string", "enum": ["v2", "v3"], "default": "v3"},
+                "session_id": {"type": "string", "default": "default", "description": "Session with uploaded SAS code."},
             },
             "required": ["target"],
         },
@@ -418,53 +550,100 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
             "Trace the full dependency chain of a target field backwards through "
             "the SAS pipeline using BFS. Returns all ancestor fields grouped by "
             "hop distance, with edges showing HOW each dependency flows "
-            "(assignment expression, data step, edge kind). Use this when you "
-            "need to understand the complete calculation chain for a field."
+            "(assignment expression, data step, edge kind)."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "target": {"type": "string", "description": "Target field to trace backwards from."},
-                "sas_version": {"type": "string", "enum": ["v2", "v3"], "default": "v3"},
+                "session_id": {"type": "string", "default": "default", "description": "Session with uploaded SAS code."},
                 "max_depth": {"type": "integer", "description": "Max BFS depth (omit for unlimited)."},
             },
             "required": ["target"],
         },
         fn=_t_trace_dependencies,
     ),
-    "compute_attribution": ToolSpec(
-        name="compute_attribution",
+    "get_sas_formula": ToolSpec(
+        name="get_sas_formula",
         description=(
-            "Run the full V2-vs-V3 attribution for a specific cycle and target "
-            "field: path-integrated gradients (numeric) + Shapley values "
-            "(categorical) + branch-flip detection. Returns y_v2, y_v3, "
-            "ranked suspect fields, top contributions and any branch flips."
+            "Return the exact SAS assignment expression(s) for a field in the "
+            "current session pipeline. Use this BEFORE stating any formula "
+            "(MoC, ECL, LGD, EAD). Do not use get_field_definition for "
+            "pipeline formulas — that tool reads markdown docs, not SAS code."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "field": {"type": "string", "description": "Field name, e.g. 'MoC' or 'ECL'."},
+                "session_id": {"type": "string", "default": "default", "description": "Session with uploaded SAS code."},
+            },
+            "required": ["field"],
+        },
+        fn=_t_get_sas_formula,
+    ),
+    "trace_causal_chain": ToolSpec(
+        name="trace_causal_chain",
+        description=(
+            "Full causal chain for root-cause analysis: upstream fields with "
+            "assignment expr, SAS comments (BUG/missing), and actual DB row "
+            "samples in `data` (include_data=true by default). Use for "
+            "'missing', 'investiga', 'causa raíz'."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Symptom field, e.g. 'ECL' or 'MoC'."},
+                "session_id": {"type": "string", "default": "default", "description": "Session with uploaded SAS code."},
+                "max_depth": {"type": "integer", "description": "Max BFS depth (omit for unlimited)."},
+                "include_data": {"type": "boolean", "default": True, "description": "Attach actual pipeline output rows."},
+                "data_limit": {"type": "integer", "default": 5, "description": "Max sample rows per category."},
+            },
+            "required": ["target"],
+        },
+        fn=_t_trace_causal_chain,
+    ),
+    "query_cycle_data": ToolSpec(
+        name="query_cycle_data",
+        description=(
+            "Query actual values from the pipeline output table for this session. "
+            "Use to inspect specific cycles (ciclo_id), find rows where a field "
+            "is missing (missing_field), or filter by field=value. Returns real "
+            "DB values — not inferred propagation."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "default": "default"},
+                "ciclo_id": {"type": "string", "description": "Primary key, e.g. CIC_00042."},
+                "fields": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Columns to return (default: all).",
+                },
+                "missing_field": {"type": "string", "description": "Only rows where this field is null/missing."},
+                "filter_field": {"type": "string"},
+                "filter_value": {"description": "Value to match; use 'missing' for null."},
+                "limit": {"type": "integer", "default": 10},
+            },
+        },
+        fn=_t_query_cycle_data,
+    ),
+    "compute_shapley": ToolSpec(
+        name="compute_shapley",
+        description=(
+            "Run Shapley value attribution for a specific cycle and target "
+            "field. Returns ranked suspect fields and top contributions."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "pk": {"type": "string"},
                 "target": {"type": "string"},
-                "sas_version": {"type": "string", "enum": ["v2", "v3"], "default": "v3", "description": "Which SAS code to evaluate the rows under."},
+                "session_id": {"type": "string", "default": "default", "description": "Session with uploaded SAS code."},
             },
             "required": ["pk", "target"],
         },
-        fn=_t_compute_attribution,
-    ),
-    "compare_sas_versions": ToolSpec(
-        name="compare_sas_versions",
-        description=(
-            "Diff the V2 vs V3 SAS code (data steps that produce or read the "
-            "target field if given). Returns added/removed/modified steps "
-            "and a unified text diff."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "target": {"type": "string", "description": "Optional target field to scope the diff."},
-            },
-        },
-        fn=_t_compare_sas_versions,
+        fn=_t_compute_shapley,
     ),
     "search_docs": ToolSpec(
         name="search_docs",
@@ -584,10 +763,25 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         parameters={
             "type": "object",
             "properties": {
-                "sas_version": {"type": "string", "enum": ["v2", "v3"], "default": "v3"},
+                "session_id": {"type": "string", "default": "default", "description": "Session with uploaded SAS code."},
             },
         },
         fn=_t_validate_sas,
+    ),
+    "describe_egp_project": ToolSpec(
+        name="describe_egp_project",
+        description=(
+            "Describe the structure of an uploaded .egp (SAS Enterprise Guide) "
+            "project. Returns task names, ordering, block types, line counts, "
+            "and a code preview of each block. Call this first after an .egp upload."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "default": "default", "description": "Session with uploaded .egp."},
+            },
+        },
+        fn=_t_describe_egp_project,
     ),
 }
 
@@ -734,7 +928,7 @@ def _t_search_experience(
 
     # Search by label match in experience and insight nodes
     results = store.search_nodes(
-        node_types=[NodeType.EXPERIENCE, NodeType.INSIGHT],
+        node_types=[NodeType.EXPERIENCE, NodeType.INSIGHT, NodeType.CONCEPT],
         label_contains=query,
         limit=k * 2,  # fetch extra, then sort by priority
     )
@@ -860,13 +1054,13 @@ def _t_save_feedback(
 
 def _t_backtrace_sas_field(
     target: str,
-    sas_version: str = "v3",
+    session_id: str = "default",
 ) -> dict[str, Any]:
     """Trace a field backward through SAS logic, group leaf ancestors by source table."""
     from src.sas_logic_tree import SASLogicTree
-    sas = _load_sas(sas_version)
+    sas = _load_sas(session_id)
     if not sas:
-        return {"error": f"no SAS found for version {sas_version}"}
+        return {"error": f"no SAS found for session {session_id}"}
     tree = SASLogicTree()
     nodes = tree.parse(sas)
     trace = tree.trace_lineage(nodes, target)
@@ -902,7 +1096,7 @@ def _t_backtrace_sas_field(
 
     return {
         "target": target,
-        "sas_version": sas_version,
+        "session_id": session_id,
         "found": True,
         "ancestor_count": trace["ancestor_count"],
         "input_tables": input_tables[:20],
@@ -963,6 +1157,77 @@ def _t_create_investigation_plan(
         "plan": plan_text,
         "edges_created": edges_created,
     }
+
+
+def _t_merge_nodes(source: str, target: str) -> dict[str, Any]:
+    """Merge duplicate insight nodes (source into target)."""
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.memory_ops import merge_nodes
+
+    return merge_nodes(store, source, target)
+
+
+def _t_add_tags(node: str, tags: list[str]) -> dict[str, Any]:
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.memory_ops import add_tags
+
+    return add_tags(store, node, tags)
+
+
+def _t_link_nodes(source: str, target: str, relation: str = "RELATES_TO") -> dict[str, Any]:
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.memory_ops import link_nodes
+
+    return link_nodes(store, source, target, relation=relation)
+
+
+def _t_flag_conflict(node_a: str, node_b: str, reason: str = "") -> dict[str, Any]:
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.memory_ops import flag_conflict
+
+    return flag_conflict(store, node_a, node_b, reason=reason)
+
+
+def _t_delete_node(node: str) -> dict[str, Any]:
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    if store.get_node(node) is None:
+        return {"deleted": False, "error": f"node not found: {node}"}
+    store.delete_node(node)
+    return {"deleted": True, "node": node}
+
+
+def _t_create_concept(
+    label: str,
+    definition: str,
+    covers: list[str],
+    links_to: list[str] | None = None,
+) -> dict[str, Any]:
+    """Abstract related insights into a new Concept (reduces graph entropy)."""
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.memory_ops import create_concept
+
+    return create_concept(store, label, definition, covers, links_to=links_to)
+
+
+def _t_link_to_concept(insight_id: str, concept_id: str) -> dict[str, Any]:
+    store = _get_graph_store()
+    if store is None:
+        return {"error": "Knowledge graph not available"}
+    from src.knowledge.memory_ops import link_to_concept
+
+    return link_to_concept(store, insight_id, concept_id)
 
 
 def _t_formulate_data_request(
@@ -1136,7 +1401,7 @@ TOOL_REGISTRY["backtrace_sas_field"] = ToolSpec(
         "type": "object",
         "properties": {
             "target": {"type": "string", "description": "Target field to trace backwards from."},
-            "sas_version": {"type": "string", "enum": ["v2", "v3"], "default": "v3"},
+            "session_id": {"type": "string", "default": "default", "description": "Session with uploaded SAS code."},
         },
         "required": ["target"],
     },
@@ -1279,6 +1544,127 @@ TOOL_REGISTRY["search_experience"] = ToolSpec(
     fn=_t_search_experience,
 )
 
+TOOL_REGISTRY["merge_nodes"] = ToolSpec(
+    name="merge_nodes",
+    description=(
+        "Merge a duplicate insight node into a canonical one during sleep "
+        "organization. Rewires edges and deletes the source node."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "source": {"type": "string", "description": "Duplicate node id to remove."},
+            "target": {"type": "string", "description": "Canonical node id to keep."},
+        },
+        "required": ["source", "target"],
+    },
+    fn=_t_merge_nodes,
+)
+
+TOOL_REGISTRY["add_tags"] = ToolSpec(
+    name="add_tags",
+    description="Add categorization tags to an insight node.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "node": {"type": "string", "description": "Insight node id."},
+            "tags": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["node", "tags"],
+    },
+    fn=_t_add_tags,
+)
+
+TOOL_REGISTRY["link_nodes"] = ToolSpec(
+    name="link_nodes",
+    description="Create a relationship edge between two graph nodes.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "target": {"type": "string"},
+            "relation": {
+                "type": "string",
+                "default": "RELATES_TO",
+                "description": "Edge type, e.g. RELATES_TO, SUPERSEDES.",
+            },
+        },
+        "required": ["source", "target"],
+    },
+    fn=_t_link_nodes,
+)
+
+TOOL_REGISTRY["flag_conflict"] = ToolSpec(
+    name="flag_conflict",
+    description="Flag two contradictory insight nodes for human review.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "node_a": {"type": "string"},
+            "node_b": {"type": "string"},
+            "reason": {"type": "string", "default": ""},
+        },
+        "required": ["node_a", "node_b"],
+    },
+    fn=_t_flag_conflict,
+)
+
+TOOL_REGISTRY["delete_node"] = ToolSpec(
+    name="delete_node",
+    description="Remove an orphan or irrelevant node from the knowledge graph.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "node": {"type": "string", "description": "Node id to delete."},
+        },
+        "required": ["node"],
+    },
+    fn=_t_delete_node,
+)
+
+TOOL_REGISTRY["create_concept"] = ToolSpec(
+    name="create_concept",
+    description=(
+        "Create a new Concept that abstracts multiple related insights into "
+        "a stable semantic structure (EverMemOS-style consolidation). "
+        "Use when ≥2 insights share a theme and lifting them reduces graph "
+        "entropy. Links insights via CONTAINS edges."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "label": {"type": "string", "description": "Short concept name."},
+            "definition": {"type": "string", "description": "Stable semantic summary."},
+            "covers": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Insight node ids abstracted by this concept.",
+            },
+            "links_to": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional column/concept ids (e.g. LGD_ESTIMADA).",
+            },
+        },
+        "required": ["label", "definition", "covers"],
+    },
+    fn=_t_create_concept,
+)
+
+TOOL_REGISTRY["link_to_concept"] = ToolSpec(
+    name="link_to_concept",
+    description="Attach an insight to an existing experience-derived Concept.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "insight_id": {"type": "string"},
+            "concept_id": {"type": "string"},
+        },
+        "required": ["insight_id", "concept_id"],
+    },
+    fn=_t_link_to_concept,
+)
+
 TOOL_REGISTRY["save_insight"] = ToolSpec(
     name="save_insight",
     description=(
@@ -1312,8 +1698,10 @@ TOOL_REGISTRY["save_insight"] = ToolSpec(
 )
 
 
-def tool_schemas() -> list[dict[str, Any]]:
-    return [t.schema() for t in TOOL_REGISTRY.values()]
+def tool_schemas(names: list[str] | None = None) -> list[dict[str, Any]]:
+    if names is None:
+        return [t.schema() for t in TOOL_REGISTRY.values()]
+    return [TOOL_REGISTRY[n].schema() for n in names if n in TOOL_REGISTRY]
 
 
 def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -1321,8 +1709,10 @@ def dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     spec = TOOL_REGISTRY.get(name)
     if spec is None:
         return {"error": f"unknown_tool: {name}", "available": sorted(TOOL_REGISTRY)}
+    # Sanitise: small models sometimes emit "null" as a string literal
+    clean = {k: v for k, v in (args or {}).items() if v is not None and v != "null"}
     try:
-        result = spec.fn(**(args or {}))
+        result = spec.fn(**clean)
     except TypeError as e:
         return {"error": f"bad_arguments: {e}", "tool": name, "args": args}
     except Exception as e:

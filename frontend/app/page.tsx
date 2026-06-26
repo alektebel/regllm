@@ -97,7 +97,7 @@ export default function Home() {
   const createChat = useCallback(() => {
     const session: ChatSession = {
       id: generateId(),
-      title: "New chat",
+      title: "Nueva conversación",
       createdAt: Date.now(),
       messages: [],
     };
@@ -168,15 +168,15 @@ function EmptyState({ onCreate, sidebarOpen, onToggleSidebar }: { onCreate: () =
       <div className="text-center">
         <h1 className="text-2xl font-semibold mb-2">RegLLM</h1>
         <p className="text-sm text-muted-foreground max-w-md">
-          Regulatory compliance investigator for banking reporting databases.
-          Ask about field discrepancies, regulation, or SAS code lineage.
+          Investigador de cumplimiento regulatorio para reporting bancario.
+          Pregunta sobre discrepancias de campos, normativa o lineage SAS.
         </p>
       </div>
       <button
         onClick={onCreate}
         className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90"
       >
-        New chat
+        Nueva conversación
       </button>
     </div>
   );

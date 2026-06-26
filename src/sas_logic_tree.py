@@ -99,6 +99,7 @@ class DataStepNode:
     output_datasets: list[str] = field(default_factory=list)   # extra outputs
     merge_datasets: list[str] = field(default_factory=list)    # MERGE sources
     by_keys: list[str] = field(default_factory=list)           # BY keys
+    datalines_data: list[dict] = field(default_factory=list)   # rows from DATALINES
 
     def display(self, indent: int = 0) -> str:
         pad = "  " * indent
@@ -122,6 +123,9 @@ class DataStepNode:
             d["by_keys"] = self.by_keys
         if self.output_datasets:
             d["output_datasets"] = self.output_datasets
+        if self.datalines_data:
+            d["datalines_data"] = self.datalines_data[:3]  # sample for display
+            d["datalines_count"] = len(self.datalines_data)
         return d
 
 
@@ -658,6 +662,8 @@ def _to_python(expr: str, is_condition: bool = False) -> str:
 
     # SAS function name remapping (case-insensitive → lowercase Python names)
     _fn_map = [
+        ("_LOOKUP", "_lookup"),
+        ("LOOKUP", "_lookup"),
         ("MAX", "max"), ("MIN", "min"), ("ABS", "abs"), ("ROUND", "round"),
         ("INT", "int"), ("FLOOR", "floor"), ("CEIL", "ceil"), ("SQRT", "sqrt"),
         ("LOG2", "log2"), ("LOG10", "log10"), ("LOG", "log"), ("EXP", "exp"),
@@ -686,11 +692,24 @@ def _to_python(expr: str, is_condition: bool = False) -> str:
     return result
 
 
+def _mk_lookup(ref_data: dict[str, list[dict]]) -> Any:
+    """Build lookup function that searches reference datasets."""
+    def _lookup(table_name: str, key_field: str, key_value: Any, return_field: str) -> Any:
+        table = ref_data.get(table_name, [])
+        for row in table:
+            if row.get(key_field) == key_value:
+                return row.get(return_field)
+        return None
+    return _lookup
+
+
 def _eval_expr(expr: str, env: dict[str, Any], is_condition: bool = False) -> Any:
     """Safely evaluate a SAS expression. Returns None/False on any error."""
     py = _to_python(expr, is_condition=is_condition)
+    ref_data = env.get("_REFERENCE_DATA", {})
     try:
-        return eval(py, _SAFE_GLOBALS, {**_SAFE_LOCALS, **env})  # noqa: S307
+        return eval(py, _SAFE_GLOBALS,
+                    {**_SAFE_LOCALS, "_lookup": _mk_lookup(ref_data), **env})  # noqa: S307
     except Exception:
         return False if is_condition else None
 
@@ -972,6 +991,63 @@ class _Parser:
         self._consume()
         return None
 
+    # ── INPUT / DATALINES parsing ─────────────────────────────────────────────
+
+    def _parse_input_vars(self, stmt: str) -> list[tuple[str, bool]]:
+        """Parse INPUT statement into list of (var_name, is_string)."""
+        cleaned = re.sub(r"^INPUT\s+", "", stmt, flags=re.IGNORECASE).strip()
+        parts = cleaned.split()
+        vars_: list[tuple[str, bool]] = []
+        i = 0
+        while i < len(parts):
+            token = parts[i]
+            if token.upper() == "@" and i + 1 < len(parts):
+                i += 2  # skip pointer control
+                continue
+            if token in (":", "&", "~"):
+                i += 1
+                continue
+            # Check if next token is $
+            is_str = (i + 1 < len(parts) and parts[i + 1] == "$")
+            var = token
+            if var.startswith(":"):
+                var = var[1:]
+            if is_str:
+                vars_.append((var, True))
+                i += 2
+            else:
+                vars_.append((var, False))
+                i += 1
+        return vars_
+
+    def _parse_datalines(self, text: str,
+                         vars_: list[tuple[str, bool]]) -> list[dict]:
+        """Parse DATALINES text into rows using input vars spec."""
+        rows: list[dict] = []
+        for line in text.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            tokens = line.split()
+            if len(tokens) < len(vars_):
+                continue
+            row: dict[str, Any] = {}
+            for j, (var, is_str) in enumerate(vars_):
+                if j >= len(tokens):
+                    break
+                val = tokens[j]
+                if val == ".":
+                    row[var] = None
+                elif is_str:
+                    row[var] = val
+                else:
+                    try:
+                        row[var] = float(val)
+                    except ValueError:
+                        row[var] = None
+            rows.append(row)
+        return rows
+
     # ── DATA step ─────────────────────────────────────────────────────────────
 
     def _parse_data_step(self) -> DataStepNode:
@@ -986,6 +1062,8 @@ class _Parser:
         merge_datasets: list[str] = []
         by_keys: list[str] = []
         body: list[AnyNode] = []
+        input_vars: list[tuple[str, bool]] = []
+        datalines_data: list[dict] = []
 
         while self._pos < len(self._s):
             u = self._upper()
@@ -1019,6 +1097,18 @@ class _Parser:
                     input_ds = datasets[0]
                 body.append(MergeNode(datasets=datasets, in_vars=in_vars))
                 continue
+            # INPUT statement — capture column schema
+            if re.match(r"^INPUT\b", u):
+                stmt = self._consume()
+                input_vars = self._parse_input_vars(stmt)
+                continue
+            # DATALINES — consume inline data and parse into rows
+            if re.match(r"^DATALINES\b", u):
+                self._consume()
+                data_raw = self._consume() if self._pos < len(self._s) else ""
+                if data_raw:
+                    datalines_data = self._parse_datalines(data_raw, input_vars)
+                continue
             result = self._parse_body_stmt()
             if isinstance(result, list):
                 body.extend(result)
@@ -1035,6 +1125,8 @@ class _Parser:
             ds.merge_datasets = merge_datasets
         if by_keys:
             ds.by_keys = by_keys
+        if datalines_data:
+            ds.datalines_data = datalines_data
         return ds
 
     # ── body statement dispatcher ─────────────────────────────────────────────

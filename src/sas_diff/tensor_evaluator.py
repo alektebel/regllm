@@ -260,11 +260,24 @@ _TENSOR_LOCALS: dict[str, Any] = {
 }
 
 
+def _mk_lookup(ref_data: dict[str, list[dict]]) -> Any:
+    """Build lookup function that searches reference datasets."""
+    def _lookup(table_name: str, key_field: str, key_value: Any, return_field: str) -> Any:
+        table = ref_data.get(table_name, [])
+        for row in table:
+            if row.get(key_field) == key_value:
+                return row.get(return_field)
+        return None
+    return _lookup
+
+
 def _eval_tensor_expr(expr: str, env: dict, is_condition: bool = False) -> Any:
     """Evaluate a SAS expression; numeric vars in ``env`` propagate gradients."""
     py = _to_python(expr, is_condition=is_condition)
+    ref_data = env.get("_REFERENCE_DATA", {})
     try:
-        return eval(py, _TENSOR_GLOBALS, {**_TENSOR_LOCALS, **env})  # noqa: S307
+        return eval(py, _TENSOR_GLOBALS,
+                    {**_TENSOR_LOCALS, "_lookup": _mk_lookup(ref_data), **env})  # noqa: S307
     except Exception:
         return False if is_condition else None
 

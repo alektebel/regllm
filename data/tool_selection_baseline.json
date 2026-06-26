@@ -1,0 +1,1076 @@
+{
+  "model": "qwen3:4b",
+  "n": 74,
+  "total_reward": 12,
+  "accuracy_pct": 58.1,
+  "by_kind": {
+    "lineage": 46.7,
+    "rag": 76.3,
+    "both": 0.0
+  },
+  "results": [
+    {
+      "source_id": "eval_001",
+      "question": "¿De qué campos depende ECL?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 27.2
+    },
+    {
+      "source_id": "eval_001",
+      "question": "¿Dónde se calcula ECL en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 19.9
+    },
+    {
+      "source_id": "eval_001",
+      "question": "¿De qué campos depende LGD_CON_MOC?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 32.7
+    },
+    {
+      "source_id": "eval_001",
+      "question": "¿Dónde se calcula MOC en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 30.1
+    },
+    {
+      "source_id": "eval_002",
+      "question": "¿De qué campos depende OR_EAD?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": -1,
+      "reason": "expected trace_dependencies, got ['inspect_lineage']",
+      "elapsed": 26.6
+    },
+    {
+      "source_id": "eval_002",
+      "question": "¿Dónde se calcula OR_EAD en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 40.6
+    },
+    {
+      "source_id": "eval_002",
+      "question": "¿Qué documentación hay sobre OR_EAD?",
+      "expected_tool": "search_docs",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs",
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 19.7
+    },
+    {
+      "source_id": "eval_003",
+      "question": "¿De qué campos depende RWA?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 39.5
+    },
+    {
+      "source_id": "eval_003",
+      "question": "¿Dónde se calcula RWA en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 20.0
+    },
+    {
+      "source_id": "eval_003",
+      "question": "¿De qué campos depende K_IRB?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": -1,
+      "reason": "expected trace_dependencies, got ['inspect_lineage']",
+      "elapsed": 17.8
+    },
+    {
+      "source_id": "eval_003",
+      "question": "¿Dónde se calcula K_IRB en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 18.8
+    },
+    {
+      "source_id": "eval_003",
+      "question": "¿De qué campos depende LGD_CON_MOC?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": -1,
+      "reason": "expected trace_dependencies, got ['inspect_lineage']",
+      "elapsed": 36.1
+    },
+    {
+      "source_id": "eval_004",
+      "question": "¿Dónde se calcula SW_FUSION en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 22.2
+    },
+    {
+      "source_id": "eval_005",
+      "question": "¿De qué campos depende LGD_ESTIMADA?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 29.3
+    },
+    {
+      "source_id": "eval_005",
+      "question": "¿Dónde se calcula LGD_ESTIMADA en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 19.3
+    },
+    {
+      "source_id": "eval_005",
+      "question": "¿Qué documentación hay sobre LGD_ESTIMADA?",
+      "expected_tool": "search_docs",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 22.9
+    },
+    {
+      "source_id": "eval_006",
+      "question": "¿Dónde se calcula WORK.CICLOS en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 24.7
+    },
+    {
+      "source_id": "eval_007",
+      "question": "¿Dónde se calcula WORK.CICLOS_EAD_AGG en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 17.5
+    },
+    {
+      "source_id": "eval_008",
+      "question": "¿De qué campos depende PD_ESTIMADA?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 17.8
+    },
+    {
+      "source_id": "eval_008",
+      "question": "¿Qué documentación hay sobre PD_ESTIMADA?",
+      "expected_tool": "search_docs",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected search_docs, got ['get_field_definition']",
+      "elapsed": 11.8
+    },
+    {
+      "source_id": "eval_009",
+      "question": "¿Qué regulación aplica a LGD floor hipoteca CRR 154?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 38.9
+    },
+    {
+      "source_id": "eval_009",
+      "question": "¿Qué documentación hay sobre LGD_ESTIMADA?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 8.9
+    },
+    {
+      "source_id": "eval_009",
+      "question": "¿Dónde se calcula LGD_FLOOR en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies",
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies', 'get_field_definition']",
+      "elapsed": 27.6
+    },
+    {
+      "source_id": "eval_010",
+      "question": "¿Qué regulación aplica a CRR 161?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 21.3
+    },
+    {
+      "source_id": "eval_010",
+      "question": "¿Qué documentación hay sobre LGD_ESTIMADA?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 15.8
+    },
+    {
+      "source_id": "eval_010",
+      "question": "¿Dónde se calcula LGD_FLOOR en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage",
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 25.7
+    },
+    {
+      "source_id": "eval_011",
+      "question": "¿Qué regulación aplica a EBA GL 2017/16 MoC margin of conservatism?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 35.2
+    },
+    {
+      "source_id": "eval_011",
+      "question": "¿Qué documentación hay sobre MoC?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 13.5
+    },
+    {
+      "source_id": "eval_011",
+      "question": "¿Dónde se calcula MOC en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 16.8
+    },
+    {
+      "source_id": "eval_012",
+      "question": "¿Qué regulación aplica a clasificacion ciclos fases Circular 6/2016?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 23.0
+    },
+    {
+      "source_id": "eval_013",
+      "question": "¿Qué regulación aplica a CRR LGD floor?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 38.7
+    },
+    {
+      "source_id": "eval_013",
+      "question": "¿Qué regulación aplica a EBA guidelines LGD IRB?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 24.3
+    },
+    {
+      "source_id": "eval_014",
+      "question": "¿Qué regulación aplica a Circular 4/2022 PD floor?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 26.5
+    },
+    {
+      "source_id": "eval_014",
+      "question": "¿Qué regulación aplica a CRR 160?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": -1,
+      "reason": "expected search_regulation, got ['search_docs']",
+      "elapsed": 42.2
+    },
+    {
+      "source_id": "eval_014",
+      "question": "¿Dónde se calcula PD_ESTIMADA en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 19.5
+    },
+    {
+      "source_id": "eval_015",
+      "question": "¿Qué regulación aplica a LGD floor multiplier 1.20 stage 3 Circular 6/2016?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation",
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 38.1
+    },
+    {
+      "source_id": "eval_015",
+      "question": "¿Qué documentación hay sobre STAGE_IFRS9?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected search_docs, got ['get_field_definition']",
+      "elapsed": 11.5
+    },
+    {
+      "source_id": "eval_016",
+      "question": "¿Qué es el campo LGD_FLOOR_APLICADO?",
+      "expected_tool": "get_field_definition",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 10.1
+    },
+    {
+      "source_id": "eval_016",
+      "question": "¿Dónde se calcula LGD_FLOOR_APLICADO en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 22.0
+    },
+    {
+      "source_id": "eval_017",
+      "question": "¿Qué es el campo STAGE_IFRS9?",
+      "expected_tool": "get_field_definition",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 7.6
+    },
+    {
+      "source_id": "eval_017",
+      "question": "¿Qué documentación hay sobre STAGE_IFRS9?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 8.9
+    },
+    {
+      "source_id": "eval_017",
+      "question": "¿Qué regulación aplica a STAGE IFRS9 implications LGD PD?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 34.6
+    },
+    {
+      "source_id": "eval_018",
+      "question": "¿Qué es el campo EAD?",
+      "expected_tool": "get_field_definition",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 10.1
+    },
+    {
+      "source_id": "eval_018",
+      "question": "¿De qué campos depende EAD?",
+      "expected_tool": "trace_dependencies",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": -1,
+      "reason": "expected trace_dependencies, got ['inspect_lineage']",
+      "elapsed": 26.1
+    },
+    {
+      "source_id": "eval_019",
+      "question": "¿Qué es el campo OR_EAD_TIT?",
+      "expected_tool": "get_field_definition",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 7.0
+    },
+    {
+      "source_id": "eval_019",
+      "question": "¿Qué documentación hay sobre v2_to_v3_release_notes?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 11.2
+    },
+    {
+      "source_id": "eval_019",
+      "question": "¿Qué regulación aplica a EBA GL 2020/06 titulizacion?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 35.0
+    },
+    {
+      "source_id": "eval_024",
+      "question": "¿Qué regulación aplica al suelo LGD hipotecario y cómo se refleja en SAS?",
+      "expected_tools": [
+        "search_regulation",
+        "inspect_lineage"
+      ],
+      "kind": "both",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation",
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected ['inspect_lineage', 'search_regulation'], got ['search_regulation', 'get_field_definition']",
+      "elapsed": 46.7
+    },
+    {
+      "source_id": "eval_025",
+      "question": "¿Cómo cambió el suelo PD entre V2 y V3, qué norma lo justifica, y qué ciclos se afectan?",
+      "expected_tools": [
+        "search_regulation",
+        "inspect_lineage"
+      ],
+      "kind": "both",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": -1,
+      "reason": "expected ['inspect_lineage', 'search_regulation'], got ['search_regulation']",
+      "elapsed": 56.5
+    },
+    {
+      "source_id": "eval_028",
+      "question": "¿Qué es el campo TASA_RECUPERACION?",
+      "expected_tool": "get_field_definition",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 10.1
+    },
+    {
+      "source_id": "eval_028",
+      "question": "¿Qué documentación hay sobre TASA_RECUPERACION?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected search_docs, got ['get_field_definition']",
+      "elapsed": 15.1
+    },
+    {
+      "source_id": "eval_030",
+      "question": "¿Impacto de la recalibración PD 2025-Q1 en RWA?",
+      "expected_tools": [
+        "search_docs",
+        "inspect_lineage"
+      ],
+      "kind": "both",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected ['inspect_lineage', 'search_docs'], got ['get_field_definition']",
+      "elapsed": 53.0
+    },
+    {
+      "source_id": "eval_031",
+      "question": "¿Dónde se calcula SW_FUSION en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition",
+        "inspect_lineage"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 41.0
+    },
+    {
+      "source_id": "eval_031",
+      "question": "¿Dónde se calcula WORK.EAD_CON_FUSION en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies",
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies', 'get_field_definition']",
+      "elapsed": 41.1
+    },
+    {
+      "source_id": "eval_031",
+      "question": "¿Dónde se calcula ECL en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 26.5
+    },
+    {
+      "source_id": "eval_033",
+      "question": "CORP: PD=0.0004, LGD=0.40, EAD=100000, COLATERAL_TIPO='NINGUNA'. Calcula ECL en V2 vs V3?",
+      "expected_tools": [
+        "search_docs",
+        "inspect_lineage"
+      ],
+      "kind": "both",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [],
+      "reward": -1,
+      "reason": "expected ['inspect_lineage', 'search_docs'], got []",
+      "elapsed": 31.2
+    },
+    {
+      "source_id": "eval_034",
+      "question": "¿Qué regulación aplica a Circular 6/2016 Articulo 15?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 24.4
+    },
+    {
+      "source_id": "eval_036",
+      "question": "CORP sin colateral en STAGE_IFRS9=3. ¿LGD_FLOOR_APLICADO efectivo según normativa y pipeline?",
+      "expected_tools": [
+        "search_regulation",
+        "inspect_lineage"
+      ],
+      "kind": "both",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition",
+        "search_regulation",
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected ['inspect_lineage', 'search_regulation'], got ['get_field_definition', 'search_regulation', 'trace_dependencies']",
+      "elapsed": 64.5
+    },
+    {
+      "source_id": "eval_037",
+      "question": "¿Dónde se calcula LGD_FLOOR_APLICADO en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 17.6
+    },
+    {
+      "source_id": "eval_037",
+      "question": "¿Dónde se calcula MOC en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition",
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['get_field_definition', 'trace_dependencies']",
+      "elapsed": 17.5
+    },
+    {
+      "source_id": "eval_038",
+      "question": "¿Dónde se calcula STAGE_IFRS9 en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 24.1
+    },
+    {
+      "source_id": "eval_038",
+      "question": "¿Qué documentación hay sobre cycle_stages?",
+      "expected_tool": "search_docs",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 17.9
+    },
+    {
+      "source_id": "eval_040",
+      "question": "¿Qué documentación hay sobre PROVISION_PERIOD_MONTHS?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 13.2
+    },
+    {
+      "source_id": "eval_040",
+      "question": "¿Qué regulación aplica a Articulo 12 provision period retail?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 29.7
+    },
+    {
+      "source_id": "eval_041",
+      "question": "¿Qué regulación aplica a EBA GL 2017/16 calibration window minimum?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": -1,
+      "reason": "expected search_regulation, got ['search_docs']",
+      "elapsed": 30.5
+    },
+    {
+      "source_id": "eval_041",
+      "question": "¿Qué documentación hay sobre cycle_stages?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 18.2
+    },
+    {
+      "source_id": "eval_042",
+      "question": "¿Dónde se calcula K_IRB en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": -1,
+      "reason": "expected inspect_lineage, got ['trace_dependencies']",
+      "elapsed": 19.6
+    },
+    {
+      "source_id": "eval_043",
+      "question": "¿Qué regulación aplica a EBA GL 2017/16 paragraph 37 category A deficiencies?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 29.9
+    },
+    {
+      "source_id": "eval_043",
+      "question": "¿Qué regulación aplica a par_037?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "get_field_definition"
+      ],
+      "reward": -1,
+      "reason": "expected search_regulation, got ['get_field_definition']",
+      "elapsed": 16.1
+    },
+    {
+      "source_id": "eval_046",
+      "question": "¿Se aplica el suelo de PD a ciclos en Stage 3 según el pipeline?",
+      "expected_tools": [
+        "search_docs",
+        "inspect_lineage"
+      ],
+      "kind": "both",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": -1,
+      "reason": "expected ['inspect_lineage', 'search_docs'], got ['search_regulation']",
+      "elapsed": 22.8
+    },
+    {
+      "source_id": "eval_047",
+      "question": "¿De qué campos depende LGD_REALIZADA?",
+      "expected_tool": "trace_dependencies",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "trace_dependencies"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 22.7
+    },
+    {
+      "source_id": "eval_047",
+      "question": "¿Dónde se calcula LGD_REALIZADA en el pipeline SAS?",
+      "expected_tool": "inspect_lineage",
+      "kind": "lineage",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "inspect_lineage",
+        "get_field_definition"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 23.4
+    },
+    {
+      "source_id": "eval_048",
+      "question": "¿Qué documentación hay sobre PROVISION_PERIOD_MONTHS?",
+      "expected_tool": "search_docs",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_docs"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 16.2
+    },
+    {
+      "source_id": "eval_048",
+      "question": "¿Qué regulación aplica a Articulo 12 CORP crisis?",
+      "expected_tool": "search_regulation",
+      "kind": "rag",
+      "reward_correct": 1,
+      "reward_wrong": -1,
+      "tools_called": [
+        "search_regulation"
+      ],
+      "reward": 1,
+      "reason": "ok",
+      "elapsed": 21.0
+    }
+  ]
+}

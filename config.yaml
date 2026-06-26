@@ -4,7 +4,7 @@
 
 # Chat/reasoning LLM — maintains the knowledge graph, runs agentic Q&A
 llm:
-  model: "qwen2.5:14b-instruct-q4_K_M"   # local GGUF via Ollama
+  model: "regllm-4b-sft"   # SFT tool-calling (~85.8% eval); base: qwen3:4b
   backend: "auto"            # auto | ollama | litert | stub
   ollama_url: "http://localhost:11434"
   litert_url: "http://localhost:9379/v1"

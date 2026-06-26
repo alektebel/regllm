@@ -236,6 +236,7 @@ class LocalLLMClient:
         msgs = list(messages)
         if json_mode and self._is_thinking_model():
             msgs = _inject_no_think(msgs)
+        msgs = _inject_spanish(msgs)
 
         payload: dict[str, Any] = {
             "model": self.ollama_model,
@@ -328,9 +329,12 @@ class LocalLLMClient:
         temperature: float,
         max_tokens: int,
     ) -> ChatResponse:
+        msgs = _inject_spanish(list(messages))
+        if self._is_thinking_model():
+            msgs = _inject_no_think(msgs)
         payload: dict[str, Any] = {
             "model": self.ollama_model,
-            "messages": messages,
+            "messages": msgs,
             "stream": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
             "tools": tools,
@@ -464,6 +468,20 @@ def _strip_think_tags(text: str) -> str:
     """Remove <think>...</think> blocks from model output (qwen3, deepseek-r1)."""
     import re
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+def _inject_spanish(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure the model stays in Spanish for the whole conversation."""
+    lock = "Responde SIEMPRE en español. No cambies de idioma a mitad de conversación."
+    out = list(messages)
+    for i, m in enumerate(out):
+        if m.get("role") == "system":
+            content = m.get("content", "")
+            if "SIEMPRE en español" not in content:
+                out[i] = {**m, "content": f"{lock}\n\n{content}"}
+            return out
+    out.insert(0, {"role": "system", "content": lock})
+    return out
 
 
 def _inject_no_think(messages: list[dict[str, str]]) -> list[dict[str, str]]:

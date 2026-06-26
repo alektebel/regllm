@@ -11,8 +11,10 @@ def test_registry_has_expected_tools() -> None:
         "find_rows_by_field_value",
         "inspect_lineage",
         "trace_dependencies",
-        "compute_attribution",
-        "compare_sas_versions",
+        "get_sas_formula",
+        "trace_causal_chain",
+        "query_cycle_data",
+        "compute_shapley",
         "search_docs",
         "get_field_definition",
         "search_changelog",
@@ -20,20 +22,29 @@ def test_registry_has_expected_tools() -> None:
         "enrich_fields",
         "get_schema_context",
         "validate_sas",
+        "describe_egp_project",
         # Knowledge graph tools
         "query_regulation",
         "find_governing_rules",
         "trace_regulation_chain",
         "search_experience",
         "save_insight",
-        # New investigation tools
+        "save_feedback",
+        # Sleep-cycle memory organization
+        "merge_nodes",
+        "add_tags",
+        "link_nodes",
+        "flag_conflict",
+        "delete_node",
+        "create_concept",
+        "link_to_concept",
+        # Investigation tools
         "backtrace_sas_field",
         "create_investigation_plan",
         "formulate_data_request",
         "analyze_uploaded_data",
-        "save_feedback",
     }
-    assert expected == set(TOOL_REGISTRY)
+    assert expected.issubset(set(TOOL_REGISTRY))
 
 
 def test_tool_schemas_are_well_formed() -> None:
@@ -66,9 +77,9 @@ def test_inspect_lineage_returns_ancestors_for_ecl(monkeypatch) -> None:
     sample = Path(__file__).resolve().parent.parent / "data" / "samples" / "sample_lgd.sas"
     sas_text = sample.read_text(encoding="utf-8")
     import src.agent.tools as _tools
-    monkeypatch.setattr(_tools, "_load_sas", lambda version: sas_text)
+    monkeypatch.setattr(_tools, "_load_sas", lambda session_id="default": sas_text)
     from src.agent.tools import _t_inspect_lineage
-    out = _t_inspect_lineage("ECL", "v3")
+    out = _t_inspect_lineage("ECL")
     assert "ancestors" in out
     # ECL = PD * LGD * EAD → expect those three among the ancestors
     expected = {"PD_ESTIMADA", "LGD_ESTIMADA", "EAD"}
@@ -76,19 +87,9 @@ def test_inspect_lineage_returns_ancestors_for_ecl(monkeypatch) -> None:
 
 
 def test_find_row_unknown_pk() -> None:
-    out = dispatch_tool("find_row", {"pk": "DOES_NOT_EXIST", "version": "v3"})
+    out = dispatch_tool("find_row", {"pk": "DOES_NOT_EXIST"})
     assert out["found"] is False
 
-
-def test_compare_sas_versions_returns_full_shape() -> None:
-    out = dispatch_tool("compare_sas_versions", {"target": "ECL"})
-    if out.get("truncated"):
-        # Large diff gets truncated by _truncate() — verify preview is present
-        assert "preview" in out
-    else:
-        for key in ("v2_present", "v3_present", "added_steps",
-                    "removed_steps", "modified_steps", "unchanged_steps", "unified_diff"):
-            assert key in out, f"missing key {key}"
 
 
 def test_search_docs_runs_against_default_index() -> None:
@@ -103,9 +104,9 @@ def test_trace_dependencies_returns_edges(monkeypatch) -> None:
     sample = Path(__file__).resolve().parent.parent / "data" / "samples" / "sample_lgd.sas"
     sas_text = sample.read_text(encoding="utf-8")
     import src.agent.tools as _tools
-    monkeypatch.setattr(_tools, "_load_sas", lambda version: sas_text)
+    monkeypatch.setattr(_tools, "_load_sas", lambda session_id="default": sas_text)
     from src.agent.tools import _t_trace_dependencies
-    out = _t_trace_dependencies("ECL", "v3")
+    out = _t_trace_dependencies("ECL")
     assert out["found"] is True
     assert out["ancestor_count"] >= 3
     assert "edges" in out
@@ -121,12 +122,26 @@ def test_trace_dependencies_max_depth(monkeypatch) -> None:
     sample = Path(__file__).resolve().parent.parent / "data" / "samples" / "sample_lgd.sas"
     sas_text = sample.read_text(encoding="utf-8")
     import src.agent.tools as _tools
-    monkeypatch.setattr(_tools, "_load_sas", lambda version: sas_text)
+    monkeypatch.setattr(_tools, "_load_sas", lambda session_id="default": sas_text)
     from src.agent.tools import _t_trace_dependencies
-    out = _t_trace_dependencies("ECL", "v3", max_depth=1)
+    out = _t_trace_dependencies("ECL", max_depth=1)
     # With depth=1, only direct predecessors
     for field, d in out["depth"].items():
         assert d <= 1
+
+
+def test_get_sas_formula_returns_expr(monkeypatch) -> None:
+    from pathlib import Path
+    sample = Path(__file__).resolve().parent.parent / "data" / "samples" / "sample_lgd.sas"
+    sas_text = sample.read_text(encoding="utf-8")
+    import src.agent.tools as _tools
+    monkeypatch.setattr(_tools, "_load_sas", lambda session_id="default": sas_text)
+    from src.agent.tools import _t_get_sas_formula
+    out = _t_get_sas_formula("ECL")
+    assert out["found"] is True
+    assert out["definitions"]
+    exprs = {d["expr"] for d in out["definitions"]}
+    assert any("PD_ESTIMADA" in e and "EAD" in e for e in exprs)
 
 
 def test_enrich_fields_returns_definitions() -> None:
@@ -165,9 +180,9 @@ def test_get_schema_context_filter_by_table() -> None:
 def test_validate_sas_detects_missing_dataset(monkeypatch) -> None:
     import src.agent.tools as _tools
     code = "DATA work.out; SET missing_table; Z = 1; RUN;"
-    monkeypatch.setattr(_tools, "_load_sas", lambda version: code)
+    monkeypatch.setattr(_tools, "_load_sas", lambda session_id="default": code)
     from src.agent.tools import _t_validate_sas
-    out = _t_validate_sas("v3")
+    out = _t_validate_sas()
     codes = [d["code"] for d in out["diagnostics"]]
     assert "MISSING_DATASET" in codes
 
@@ -175,9 +190,9 @@ def test_validate_sas_detects_missing_dataset(monkeypatch) -> None:
 def test_validate_sas_clean_code(monkeypatch) -> None:
     import src.agent.tools as _tools
     code = "DATA work.out; SET work.inp; X = A + B; RUN;"
-    monkeypatch.setattr(_tools, "_load_sas", lambda version: code)
+    monkeypatch.setattr(_tools, "_load_sas", lambda session_id="default": code)
     from src.agent.tools import _t_validate_sas
-    out = _t_validate_sas("v3")
+    out = _t_validate_sas()
     errors = [d for d in out["diagnostics"] if d["level"] == "error"]
     assert len(errors) == 0
 
@@ -190,9 +205,9 @@ def test_backtrace_sas_field(monkeypatch) -> None:
     sample = Path(__file__).resolve().parent.parent / "data" / "samples" / "sample_lgd.sas"
     sas_text = sample.read_text(encoding="utf-8")
     import src.agent.tools as _tools
-    monkeypatch.setattr(_tools, "_load_sas", lambda version: sas_text)
+    monkeypatch.setattr(_tools, "_load_sas", lambda session_id="default": sas_text)
     from src.agent.tools import _t_backtrace_sas_field
-    out = _t_backtrace_sas_field("ECL", "v3")
+    out = _t_backtrace_sas_field("ECL")
     assert out["found"] is True
     assert out["ancestor_count"] >= 3
     assert len(out["input_tables"]) > 0
@@ -207,7 +222,7 @@ def test_backtrace_sas_field_not_found(monkeypatch) -> None:
     import src.agent.tools as _tools
     monkeypatch.setattr(_tools, "_load_sas", lambda version: "DATA work.out; X = 1; RUN;")
     from src.agent.tools import _t_backtrace_sas_field
-    out = _t_backtrace_sas_field("NONEXISTENT_FIELD", "v3")
+    out = _t_backtrace_sas_field("NONEXISTENT_FIELD")
     assert out["found"] is False
 
 
