@@ -703,6 +703,8 @@ def _load_model(adapter_path: str, max_seq_length: int = 2048):
             use_gradient_checkpointing="unsloth",
         )
 
+    from training.tool_utils import clear_generation_max_length
+    clear_generation_max_length(model)
     return model, tokenizer
 
 

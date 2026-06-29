@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -44,6 +45,15 @@ class LineageRequest(BaseModel):
     max_depth: int | None = None
 
 
+class EvaluateRequest(BaseModel):
+    code: str
+    values: dict[str, Any] = {}
+
+
+class ValidateRequest(BaseModel):
+    code: str
+
+
 @router.get("/sample")
 def get_sample() -> dict:
     code = _load_trace_sas()
@@ -58,6 +68,39 @@ def parse(req: CodeRequest) -> dict:
     tree = SASLogicTree()
     nodes = tree.parse(req.code)
     return {"ast": tree.to_dict(nodes)}
+
+
+@router.post("/validate")
+def validate(req: ValidateRequest) -> dict:
+    from src.sas_logic_tree import SASLogicTree
+    tree = SASLogicTree()
+    nodes = tree.parse(req.code)
+    diags = tree.validate(nodes)
+    return {
+        "diagnostics": diags,
+        "uninterpreted": tree.uninterpreted,
+        "total_uninterpreted": len(tree.uninterpreted),
+    }
+
+
+@router.post("/evaluate")
+def evaluate(req: EvaluateRequest) -> dict:
+    from src.sas_logic_tree import SASLogicTree
+    tree = SASLogicTree()
+    nodes = tree.parse(req.code)
+    trace = tree.evaluate(nodes, req.values)
+    return {
+        "initial": trace.initial,
+        "final": trace.final,
+        "steps": [
+            {"kind": s.kind, "label": s.label, "var": s.var,
+             "old_val": s.old_val, "new_val": s.new_val,
+             "data_step": s.data_step}
+            for s in trace.steps
+        ],
+        "row_passes_filter": trace.row_passes_filter,
+        "filter_results": trace.filter_results,
+    }
 
 
 @router.post("/lineage")

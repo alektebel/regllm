@@ -110,6 +110,7 @@ def _eval_stage(adapter: Path, stage_idx: int, n: int = 15) -> dict:
                 "--manifest", str(manifest_path),
                 "--stage", str(stage_idx),
                 "--output", out_path,
+                "--max-samples", str(n),
             ],
             cwd=PROJECT_ROOT,
             timeout=600,
@@ -128,20 +129,16 @@ def _eval_stage(adapter: Path, stage_idx: int, n: int = 15) -> dict:
 
     from training.curriculum import STAGES
     from training.rl_env import generate_training_batch, compute_reward
-    from training.tool_utils import load_adapter, release_gpu
+    from training.tool_utils import load_adapter, release_gpu, generate_text
 
     stage = STAGES[stage_idx]
     model, tokenizer = load_adapter(str(adapter), max_seq_length=4096)
     batch = generate_training_batch(n, stage, seed=42)
 
-    import torch
     rewards = []
     for bug, messages in batch:
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        with torch.no_grad():
-            out = model.generate(**inputs, max_new_tokens=400, temperature=0.0, do_sample=False)
-        text = tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+        text = generate_text(model, tokenizer, prompt=prompt, max_new_tokens=400, temperature=0.0)
         bd = compute_reward(text, bug, stage)
         rewards.append(bd.total)
 

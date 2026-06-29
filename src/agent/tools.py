@@ -464,7 +464,13 @@ def _t_validate_sas(session_id: str = "default") -> dict[str, Any]:
     tree = SASLogicTree()
     nodes = tree.parse(sas)
     diags = tree.validate(nodes)
-    return {"session_id": session_id, "diagnostics": diags[:50], "total": len(diags)}
+    return {
+        "session_id": session_id,
+        "diagnostics": diags[:50],
+        "total": len(diags),
+        "uninterpreted": tree.uninterpreted,
+        "total_uninterpreted": len(tree.uninterpreted),
+    }
 
 
 # ── Registry ────────────────────────────────────────────────────────────────

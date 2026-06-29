@@ -105,6 +105,44 @@ def release_gpu() -> None:
         pass
 
 
+def clear_generation_max_length(model) -> None:
+    """Unsloth sets generation_config.max_length from max_seq_length; clear it when using max_new_tokens."""
+    cfg = getattr(model, "generation_config", None)
+    if cfg is not None:
+        cfg.max_length = None
+
+
+def generate_text(
+    model,
+    tokenizer,
+    *,
+    inputs=None,
+    prompt: str | None = None,
+    max_new_tokens: int = 256,
+    temperature: float = 0.0,
+    do_sample: bool | None = None,
+) -> str:
+    """Generate completion without max_length / max_new_tokens clash warnings."""
+    import torch
+
+    if inputs is None:
+        if prompt is None:
+            raise ValueError("provide inputs or prompt")
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    if do_sample is None:
+        do_sample = temperature > 0
+    gen_kw: dict = {
+        "max_new_tokens": max_new_tokens,
+        "max_length": None,
+        "do_sample": do_sample,
+    }
+    if do_sample:
+        gen_kw["temperature"] = temperature
+    with torch.no_grad():
+        out = model.generate(**inputs, **gen_kw)
+    return tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+
+
 def load_adapter(adapter_path: Path | str, max_seq_length: int = 2048):
     from unsloth import FastLanguageModel
     from peft import PeftModel
@@ -118,6 +156,7 @@ def load_adapter(adapter_path: Path | str, max_seq_length: int = 2048):
     )
     model = PeftModel.from_pretrained(model, ap)
     FastLanguageModel.for_inference(model)
+    clear_generation_max_length(model)
     return model, tokenizer
 
 
@@ -133,11 +172,10 @@ def predict_tools(model, tokenizer, question: str, max_new_tokens: int = 256) ->
         messages, tools=schemas, tokenize=False, add_generation_prompt=True,
     )
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
-    out = model.generate(
-        **inputs, max_new_tokens=max_new_tokens, temperature=0.0, do_sample=False,
-        use_cache=True,
+    decoded = generate_text(
+        model, tokenizer, inputs=inputs,
+        max_new_tokens=max_new_tokens, temperature=0.0, do_sample=False,
     )
-    decoded = tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=False)
     return parse_tools_from_text(decoded)
 
 

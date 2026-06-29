@@ -27,7 +27,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from training.curriculum import STAGES
 from training.rl_env import compute_reward, generate_training_batch, build_prompt
 
-MODEL_NAME = "Qwen/Qwen3-8B"
+MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"  # cached, close proxy for Qwen3-8B
 
 
 @dataclass

@@ -16,7 +16,6 @@ import {
   Network,
   Wand2,
   SlidersHorizontal,
-  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LineageGraph, {
@@ -714,13 +713,6 @@ function Header({ llmBackend, llmModel }: { llmBackend: string; llmModel: string
         </div>
       </div>
       <div className="flex items-center gap-4">
-        <Link
-          href="/embeddings"
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <Boxes className="h-3.5 w-3.5" />
-          Embedding Visualizer
-        </Link>
         <div className="text-xs text-muted-foreground flex items-center gap-2">
           <span className={cn("inline-block w-2 h-2 rounded-full", dotColor)} />
           <span>local LLM:</span>

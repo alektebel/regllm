@@ -92,30 +92,30 @@ def eval_adapter_manifest(
     manifest_path: Path | str | None = None,
     *,
     stage_idx: int | None = None,
+    max_samples: int | None = None,
     max_new_tokens: int = 400,
     temperature: float = 0.0,
     max_seq_length: int = 4096,
 ) -> dict[str, Any]:
     """Load adapter and score fixed manifest (deterministic when temperature=0)."""
-    from training.tool_utils import load_adapter, release_gpu
-    import torch
+    from training.tool_utils import load_adapter, release_gpu, generate_text
 
     rows = load_eval_manifest(manifest_path)
+    if stage_idx is not None:
+        rows = [r for r in rows if r["stage_idx"] == stage_idx]
+    if max_samples is not None and len(rows) > max_samples:
+        rows = rows[:max_samples]
+
     model, tokenizer = load_adapter(str(adapter_path), max_seq_length=max_seq_length)
 
     def _complete(messages: list[dict]) -> str:
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        gen_kw: dict[str, Any] = {"max_new_tokens": max_new_tokens}
-        if temperature > 0:
-            gen_kw.update(temperature=temperature, do_sample=True)
-        else:
-            gen_kw.update(do_sample=False)
-        with torch.no_grad():
-            out = model.generate(**inputs, **gen_kw)
-        return tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+        return generate_text(
+            model, tokenizer, prompt=prompt,
+            max_new_tokens=max_new_tokens, temperature=temperature,
+        )
 
-    result = eval_manifest_rows(rows, _complete, stage_idx=stage_idx, temperature=temperature)
+    result = eval_manifest_rows(rows, _complete, stage_idx=None, temperature=temperature)
     del model
     release_gpu()
     return result
@@ -130,12 +130,15 @@ def main() -> None:
     parser.add_argument("--stage", type=int, default=None, help="Filter to one stage index")
     parser.add_argument("--output", required=True, help="Write JSON results here")
     parser.add_argument("--max-new-tokens", type=int, default=400)
+    parser.add_argument("--max-samples", type=int, default=None,
+                        help="Cap manifest rows scored (default: all for stage)")
     args = parser.parse_args()
 
     result = eval_adapter_manifest(
         args.adapter,
         args.manifest,
         stage_idx=args.stage,
+        max_samples=args.max_samples,
         max_new_tokens=args.max_new_tokens,
         temperature=0.0,
     )

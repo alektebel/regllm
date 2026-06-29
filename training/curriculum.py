@@ -62,12 +62,13 @@ STAGES: list[StageConfig] = [
         max_depth=0,
         min_depth=0,
         reward_weights={
-            "tool_call": 0.15,
+            "tool_call": 0.10,
             "correct_tool": 0.10,
-            "correct_step": 0.25,    # identified the right DATA step
-            "correct_var": 0.25,     # identified the right variable
+            "trace_path": 0.20,
+            "correct_step": 0.20,
+            "correct_var": 0.20,
             "no_hallucination": 0.10,
-            "functional_fix": 0.15,  # proposed fix restores values
+            "functional_fix": 0.10,
         },
         advance_threshold=0.25,
         advance_window=30,
@@ -80,17 +81,35 @@ STAGES: list[StageConfig] = [
         reward_weights={
             "tool_call": 0.10,
             "correct_tool": 0.05,
-            "correct_step": 0.20,
-            "correct_var": 0.20,
-            "propagation_trace": 0.15,  # traced through multiple steps
+            "trace_path": 0.30,       # gold BFS path from symptom to root
+            "correct_step": 0.15,
+            "correct_var": 0.15,
             "no_hallucination": 0.10,
-            "functional_fix": 0.20,
+            "functional_fix": 0.15,
         },
         advance_threshold=0.5,
         advance_window=40,
     ),
 
     # ── Phase B: Experience-accelerated debugging ──────────────────
+    StageConfig(
+        name="experience_intro",
+        description="Multi-depth debugging with search_experience available (gentle bonus)",
+        max_depth=None,
+        min_depth=0,
+        reward_weights={
+            "tool_call": 0.10,
+            "correct_tool": 0.05,
+            "trace_path": 0.25,
+            "correct_step": 0.15,
+            "correct_var": 0.15,
+            "no_hallucination": 0.10,
+            "functional_fix": 0.10,
+            "experience_used": 0.10,  # gentle intro, not 0.30
+        },
+        advance_threshold=0.30,
+        advance_window=30,
+    ),
     StageConfig(
         name="experience_accelerated",
         description="Use experience KB to find bugs faster (query past insights first)",

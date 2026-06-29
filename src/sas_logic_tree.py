@@ -758,6 +758,23 @@ def _split_statements(code: str) -> list[str]:
     return [s.strip() for s in code.split(";") if s.strip()]
 
 
+def _split_statements_with_lines(code: str) -> list[tuple[int, str]]:
+    """Split SAS code by ';' returning (line_number, statement) tuples.
+
+    Each statement's line number is the 1-indexed line of its first character
+    in *code*, computed by counting newlines up to the statement's position.
+    """
+    stmts = _split_statements(code)
+    result: list[tuple[int, str]] = []
+    pos = 0
+    for stmt in stmts:
+        idx = code.find(stmt, pos)
+        line_no = code[:idx].count('\n') + 1 if idx >= 0 else 0
+        pos = idx + len(stmt) if idx >= 0 else pos + len(stmt) + 1
+        result.append((line_no, stmt))
+    return result
+
+
 def _collect_sql_fragment_macros(code: str) -> dict[str, tuple[list[str], str]]:
     """Find %macro definitions whose bodies contain no semicolons.
 
@@ -931,9 +948,11 @@ def _expand_called_macros(code: str, max_passes: int = 8) -> str:
 
 
 class _Parser:
-    def __init__(self, stmts: list[str]):
-        self._s = stmts
+    def __init__(self, stmts_with_lines: list[tuple[int, str]]):
+        self._s = [s for _, s in stmts_with_lines]
+        self._lines = [l for l, _ in stmts_with_lines]
         self._pos = 0
+        self._uninterpreted: list[dict] = []
 
     # ── cursor ────────────────────────────────────────────────────────────────
 
@@ -988,6 +1007,12 @@ class _Parser:
         if _METADATA_KEYWORDS.match(u):
             self._consume()
             return None
+        # Unknown top-level statement — record as uninterpreted
+        self._uninterpreted.append({
+            "line": self._lines[self._pos],
+            "statement": self._s[self._pos][:120],
+            "context": "top_level",
+        })
         self._consume()
         return None
 
@@ -1229,7 +1254,12 @@ class _Parser:
             self._consume()
             return self._stmt_to_assign(stmt)
 
-        # Unknown statement — consume silently
+        # Unknown statement — record as uninterpreted
+        self._uninterpreted.append({
+            "line": self._lines[self._pos],
+            "statement": self._s[self._pos][:120],
+            "context": "body",
+        })
         self._consume()
         return None
 
@@ -2383,6 +2413,19 @@ def _parse_schema_columns(schema_path: Path) -> dict[str, set[str]]:
 class SASLogicTree:
     """Parse SAS DATA step code into a logic tree and simulate it with example values."""
 
+    def __init__(self) -> None:
+        self._uninterpreted: list[dict] = []
+
+    @property
+    def uninterpreted(self) -> list[dict]:
+        """List of statements the parser did not recognise.
+
+        Each entry has the keys ``line`` (1-indexed line number in the
+        pre-processed source), ``statement`` (the statement text, truncated
+        to 120 chars), and ``context`` (``"top_level"`` or ``"body"``).
+        """
+        return list(self._uninterpreted)
+
     def parse(self, code: str) -> list[AnyNode]:
         clean = _strip_comments(code)
         # Expand SQL-fragment macros (no semicolons in body) before statement
@@ -2394,8 +2437,11 @@ class SASLogicTree:
         # &PREFIJO_PROGRAMA.) to the literal values passed at each call site.
         clean = _expand_called_macros(clean)
         clean = _strip_macro_refs(clean)
-        stmts = _split_statements(clean)
-        return _Parser(stmts).parse()
+        stmts_with_lines = _split_statements_with_lines(clean)
+        parser = _Parser(stmts_with_lines)
+        nodes = parser.parse()
+        self._uninterpreted = parser._uninterpreted
+        return nodes
 
     def display(self, nodes: list[AnyNode]) -> str:
         return "\n".join(n.display() for n in nodes)

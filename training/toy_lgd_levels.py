@@ -149,19 +149,25 @@ def load_level_bug(spec: LevelSpec) -> MutatedBug | None:
     if not changed:
         return None
 
-    orig_expr = spec.replacements[0][0] if spec.replacements else ""
-    mut_expr = spec.replacements[0][1] if spec.replacements else ""
+    # The buggy file holds the buggy expression; applying the replacement
+    # yields the corrected code. Match BugGenerator's convention so the
+    # functional reward can locate the buggy expr inside mutated_code:
+    #   mutated_expr = the BUGGY expression (present in mutated_code)
+    #   original_expr = the CORRECT expression (the fix)
+    buggy_expr = spec.replacements[0][0] if spec.replacements else ""
+    correct_expr = spec.replacements[0][1] if spec.replacements else ""
     depth = _depth_for_step(buggy_nodes, spec.step_name)
 
-    return MutatedBug(
+    from training.gold_trace import attach_gold_trace
+    return attach_gold_trace(MutatedBug(
         original_code=original_code,
         mutated_code=buggy_code,
         mutation=MutationMeta(
             mutation_type=spec.mutation_type,
             step_name=spec.step_name,
             node_index=0,
-            original_expr=orig_expr,
-            mutated_expr=mut_expr,
+            original_expr=correct_expr,
+            mutated_expr=buggy_expr,
             target_var=spec.target_var,
             description=spec.description,
         ),
@@ -171,7 +177,8 @@ def load_level_bug(spec: LevelSpec) -> MutatedBug | None:
         depth=depth or spec.depth,
         source="curated_level",
         level_id=spec.level_id,
-    )
+        input_row=dict(row),
+    ))
 
 
 class ToyLgdLevelCatalog:

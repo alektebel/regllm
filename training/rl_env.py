@@ -16,13 +16,19 @@ Phase B additions:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
+import math
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -222,13 +228,18 @@ def _materialize_tables(
     """Evaluate SAS code on input rows, capturing per-DATA-step table snapshots.
 
     Runs each DATA step sequentially per row, snapshotting env after each
-    step to produce one sqlite table per output dataset.
+    step to produce one table per output dataset. When the code contains
+    PROC SQL steps, additionally runs the full ``SASCompiler`` so the
+    PROC-produced tables are queryable too (otherwise the model would be
+    told tables exist that are missing from the simulated DB).
     """
-    from src.sas_logic_tree import DataStepNode
+    from src.sas_logic_tree import DataStepNode, ProcNode
+    from src.sas_compiler import SASCompiler
 
     tree = SASLogicTree()
     nodes = tree.parse(code)
     data_steps = [n for n in nodes if isinstance(n, DataStepNode)]
+    has_proc_sql = any(isinstance(n, ProcNode) and n.kind == "SQL" for n in nodes)
 
     tables: dict[str, list[dict]] = {}
     for row in input_rows:
@@ -239,6 +250,25 @@ def _materialize_tables(
             env = step_trace.final
             tbl_name = step.output_dataset.replace("work.", "").upper()
             tables.setdefault(tbl_name, []).append(dict(env))
+
+    # PROC SQL steps are invisible to the single-row DATA-step evaluator above
+    # (the evaluator treats ProcNode as a no-op). Materialize them via the
+    # full compiler, seeded with the first SET dataset so joins/aggregations
+    # have rows to work with.
+    if has_proc_sql:
+        first_set = ""
+        for n in data_steps:
+            if n.input_dataset:
+                first_set = n.input_dataset
+                break
+        if first_set:
+            try:
+                comp = SASCompiler()
+                out = comp.run(nodes, initial_data={first_set: [dict(r) for r in input_rows]})
+                for name, rows in out.items():
+                    tables[name.replace("work.", "").upper()] = rows
+            except Exception as e:
+                logger.warning("PROC SQL materialization failed: %s", e)
 
     return tables
 
@@ -270,12 +300,20 @@ def _build_sqlite_db(tables: dict[str, list[dict]]) -> sqlite3.Connection:
 
 
 # Cache: (code_hash, rows_hash) → sqlite connection
-_SQLITE_CACHE: dict[int, sqlite3.Connection] = {}
+_SQLITE_CACHE: dict[str, sqlite3.Connection] = {}
+_SQLITE_QUERY_TIMEOUT_S = 3.0
+_SQLITE_MAX_ROWS = 50
 
 
 def _get_sqlite_db(code: str, input_rows: list[dict]) -> sqlite3.Connection:
-    """Get or create a cached sqlite DB for the given SAS code + rows."""
-    cache_key = hash((code, str(input_rows)))
+    """Get or create a cached sqlite DB for the given SAS code + rows.
+
+    Cache key is a stable SHA-256 (not Python ``hash()``, which is salted
+    per process and collision-prone — a collision silently returns the wrong
+    tables and corrupts the simulated tool's answers).
+    """
+    payload = json.dumps({"code": code, "rows": input_rows}, sort_keys=True, default=str)
+    cache_key = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     if cache_key not in _SQLITE_CACHE:
         tables = _materialize_tables(code, input_rows)
         _SQLITE_CACHE[cache_key] = _build_sqlite_db(tables)
@@ -287,6 +325,16 @@ def _get_sqlite_db(code: str, input_rows: list[dict]) -> sqlite3.Connection:
     return _SQLITE_CACHE[cache_key]
 
 
+class _QueryBudget:
+    """sqlite progress handler that aborts a query once the time budget is up."""
+
+    def __init__(self, seconds: float) -> None:
+        self._deadline = time.time() + seconds
+
+    def __call__(self) -> int:
+        return 1 if time.time() > self._deadline else 0
+
+
 def _sim_query_table(
     code: str,
     sql: str,
@@ -294,8 +342,9 @@ def _sim_query_table(
 ) -> dict:
     """Simulate query_table tool — run SQL against materialized SAS tables.
 
-    Tables available: CYCLES, FLOORED, ECL, FINAL (from toy_lgd pipeline).
-    The model can write SELECT queries to inspect intermediate data values.
+    Hardened: SELECT-only, LIMIT injected when absent, a wall-clock budget
+    via sqlite's progress handler (so a pathological join cannot hang the
+    reward step and freeze GRPO), and a row cap.
     """
     if input_rows is None:
         from training.bug_generator import TOY_INPUT_ROWS
@@ -303,13 +352,20 @@ def _sim_query_table(
 
     try:
         conn = _get_sqlite_db(code, input_rows)
-        # Safety: only allow SELECT
-        sql_stripped = sql.strip().upper()
-        if not sql_stripped.startswith("SELECT"):
+        sql_stripped = sql.strip()
+        if not sql_stripped.upper().startswith("SELECT"):
             return {"tool": "query_table", "error": "Only SELECT queries allowed."}
-        cursor = conn.execute(sql)
-        columns = [d[0] for d in cursor.description] if cursor.description else []
-        rows = [dict(zip(columns, r)) for r in cursor.fetchmany(20)]
+        # Inject a LIMIT if the user didn't supply one (bound result size)
+        if not re.search(r"\bLIMIT\b", sql_stripped, re.IGNORECASE):
+            sql_stripped = sql_stripped.rstrip(";").rstrip() + f" LIMIT {_SQLITE_MAX_ROWS}"
+        # Bound query cost — aborts with OperationalError if it runs too long
+        conn.set_progress_handler(_QueryBudget(_SQLITE_QUERY_TIMEOUT_S), 10000)
+        try:
+            cursor = conn.execute(sql_stripped)
+            columns = [d[0] for d in cursor.description] if cursor.description else []
+            rows = [dict(zip(columns, r)) for r in cursor.fetchmany(_SQLITE_MAX_ROWS)]
+        finally:
+            conn.set_progress_handler(None, 0)
         return {
             "tool": "query_table",
             "sql": sql,
@@ -317,6 +373,8 @@ def _sim_query_table(
             "rows": rows,
             "row_count": len(rows),
         }
+    except sqlite3.OperationalError as e:
+        return {"tool": "query_table", "sql": sql, "error": f"query aborted: {e}"}
     except Exception as e:
         return {"tool": "query_table", "sql": sql, "error": str(e)}
 
@@ -385,44 +443,162 @@ def _truncate_sas_for_prompt(code: str, step_name: str, max_lines: int = 45) -> 
     return "\n".join(window)
 
 
+def _iter_json_objects(text: str):
+    """Yield every balanced ``{ ... }`` substring parsed as JSON."""
+    for m in re.finditer(r"\{", text):
+        start = m.start()
+        depth = 0
+        in_str = False
+        esc = False
+        quote = ""
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == quote:
+                    in_str = False
+            else:
+                if ch in ("'", '"'):
+                    in_str, esc, quote = True, False, ch
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            yield json.loads(text[start:i + 1])
+                        except json.JSONDecodeError:
+                            pass
+                        break
+
+
+def _norm_tool_calls(calls: list[dict]) -> list[dict]:
+    """Dedupe by tool name (keep first), coerce shape, drop empty names."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for c in calls:
+        name = c.get("name") or c.get("tool") or ""
+        if not isinstance(name, str) or not name.strip():
+            continue
+        name = name.strip()
+        if name in seen:
+            continue
+        seen.add(name)
+        args = c.get("arguments") if isinstance(c.get("arguments"), dict) else {}
+        out.append({"name": name, "arguments": args})
+    return out
+
+
 def extract_tool_calls(text: str) -> list[dict]:
     """Extract tool calls from model completion text.
 
     Supports formats:
     1. Ollama/OpenAI function calling: <tool_call>{"name":..., "arguments":...}</tool_call>
-    2. JSON blocks with "name" and "arguments"
-    3. Natural language tool mentions
+    2. Bare JSON objects with a "name" key (brace-balanced, handles nested args)
+    3. Call-syntax fallback: ``tool(...)`` or fenced blocks (tightened — a bare
+       mention of a tool name in prose no longer counts as a call, which used
+       to inflate the reward for free).
     """
-    calls = []
+    calls: list[dict] = []
 
     # Format 1: <tool_call> tags
     for m in re.finditer(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', text, re.DOTALL):
         try:
-            call = json.loads(m.group(1))
-            calls.append(call)
+            obj = json.loads(m.group(1))
+            if isinstance(obj, dict):
+                calls.append(obj)
         except json.JSONDecodeError:
             pass
+    if calls:
+        return _norm_tool_calls(calls)
 
-    # Format 2: JSON blocks
-    if not calls:
-        for m in re.finditer(r'\{[^{}]*"name"\s*:\s*"(\w+)"[^{}]*"arguments"\s*:\s*\{([^{}]*)\}[^{}]*\}', text):
-            try:
-                args = json.loads("{" + m.group(2) + "}")
-                calls.append({"name": m.group(1), "arguments": args})
-            except json.JSONDecodeError:
-                calls.append({"name": m.group(1), "arguments": {}})
+    # Format 2: any balanced JSON object carrying a "name" key
+    for obj in _iter_json_objects(text):
+        if isinstance(obj, dict) and "name" in obj:
+            args = obj.get("arguments", obj.get("parameters", {}))
+            calls.append({"name": obj["name"],
+                          "arguments": args if isinstance(args, dict) else {}})
+    if calls:
+        return _norm_tool_calls(calls)
 
-    # Format 3: Natural language mentions (fallback)
-    if not calls:
-        tool_names = list(SIMULATED_TOOLS.keys())
-        for tool in tool_names:
-            if tool in text:
-                # Try to extract target field from context
-                target_m = re.search(rf'{tool}\s*\(\s*["\']?(\w+)', text)
-                target = target_m.group(1) if target_m else ""
-                calls.append({"name": tool, "arguments": {"target": target}})
+    # Format 3: tightened call-syntax fallback (tool(...) or fenced block)
+    for tool in SIMULATED_TOOLS:
+        if re.search(rf'\b{re.escape(tool)}\s*\(', text) or \
+           re.search(rf'```[^\n]*\b{re.escape(tool)}\b', text):
+            target_m = re.search(rf'{re.escape(tool)}\s*\(\s*["\']?(\w+)', text)
+            target = target_m.group(1) if target_m else ""
+            calls.append({"name": tool, "arguments": {"target": target}})
+    return _norm_tool_calls(calls)
 
-    return calls
+
+def _trace_targets_from_calls(tool_calls: list[dict]) -> list[str]:
+    from training.gold_trace import LINEAGE_TOOLS
+    targets: list[str] = []
+    for c in tool_calls:
+        name = c.get("name", "")
+        if name not in LINEAGE_TOOLS:
+            continue
+        args = c.get("arguments") if isinstance(c.get("arguments"), dict) else {}
+        t = (args.get("target") or args.get("field") or "").upper()
+        if t:
+            targets.append(t)
+    return targets
+
+
+def _trace_path_score(
+    completion: str,
+    bug: MutatedBug,
+    tool_calls: list[dict],
+    analysis: str,
+) -> float:
+    """Score how well the model followed the gold symptom → root trace."""
+    gt = bug.gold_trace
+    if not gt:
+        from training.gold_trace import compute_gold_trace
+        gt = compute_gold_trace(bug)
+        bug.gold_trace = gt
+
+    path_fields = [f.upper() for f in gt.get("path_fields", [])]
+    path_steps = gt.get("path_steps", [])
+    min_hops = gt.get("min_hops", max(1, bug.depth + 1))
+    required_prefix = path_fields[: min(len(path_fields), min_hops + 1)]
+
+    trace_targets = _trace_targets_from_calls(tool_calls)
+    field_score = 0.0
+    if required_prefix and trace_targets:
+        hits = 0
+        cursor = 0
+        for t in trace_targets:
+            for j in range(cursor, len(required_prefix)):
+                if t == required_prefix[j] or t in required_prefix:
+                    hits += 1
+                    cursor = j + 1
+                    break
+        field_score = min(1.0, hits / len(required_prefix))
+    elif trace_targets and path_fields:
+        overlap = len(set(trace_targets) & set(path_fields))
+        field_score = min(1.0, overlap / max(len(path_fields[:3]), 1))
+
+    text_lower = analysis.lower()
+    step_score = 0.0
+    if path_steps:
+        step_hits = sum(1 for s in path_steps if _step_match(text_lower, s) >= 0.5)
+        step_score = min(1.0, step_hits / len(path_steps))
+
+    root_score = 0.0
+    if _step_match(text_lower, gt.get("root_step", "")) >= 0.5:
+        root_score += 0.5
+    root_var = gt.get("root_var", "").lower()
+    if root_var and root_var not in ("if_condition", "where_filter") and root_var in text_lower:
+        root_score += 0.5
+
+    tool_names = [c.get("name", "") for c in tool_calls]
+    query_bonus = 0.15 if bug.depth >= 1 and "query_table" in tool_names else 0.0
+
+    return min(1.0, 0.45 * field_score + 0.30 * step_score + 0.25 * root_score + query_bonus)
 
 
 # ── Reward computation ─────────────────────────────────────────────────
@@ -451,6 +627,7 @@ def compute_reward(
     - correct_step: did it name the right DATA step?
     - correct_var: did it name the right variable/expression?
     - propagation_trace: did it trace through multiple steps?
+    - trace_path: did tool calls follow the gold BFS path symptom → root?
     - no_hallucination: absence of hallucination markers
     - functional_fix: does the proposed fix restore correct values?
     """
@@ -487,45 +664,58 @@ def compute_reward(
                 has_lineage = any(t in completion for t in lineage_tools)
             components["correct_tool"] = 1.0 if has_lineage else 0.0
 
-    # 3. Correct step identification (analysis text only — not tool args)
+    # 3. Correct step identification (analysis text only — not tool args,
+    #    and NOT hallucinated "data_step" fields in made-up tool JSON)
     if "correct_step" in weights:
         score = _step_match(text_lower, bug.mutation.step_name)
         if score < 1.0:
             paso_m = re.search(r"paso\s*:\s*(\S+)", text_lower)
             if paso_m:
                 score = max(score, _step_match(paso_m.group(1), bug.mutation.step_name))
-        # Credit correct data_step in simulated tool JSON (often hallucinated but sometimes right)
-        if score < 1.0:
-            step_l = bug.mutation.step_name.lower()
-            for m in re.finditer(r'"data_step"\s*:\s*"([^"]+)"', full_lower):
-                score = max(score, _step_match(m.group(1).lower(), step_l))
         components["correct_step"] = score
 
-    # 4. Correct variable identification (analysis text — not tool call target echo)
+    # 4. Correct variable identification (analysis text only).
+    #    De-gamed: the previous version gave full credit whenever ANY of
+    #    changed_fields[:2] appeared — but those (ECL, LGD_ESTIMADA, …) are
+    #    generic and appear in almost any reasonable answer. Now the model
+    #    must name the SPECIFIC target variable or distinctive tokens of the
+    #    original expression (excluding the generic changed fields).
     if "correct_var" in weights:
         target = bug.mutation.target_var.lower()
-        found = target in text_lower and target not in ("if_condition", "where_filter")
-        if not found:
+        generic = {f.lower() for f in bug.changed_fields[:2]}
+        score = 0.0
+        if target and target not in ("if_condition", "where_filter") and target in text_lower:
+            score = 1.0
+        if score < 1.0:
             var_m = re.search(r"variable\s*:\s*(.+)", text_lower)
             if var_m:
-                found = target in var_m.group(1) or any(
-                    f.lower() in var_m.group(1) for f in bug.changed_fields[:2]
-                )
-        if not found:
-            found = any(f.lower() in text_lower for f in bug.changed_fields[:2])
-        if not found:
-            orig_parts = bug.mutation.original_expr.lower().split()
-            found = sum(1 for p in orig_parts if len(p) > 2 and p in text_lower) >= 2
-        components["correct_var"] = 1.0 if found else 0.0
+                if target and target in var_m.group(1):
+                    score = 1.0
+                elif any(f.lower() in var_m.group(1) for f in bug.changed_fields if f.lower() not in generic):
+                    score = max(score, 0.5)
+        if score < 1.0:
+            orig_tokens = {p for p in re.findall(r"\b\w+\b", bug.mutation.original_expr.lower())
+                           if len(p) > 2 and p not in generic}
+            if orig_tokens:
+                hits = sum(1 for p in orig_tokens if p in text_lower)
+                score = max(score, min(hits / max(len(orig_tokens), 1), 1.0))
+        components["correct_var"] = score
 
-    # 5. Propagation trace (multi-depth)
+    # 5. Propagation trace (legacy keyword proxy)
     if "propagation_trace" in weights:
-        # Did the model mention multiple DATA steps in its trace?
-        step_mentions = 0
-        for step_name in ["floored", "ecl", "final", "ciclos", "cycles"]:
-            if step_name in text_lower:
-                step_mentions += 1
-        components["propagation_trace"] = min(step_mentions / 2.0, 1.0)
+        step_names = _bug_step_names(bug)
+        mentions = sum(1 for s in step_names if _step_match(text_lower, s) >= 0.5)
+        if mentions < 2:
+            lineage_markers = sum(1 for kw in (
+                "propaga", "depende de", "linaje", "upstream", "propagation",
+                "anterior", "input", "antecesor",
+            ) if kw in text_lower)
+            mentions = max(mentions, min(lineage_markers, 2))
+        components["propagation_trace"] = min(mentions / 2.0, 1.0)
+
+    # 5b. Gold trace path (depth-wise debugging reward)
+    if "trace_path" in weights:
+        components["trace_path"] = _trace_path_score(completion, bug, tool_calls, analysis)
 
     # 6. Hallucination check
     if "no_hallucination" in weights:
@@ -586,54 +776,281 @@ def compute_reward(
     )
 
 
-def _check_functional_fix(completion: str, bug: MutatedBug) -> float:
-    """Check if the model's proposed fix would restore correct values.
+# ── Functional fix verification (REAL — the evaluator is the judge) ─────
 
-    Looks for code-like fix suggestions and evaluates them.
+_STEP_NAME_CACHE: dict[str, list[str]] = {}
+
+
+def _bug_step_names(bug: MutatedBug) -> list[str]:
+    """DATA-step + PROC-SQL output names present in the bug's code (cached).
+
+    Used to generalize the propagation-trace reward so it isn't hardcoded to
+    the toy_lgd step names.
     """
-    # Extract fix suggestion from completion
-    # Look for patterns like: "should be X" or "correcto: X" or code blocks
-    fix_patterns = [
-        r'(?:correcci[oó]n\s*:\s*)(.+?)(?:\n|$)',
-        r'(?:debería ser|should be|corregir a|correcto[:\s])\s*[`"]?([^`"\n;]+)',
-        r'```(?:sas)?\s*(.*?)```',
-        r'(?:cambiar|replace|sustituir)\s+.*?\s+(?:por|with|→)\s+[`"]?([^`"\n;]+)',
+    code = bug.mutated_code
+    if not code:
+        return []
+    key = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    cached = _STEP_NAME_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        from src.sas_logic_tree import DataStepNode, ProcNode
+        tree = SASLogicTree()
+        nodes = tree.parse(code)
+        names = [n.output_dataset for n in nodes if isinstance(n, DataStepNode)]
+        names += [n.output_table for n in nodes
+                  if isinstance(n, ProcNode) and n.output_table]
+        names = [n for n in names if n]
+    except Exception:
+        names = []
+    if len(_STEP_NAME_CACHE) > 500:
+        _STEP_NAME_CACHE.clear()
+    _STEP_NAME_CACHE[key] = names
+    return names
+
+
+def _extract_fix_candidates(completion: str) -> list[str]:
+    """Pull proposed-fix expression(s) from the completion text."""
+    candidates: list[str] = []
+    inline_patterns = [
+        r'(?:correcci[oó]n|fix)\s*:\s*([^\n;]+)',
+        r'(?:deber[ií]a ser|should be|corregir a)\s*:?\s*[`"\']?([^\n;]+)',
+        # Require a colon after "correcto" so "el valor correcto es 0.123"
+        # (a hallucinated value, not a code fix) doesn't yield a phantom.
+        r'correcto\s*:\s*[`"\']?([^\n;]+)',
+        r'(?:cambiar|replace|sustituir)\s+.*?\s+(?:por|with|→)\s+[`"\']?([^\n;]+)',
     ]
+    for pat in inline_patterns:
+        for m in re.finditer(pat, completion, re.IGNORECASE):
+            # Strip wrapping quotes and any leading colon/space so the candidate
+            # is a clean SAS expression (e.g. ": DPDS >= 30" -> "DPDS >= 30").
+            cand = m.group(1).strip().lstrip(":` '\"").strip()
+            if cand:
+                candidates.append(cand)
+    # Fenced code blocks — split into statements
+    for m in re.finditer(r'```(?:sas)?\s*(.*?)```', completion, re.DOTALL | re.IGNORECASE):
+        for stmt in m.group(1).split(";"):
+            stmt = stmt.strip()
+            if "=" in stmt or re.search(r'\b(?:IF|WHERE|AND|OR)\b', stmt, re.IGNORECASE):
+                candidates.append(stmt)
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in candidates:
+        k = c.lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(c)
+    return out
 
-    fix_text = ""
-    for pattern in fix_patterns:
-        m = re.search(pattern, completion, re.IGNORECASE | re.DOTALL)
+
+def _is_specific(expr: str) -> bool:
+    """Safe to single-replace globally only if distinctive (not e.g. "2")."""
+    s = expr.strip()
+    if len(s) < 4:
+        return False
+    return bool(re.search(r"[A-Za-z_]", s))
+
+
+def _substitute_expr(
+    code: str,
+    mutated_expr: str,
+    candidate: str,
+    target_var: str | None = None,
+) -> str | None:
+    """Replace the mutated expression with the candidate, scoped to its
+    statement when possible.
+
+    A naive ``code.replace(mutated_expr, candidate, 1)`` is dangerous when the
+    mutated expression is a tiny literal (e.g. ``"2"``) — the first occurrence
+    in the file may be unrelated. So for assignment mutations we anchor on
+    ``<target_var> = <mutated_expr>``; only distinctive expressions are ever
+    replaced globally.
+    """
+    if not mutated_expr:
+        return None
+    cand = candidate.strip()
+    # 1) Scoped assignment replacement: "var = mutated_expr" -> "var = candidate"
+    if target_var and target_var not in ("IF_condition", "WHERE_filter"):
+        lhs = re.escape(target_var)
+        rhs = re.escape(" ".join(mutated_expr.split())).replace(r"\ ", r"\s+")
+        m = re.search(rf"\b{lhs}\s*=\s*{rhs}", code, re.IGNORECASE)
         if m:
-            fix_text = m.group(1).strip()
-            break
+            return code[:m.start()] + f"{target_var} = {cand}" + code[m.end():]
+    # 2) Direct substring — only when the expression is distinctive enough
+    if _is_specific(mutated_expr):
+        if mutated_expr in code:
+            return code.replace(mutated_expr, cand, 1)
+        norm = " ".join(mutated_expr.split())
+        pattern = re.escape(norm).replace(r"\ ", r"\s+")
+        m = re.search(pattern, code, re.IGNORECASE)
+        if m:
+            return code[:m.start()] + cand + code[m.end():]
+    return None
 
-    if not fix_text:
+
+def _values_close(a: Any, b: Any) -> bool:
+    if a is None or b is None:
+        return a == b
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a == b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        try:
+            if math.isclose(float(a), float(b), rel_tol=1e-6, abs_tol=1e-6):
+                return True
+        except (TypeError, ValueError):
+            pass
+        return float(a) == float(b)
+    return str(a) == str(b)
+
+
+def _compare_values(fixed: dict, correct: dict, changed: list[str]) -> float:
+    if not changed:
         return 0.0
-
-    # Check if the fix mentions the original (correct) expression
-    orig = bug.mutation.original_expr.lower()
-    fix_lower = fix_text.lower()
-
-    # Direct match: the fix contains the original expression
-    if orig in fix_lower:
+    numeric = [f for f in changed
+               if isinstance(correct.get(f), (int, float)) and not isinstance(correct.get(f), bool)]
+    checks = numeric or changed
+    matched = sum(1 for f in checks if _values_close(fixed.get(f), correct.get(f)))
+    ratio = matched / len(checks)
+    if ratio >= 0.999:
         return 1.0
-
-    # Partial match: key parts of the original expression are present
-    orig_parts = set(re.findall(r'\b\w+\b', orig))
-    fix_parts = set(re.findall(r'\b\w+\b', fix_lower))
-    if orig_parts and len(orig_parts & fix_parts) / len(orig_parts) > 0.7:
+    if ratio >= 0.75:
         return 0.7
-
-    # Check if fix mentions the correct values
-    for field_name in bug.changed_fields[:3]:
-        correct_val = bug.correct_values.get(field_name)
-        if correct_val is not None and str(correct_val) in fix_text:
-            return 0.5
-
+    if ratio > 0.0:
+        return 0.4
     return 0.0
 
 
+def _text_match_floor(candidate: str, orig: str) -> float:
+    """Conservative text floor — only used when execution is impossible.
+
+    Only meaningful for distinctive expressions: a 1–2 char ``orig`` (e.g.
+    ``"1"``) would spuriously substring-match almost anything.
+    """
+    if not orig or not _is_specific(orig):
+        return 0.0
+    cl = candidate.lower()
+    ol = orig.lower()
+    if ol in cl:
+        return 0.7
+    orig_parts = {p for p in re.findall(r'\b\w+\b', ol) if len(p) > 2}
+    cand_parts = set(re.findall(r'\b\w+\b', cl))
+    if orig_parts and len(orig_parts & cand_parts) / len(orig_parts) > 0.7:
+        return 0.5
+    return 0.0
+
+
+def _score_fix_by_execution(
+    mutated_code: str,
+    mutated_expr: str,
+    candidate: str,
+    input_row: dict,
+    correct: dict,
+    changed: list[str],
+    target_var: str = "",
+) -> float | None:
+    """Apply candidate fix → re-evaluate → score vs correct baseline.
+
+    Returns None when the substitution can't be performed (caller falls back
+    to text matching). The evaluator caps DO loops at 1000 iterations, and
+    every step is wrapped so a malformed proposal never crashes the reward.
+    """
+    cand = candidate.strip().rstrip(";").strip()
+    if not cand:
+        return None
+    fixed_code = _substitute_expr(mutated_code, mutated_expr, cand, target_var)
+    if fixed_code is None or fixed_code == mutated_code:
+        return None
+    try:
+        tree = SASLogicTree()
+        fixed_nodes = tree.parse(fixed_code)
+        fixed_eval = tree.evaluate(fixed_nodes, dict(input_row)).final
+    except Exception:
+        return None
+    return _compare_values(fixed_eval, correct, changed)
+
+
+def _check_functional_fix(completion: str, bug: MutatedBug) -> float:
+    """Score whether the model's proposed fix restores the correct values.
+
+    TRULY functional: applies each candidate fix to the buggy code, runs it
+    through the SAS evaluator, and compares the output to the known-correct
+    baseline (evaluator is the judge — no keyword gaming). Falls back to a
+    conservative text-match floor only when the fix can't be applied
+    mechanically (PROC SQL truncation, malformed proposals). Fully sandboxed:
+    any failure contributes 0 rather than aborting the GRPO run.
+    """
+    orig = bug.mutation.original_expr.strip()
+    mutated_expr = bug.mutation.mutated_expr.strip()
+    input_row = getattr(bug, "input_row", {}) or {}
+    correct = bug.correct_values
+
+    candidates = _extract_fix_candidates(completion)
+    if not candidates:
+        if _is_specific(orig) and orig.lower() in completion.lower():
+            return 0.4
+        return 0.0
+
+    # Execution only works when the mutated expr is a real, non-truncated
+    # token (PROC wrong_agg truncates original/mutated to 120 chars).
+    can_execute = bool(
+        mutated_expr and len(mutated_expr) < 120
+        and bug.mutated_code and input_row and correct
+    )
+
+    best = 0.0
+    for cand in candidates:
+        score: float | None = None
+        if can_execute:
+            score = _score_fix_by_execution(
+                bug.mutated_code, mutated_expr, cand, input_row, correct,
+                bug.changed_fields, bug.mutation.target_var,
+            )
+        if score is None:
+            score = _text_match_floor(cand, orig)
+        if score > best:
+            best = score
+
+    if _is_specific(orig) and orig.lower() in completion.lower():
+        best = max(best, 0.4)
+
+    return min(best, 1.0)
+
+
 # ── Prompt construction ────────────────────────────────────────────────
+
+def _symptom_user_message(bug: MutatedBug, *, include_code: bool) -> str:
+    """Symptom-first prompt — expands search space at depth ≥ 1."""
+    gt = bug.gold_trace or {}
+    field = gt.get("symptom_field") or (bug.changed_fields[0] if bug.changed_fields else "ECL")
+    cv = bug.correct_values.get(field)
+    bv = bug.buggy_values.get(field)
+    ciclo = bug.input_row.get("CICLO_ID", "")
+    header = f"Ciclo **{ciclo}**: " if ciclo else ""
+
+    body = (
+        f"{header}El campo `{field}` tiene valor `{bv}` (esperado `{cv}`).\n"
+        f"Campos afectados: {', '.join(f'`{f}`' for f in bug.changed_fields[:5])}.\n\n"
+        "Investiga la **causa raíz** con `trace_dependencies` e `inspect_lineage`"
+    )
+    if bug.depth >= 1:
+        body += " y `query_table` (tablas intermedias: CYCLES, FLOORED, ECL, FINAL)"
+    body += (
+        ".\n\nResponde en español con:\n"
+        "- PASO: <data step>\n"
+        "- VARIABLE: <campo o condición>\n"
+        "- CAUSA: <explicación>\n"
+        "- CORRECCIÓN: <expresión correcta si la identificas>"
+    )
+    if include_code:
+        code = _truncate_sas_for_prompt(bug.mutated_code, bug.mutation.step_name)
+        body = (
+            "Analiza el pipeline SAS LGD. Hay un bug con resultados incorrectos.\n\n"
+            f"```sas\n{code}\n```\n\n"
+            + body
+        )
+    return body
+
 
 def build_prompt(bug: MutatedBug, stage: StageConfig) -> list[dict]:
     """Build chat messages for a bug investigation prompt."""
@@ -665,32 +1082,25 @@ def build_prompt(bug: MutatedBug, stage: StageConfig) -> list[dict]:
     if is_phase_b:
         system += " Consulta search_experience PRIMERO. Sé eficiente."
 
-    # Build the user message with context about what's wrong
-    changed = bug.changed_fields[:3]
-    # Show one example of wrong value
-    example_field = changed[0] if changed else "ECL"
-    correct_val = bug.correct_values.get(example_field)
-    buggy_val = bug.buggy_values.get(example_field)
-
     if stage.name == "tool_selection" and bug.source == "tool_task":
         user = bug.mutation.description
+    elif stage.name in ("single_depth", "multi_depth", "experience_accelerated", "experience_efficiency"):
+        if bug.source in ("procedural", "curated_level") and not bug.gold_trace:
+            from training.gold_trace import attach_gold_trace
+            attach_gold_trace(bug)
+        hide_code = bug.depth >= 1 or stage.name == "multi_depth"
+        user = _symptom_user_message(bug, include_code=not hide_code)
     elif stage.name == "tool_selection":
+        changed = bug.changed_fields[:3]
+        example_field = changed[0] if changed else "ECL"
+        correct_val = bug.correct_values.get(example_field)
+        buggy_val = bug.buggy_values.get(example_field)
         user = (
             f"El campo {example_field} tiene valor {buggy_val} pero esperaba {correct_val}. "
             f"¿De qué campos depende {example_field}? Usa las herramientas para investigar."
         )
     else:
-        code = _truncate_sas_for_prompt(bug.mutated_code, bug.mutation.step_name)
-        user = (
-            f"Analiza el siguiente código SAS LGD. Hay un bug que produce resultados incorrectos.\n\n"
-            f"```sas\n{code}\n```\n\n"
-            f"**Problema:** `{example_field}` = `{buggy_val}`, esperado `{correct_val}`.\n\n"
-            f"Usa trace_dependencies e inspect_lineage para investigar. "
-            f"Después de las herramientas, responde en español con este formato:\n"
-            f"PASO: <DATA step donde está el bug>\n"
-            f"VARIABLE: <variable o condición incorrecta>\n"
-            f"CORRECCIÓN: <expresión correcta>"
-        )
+        user = _symptom_user_message(bug, include_code=True)
 
     return [
         {"role": "system", "content": system},
@@ -737,8 +1147,11 @@ def generate_training_batch(
                         batch.append((bug, build_prompt(bug, stage)))
                 rng.shuffle(batch)
                 batch = batch[:n]
-        except Exception:
-            pass
+        except Exception as e:
+            # A smaller/degenerate batch can cause zero-variance rewards and
+            # collapse GRPO silently — surface the cause instead of swallowing.
+            logger.warning("generate_training_batch: corpus path failed (%s); "
+                           "falling back to toy generator", e)
 
     if len(batch) < n:
         gen = make_toy_generator(
@@ -773,8 +1186,8 @@ def _batch_tool_selection(
         cat = ToyLgdLevelCatalog()
         for lid, bug in cat.sample(n_cur, seed=rng.randint(0, 2**31)):
             out.append((bug, build_prompt(bug, stage)))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("_batch_tool_selection: curated levels failed (%s)", e)
 
     if n_proc:
         gen = make_toy_generator(seed=rng.randint(0, 2**31), max_depth=0)

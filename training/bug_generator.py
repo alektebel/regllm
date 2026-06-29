@@ -71,6 +71,12 @@ class MutatedBug:
     task_kind: str = ""                # lineage | regulation | docs | schema | debug
     source: str = "procedural"         # procedural | curated_level | tool_task
     level_id: str = ""
+    # The exact input row whose evaluation produced correct_values/buggy_values.
+    # Required so the reward function can re-evaluate a proposed fix without
+    # needing the generator that produced this bug.
+    input_row: dict[str, Any] = field(default_factory=dict)
+    # BFS path symptom → mutation root (for trace_path reward).
+    gold_trace: dict[str, Any] = field(default_factory=dict)
 
 
 # ── Mutation operators ─────────────────────────────────────────────────
@@ -490,7 +496,8 @@ class BugGenerator:
             description=desc,
         )
 
-        return MutatedBug(
+        from training.gold_trace import attach_gold_trace
+        return attach_gold_trace(MutatedBug(
             original_code=self.sas_code,
             mutated_code=mutated_code,
             mutation=mutation,
@@ -498,7 +505,8 @@ class BugGenerator:
             buggy_values=buggy_outputs[diff_row_idx],
             changed_fields=sorted(changed_fields_all),
             depth=target.depth_from_output,
-        )
+            input_row=dict(self.input_rows[diff_row_idx]),
+        ))
 
     def _pick_mutation_for_expr(self, expr: str) -> tuple[str, tuple[str, str] | None]:
         """Pick a random applicable mutation for an expression."""

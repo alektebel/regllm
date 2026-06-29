@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { ChevronRight, ArrowUpRight } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, ArrowUpRight, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface TraceLayer {
@@ -80,9 +81,18 @@ export default function LineageTracePanel({
           Backward trace from{" "}
           <span className="font-mono text-sky-300">{trace.target}</span>
         </h3>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
-          {trace.ancestor_count} upstream field{trace.ancestor_count === 1 ? "" : "s"}
-        </span>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/trace?field=${encodeURIComponent(trace.target)}`}
+            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+            title="Open full trace view"
+          >
+            <ExternalLink className="h-3 w-3" /> Trace view
+          </Link>
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            {trace.ancestor_count} upstream field{trace.ancestor_count === 1 ? "" : "s"}
+          </span>
+        </div>
       </div>
 
       <p className="text-[10px] text-muted-foreground mb-2">

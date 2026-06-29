@@ -41,6 +41,13 @@ DEBES llamar herramientas de lineage ANTES de responder. Nunca inventes fórmula
 
 - **trace_dependencies**: cadena BFS de dependencias con fórmulas.
 - **inspect_lineage**: dónde se calcula un campo en el SAS (data step, líneas).
+- **trace_causal_chain** / **query_cycle_data**: valores reales en la BD (cita filas concretas).
+
+## RAG (documentación y normativa)
+
+- **search_docs** / **get_field_definition**: definiciones y docs internos.
+- **search_regulation**: normativa EBA/BdE — cita artículo si aplica.
+- **search_experience**: solo como complemento, nunca única herramienta en bugs/lineage.
 
 ## Prohibido
 

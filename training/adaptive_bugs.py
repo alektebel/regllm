@@ -26,7 +26,7 @@ COMPONENT_TO_MUTATION_HINT = {
     "correct_step": ["swap_vars", "wrong_op"],
     "correct_var": ["wrong_literal", "wrong_op"],
     "functional_fix": ["remove_guard", "wrong_agg"],
-    "propagation_trace": ["swap_vars", "wrong_agg"],
+    "trace_path": ["swap_vars", "wrong_op", "remove_guard"],
 }
 
 
