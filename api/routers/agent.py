@@ -87,11 +87,29 @@ async def upload_sas(
     saved: list[str] = []
     for f in files:
         ext = Path(f.filename or "").suffix.lower()
-        if ext != ".sas":
-            raise HTTPException(400, f"Only .sas files allowed (got {ext!r})")
-        target = target_dir / Path(f.filename or "").name
-        with target.open("wb") as out:
-            shutil.copyfileobj(f.file, out)
+        if ext not in {".sas", ".egp"}:
+            raise HTTPException(400, f"Only .sas and .egp files allowed (got {ext!r})")
+        content = await f.read()
+        if ext == ".egp":
+            # Extract embedded SAS blocks and save as a single .sas file
+            import tempfile
+            from src.sas_parser import SASParser
+            with tempfile.NamedTemporaryFile(suffix=".egp", delete=False) as tmp:
+                tmp.write(content)
+                tmp_path = Path(tmp.name)
+            try:
+                blocks = SASParser().parse(tmp_path)
+            finally:
+                tmp_path.unlink(missing_ok=True)
+            if not blocks:
+                raise HTTPException(422, f"{f.filename}: no SAS code found in .egp")
+            sas_code = "\n\n".join(b.code for b in blocks)
+            out_name = Path(f.filename or "project").stem + ".sas"
+            target = target_dir / out_name
+            target.write_text(sas_code, encoding="utf-8")
+        else:
+            target = target_dir / Path(f.filename or "").name
+            target.write_bytes(content)
         saved.append(target.name)
     return {"version": version, "saved": saved, "folder": str(target_dir)}
 

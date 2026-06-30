@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { GitBranch, FileCode2, GitCompare, AlertCircle } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { GitBranch, FileCode2, GitCompare, AlertCircle, FolderOpen, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const API = "/api";
 
 interface ModifiedStep {
   output: string;
@@ -53,6 +55,33 @@ export default function SasEditor({
   className,
 }: Props) {
   const [tab, setTab] = useState<Tab>("v3");
+  const [loadingV3, setLoadingV3] = useState(false);
+  const [loadingV2, setLoadingV2] = useState(false);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const inputV3Ref = useRef<HTMLInputElement>(null);
+  const inputV2Ref = useRef<HTMLInputElement>(null);
+
+  const handleFileLoad = async (file: File, version: "v2" | "v3") => {
+    const setLoading = version === "v3" ? setLoadingV3 : setLoadingV2;
+    const onCodeChange = version === "v3" ? onV3Change : onV2Change;
+    setLoading(true);
+    setLoadErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API}/diff/parse-sas-file`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      onCodeChange(data.code);
+    } catch (e) {
+      setLoadErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const linesV3 = useMemo(() => v3.split("\n").length, [v3]);
   const linesV2 = useMemo(() => v2.split("\n").length, [v2]);
@@ -76,8 +105,14 @@ export default function SasEditor({
         </span>
       </div>
 
+      {/* Hidden file inputs */}
+      <input ref={inputV3Ref} type="file" accept=".sas,.egp" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileLoad(f, "v3"); e.target.value = ""; }} />
+      <input ref={inputV2Ref} type="file" accept=".sas,.egp" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileLoad(f, "v2"); e.target.value = ""; }} />
+
       {/* Tab strip */}
-      <div className="flex items-center gap-1 mb-2">
+      <div className="flex items-center gap-1 mb-2 flex-wrap">
         <TabButton
           active={tab === "v3"}
           onClick={() => setTab("v3")}
@@ -101,16 +136,38 @@ export default function SasEditor({
           tone="amber"
           badge={totalDiffs > 0 ? String(totalDiffs) : (codeDiffers ? "•" : undefined)}
         />
-        {codeDiffers && (
-          <span
-            className="ml-auto text-[10px] text-amber-400 font-mono inline-flex items-center gap-1"
-            title="V2 and V3 SAS differ. The Δ explanation combines data and code attribution."
-          >
-            <AlertCircle className="h-3 w-3" />
-            V2 ≠ V3 code
-          </span>
-        )}
+
+        <div className="ml-auto flex items-center gap-1">
+          {(tab === "v3" || tab === "v2") && (
+            <button
+              onClick={() => (tab === "v3" ? inputV3Ref : inputV2Ref).current?.click()}
+              disabled={tab === "v3" ? loadingV3 : loadingV2}
+              title={`Load ${tab.toUpperCase()} from .sas or .egp file`}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-50"
+            >
+              {(tab === "v3" ? loadingV3 : loadingV2)
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <FolderOpen className="h-3.5 w-3.5" />}
+              Load file
+            </button>
+          )}
+          {codeDiffers && (
+            <span
+              className="text-[10px] text-amber-400 font-mono inline-flex items-center gap-1"
+              title="V2 and V3 SAS differ. The Δ explanation combines data and code attribution."
+            >
+              <AlertCircle className="h-3 w-3" />
+              V2 ≠ V3 code
+            </span>
+          )}
+        </div>
       </div>
+
+      {loadErr && (
+        <div className="mb-2 text-[11px] text-destructive border border-destructive/30 rounded px-2 py-1">
+          {loadErr}
+        </div>
+      )}
 
       {/* Editor / diff view */}
       <div className="flex-1 min-h-0">

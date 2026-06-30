@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -141,6 +141,44 @@ def _annotate_with_gemma(
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
+
+@router.post("/parse-sas-file")
+async def parse_sas_file(file: UploadFile = File(...)) -> dict:
+    """Parse an uploaded .sas or .egp file and return its extracted SAS code.
+
+    .egp (SAS Enterprise Guide) files are ZIP archives; all embedded code
+    blocks are concatenated in task order.  .sas files are returned verbatim.
+    """
+    import tempfile
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in {".sas", ".egp"}:
+        raise HTTPException(400, f"Only .sas and .egp files are supported (got {ext!r})")
+
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        from src.sas_parser import SASParser
+        blocks = SASParser().parse(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    if not blocks:
+        raise HTTPException(422, "No SAS code found in the uploaded file")
+
+    tasks = [{"task_name": b.task_name, "code": b.code} for b in blocks]
+    combined_code = "\n\n".join(b.code for b in blocks)
+    return {
+        "filename": file.filename,
+        "ext": ext,
+        "n_blocks": len(blocks),
+        "tasks": tasks,
+        "code": combined_code,
+    }
 
 
 @router.get("/sas-pair")
