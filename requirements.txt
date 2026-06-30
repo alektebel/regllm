@@ -14,8 +14,9 @@ networkx>=3.3
 
 # Embedding space visualizer (TF-IDF/SVD embeddings + PCA/t-SNE/UMAP projection)
 scikit-learn>=1.5
-umap-learn>=0.5
-openpyxl>=3.1        # Excel (.xlsx) support for pandas
+umap-learn>=0.5,<0.6
+pynndescent>=0.5,<0.6   # pynndescent 0.6+ requires kuzu (graph DB); pin to avoid it
+openpyxl>=3.1           # Excel (.xlsx) support for pandas
 
 # LLM transport (litert-lm OpenAI-compatible API + Ollama fallback)
 httpx>=0.27

@@ -53,13 +53,23 @@ def project(
 
     if method == "umap":
         if not _HAS_UMAP:
-            raise ValueError("umap-learn is not installed")
+            raise ValueError(
+                "umap-learn is not available. "
+                "Install it with: pip install 'umap-learn>=0.5,<0.6' 'pynndescent>=0.5,<0.6'"
+            )
         neighbors = max(2, min(n_neighbors, n_samples - 1))
-        return umap.UMAP(
-            n_components=n_components,
-            n_neighbors=neighbors,
-            min_dist=min_dist,
-            random_state=random_state,
-        ).fit_transform(vectors)
+        try:
+            return umap.UMAP(
+                n_components=n_components,
+                n_neighbors=neighbors,
+                min_dist=min_dist,
+                random_state=random_state,
+            ).fit_transform(vectors)
+        except ModuleNotFoundError as e:
+            raise ValueError(
+                f"UMAP failed due to a missing dependency ({e}). "
+                "Pin pynndescent<0.6 to avoid the kuzu requirement: "
+                "pip install 'pynndescent>=0.5,<0.6' 'umap-learn>=0.5,<0.6'"
+            ) from e
 
     raise ValueError(f"Unknown projection method {method!r}; choose from {PROJECTION_METHODS}")
