@@ -50,3 +50,4 @@ frontend/tsconfig.tsbuildinfo
 
 # Generated artifacts
 data/changelog/graph.json
+data/_uploads/

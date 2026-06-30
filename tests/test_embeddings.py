@@ -69,6 +69,40 @@ def test_project_handles_too_few_samples() -> None:
     assert coords.shape == (1, 2)
 
 
+def test_tabular_embed_and_project(tmp_path: Path) -> None:
+    import pandas as pd
+    from src.embeddings.tabular import column_info, embed_dataframe, save_upload
+
+    df = pd.DataFrame({
+        "ID": ["A001", "A002", "A003", "A001"],
+        "SEG": ["CORP", "RETAIL", "CORP", "RETAIL"],
+        "PD": [0.01, 0.05, 0.02, 0.01],
+        "LGD": [0.45, 0.30, 0.60, 0.45],
+        "VER": ["V2", "V2", "V2", "V3"],
+    })
+    info = column_info(df)
+    kinds = {c["name"]: c["kind"] for c in info}
+    # ID has 3 unique values ≤ _MAX_CATEGORIES → "categorical"; "text" only for > 32 unique
+    assert kinds["ID"] in {"text", "categorical"}
+    assert kinds["SEG"] == "categorical"
+    assert kinds["PD"] == "numeric"
+
+    emb = embed_dataframe(df, id_col="ID")
+    assert len(emb) == 4
+    assert emb.vectors.shape[0] == 4
+
+    coords = project(emb.vectors, method="pca", n_components=2)
+    assert coords.shape == (4, 2)
+
+    # evolving: A001 appears twice
+    from src.embeddings.tabular import save_upload
+    content = df.to_csv(index=False).encode()
+    uid, _ = save_upload(content, "test.csv")
+    from src.embeddings.tabular import get_or_build
+    emb2 = get_or_build(uid, id_col="ID")
+    assert len(emb2) == 4
+
+
 def test_embeddings_router_smoke(monkeypatch: pytest.MonkeyPatch, tiny_corpus: Path) -> None:
     import src.agent.docs_index as docs_index_mod
     import src.embeddings.embedder as embedder_mod
