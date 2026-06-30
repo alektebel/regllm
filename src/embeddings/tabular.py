@@ -115,8 +115,17 @@ def embed_dataframe(
     if not transformers:
         raise ValueError("No numeric or low-cardinality categorical columns to embed")
 
+    # Fill and coerce types before fitting:
+    # - numeric columns: fillna(0) keeps dtype numeric
+    # - categorical columns: cast to str so OHE can sort a uniform type
+    df_fit = df[feat_cols].copy()
+    for c in numeric:
+        df_fit[c] = pd.to_numeric(df_fit[c], errors="coerce").fillna(0)
+    for c in categorical:
+        df_fit[c] = df_fit[c].fillna("").astype(str)
+
     ct = ColumnTransformer(transformers, remainder="drop")
-    dense = ct.fit_transform(df[feat_cols].fillna(0))
+    dense = ct.fit_transform(df_fit)
 
     n_components = max(1, min(_LATENT_DIM, dense.shape[0] - 1, dense.shape[1] - 1))
     if n_components >= dense.shape[1]:
