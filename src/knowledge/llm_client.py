@@ -19,7 +19,7 @@ Configuration via environment variables (with sensible defaults):
 
 - ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``bedrock`` | ``stub``
 - ``OLLAMA_URL``             default ``http://localhost:11434``
-- ``OLLAMA_MODEL``           default ``qwen2.5:14b-instruct-q4_K_M``
+- ``OLLAMA_MODEL``           Ollama tag or path to ``.gguf`` file
 - ``LITERT_URL``             default ``http://localhost:9379/v1``
 - ``LITERT_MODEL``           default ``gemma4-12b,gpu``
 - ``BEDROCK_MODEL_ID``       default ``anthropic.claude-3-haiku-20240307-v1:0``
@@ -125,6 +125,9 @@ class LocalLLMClient:
         # OLLAMA_MODEL=none → force stub mode (no model download needed)
         if self.ollama_model == "none":
             prefer = "stub"
+        # If model is a .gguf path, register it in Ollama automatically
+        elif self.ollama_model.endswith(".gguf"):
+            self.ollama_model = self._register_gguf(self.ollama_model, self.ollama_url)
         self.bedrock_model_id = (
             os.getenv("BEDROCK_MODEL_ID")
             or _LLM_CFG.get("bedrock_model_id")
@@ -140,6 +143,53 @@ class LocalLLMClient:
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
         self._probed = False
+
+    # ── GGUF auto-registration ─────────────────────────────────────────────
+
+    @staticmethod
+    def _register_gguf(gguf_path: str, ollama_url: str) -> str:
+        """Register a local .gguf file in Ollama and return the model tag.
+
+        Creates an Ollama model from the GGUF via ``ollama create`` so it can
+        be used like any other Ollama model.  If already registered, skips.
+        """
+        import subprocess
+        from pathlib import Path
+
+        path = Path(gguf_path).expanduser().resolve()
+        if not path.is_file():
+            logger.error("GGUF file not found: %s", path)
+            return gguf_path  # fall through — probe will fail gracefully
+
+        tag = f"local-{path.stem}"
+        # Check if already registered
+        try:
+            r = httpx.get(f"{ollama_url}/api/tags", timeout=3.0)
+            if r.status_code == 200:
+                names = {m.get("name", "") for m in r.json().get("models", [])}
+                if tag in names or any(n.split(":")[0] == tag for n in names):
+                    logger.info("GGUF model already registered as %r", tag)
+                    return tag
+        except Exception:
+            pass
+
+        # Create via temporary Modelfile
+        import tempfile
+        logger.info("Registering GGUF %s as Ollama model %r …", path.name, tag)
+        try:
+            with tempfile.NamedTemporaryFile("w", suffix=".Modelfile", delete=False) as f:
+                f.write(f"FROM {path}\n")
+                f.flush()
+                subprocess.run(
+                    ["ollama", "create", tag, "-f", f.name],
+                    capture_output=True, text=True,
+                    timeout=600, check=True,
+                )
+            Path(f.name).unlink(missing_ok=True)
+            logger.info("Registered GGUF as %r", tag)
+        except Exception as exc:
+            logger.error("Failed to register GGUF in Ollama: %s", exc)
+        return tag
 
     # ── Probing ───────────────────────────────────────────────────────────
 

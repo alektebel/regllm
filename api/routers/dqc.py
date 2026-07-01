@@ -279,7 +279,7 @@ def generate_dqc(req: DQCRequest) -> DQCResponse:
 
     ctx = _gather_context(variable, req.session_id)
     sources = _extract_sources(ctx)
-    context_str = json.dumps(ctx, ensure_ascii=False, default=str)[:6000]
+    context_str = json.dumps(ctx, ensure_ascii=False, default=str)[:15000]
 
     source_note = ""
     if not sources:

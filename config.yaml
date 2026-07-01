@@ -1,6 +1,7 @@
 # RegLLM model configuration
 # Models are loaded locally via Ollama from GGUF files.
-# To use a custom GGUF: `ollama create mymodel -f Modelfile` then set the tag below.
+# Set model to an Ollama tag ("qwen3:30b-a3b") or a local GGUF path
+# ("/home/user/models/qwen3-30b-a3b.gguf") — GGUF files are auto-registered in Ollama.
 
 # Chat/reasoning LLM — maintains the knowledge graph, runs agentic Q&A
 llm:
