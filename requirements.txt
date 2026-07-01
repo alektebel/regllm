@@ -19,9 +19,10 @@ chromadb>=0.5
 scikit-learn>=1.5
 umap-learn>=0.5
 
-# LLM transport (litert-lm OpenAI-compatible API + Ollama fallback)
+# LLM transport (litert-lm OpenAI-compatible API + Ollama fallback + Bedrock)
 httpx>=0.27
 pyyaml>=6.0
+boto3>=1.34
 
 # Demo / CLI
 rich>=13.7

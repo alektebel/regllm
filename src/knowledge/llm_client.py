@@ -9,17 +9,21 @@ Auto-detects an available OpenAI-compatible local backend:
    (Qwen, Gemma, Llama, Phi, …). The default model
    ``qwen2.5:14b-instruct-q4_K_M`` is a great drop-in for structured JSON RAG
    verdicts and is small enough to run on a single 24 GB GPU.
-3. **Stub** mode: when ``REGLLM_LLM=stub`` or no backend reachable, returns a
+3. **Amazon Bedrock** — managed LLM backend via the Converse API. Set
+   ``REGLLM_LLM=bedrock`` and let the IAM task role handle auth.
+4. **Stub** mode: when ``REGLLM_LLM=stub`` or no backend reachable, returns a
    deterministic JSON-shaped placeholder so unit tests and the frontend keep
    working without any model installed.
 
 Configuration via environment variables (with sensible defaults):
 
-- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``stub``
+- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``bedrock`` | ``stub``
 - ``OLLAMA_URL``             default ``http://localhost:11434``
 - ``OLLAMA_MODEL``           default ``qwen2.5:14b-instruct-q4_K_M``
 - ``LITERT_URL``             default ``http://localhost:9379/v1``
 - ``LITERT_MODEL``           default ``gemma4-12b,gpu``
+- ``BEDROCK_MODEL_ID``       default ``anthropic.claude-3-haiku-20240307-v1:0``
+- ``BEDROCK_REGION``         default ``eu-west-1``
 - ``REGLLM_LLM_TIMEOUT``     request timeout in seconds, default ``120``
 
 Backwards-compatible aliases (still read for migration):
@@ -41,6 +45,11 @@ try:
     import yaml as _yaml
 except ImportError:  # pyyaml not installed — fall back to env-only config
     _yaml = None
+
+try:
+    import boto3 as _boto3
+except ImportError:  # boto3 not installed — bedrock backend unavailable
+    _boto3 = None
 
 
 def _load_yaml_config() -> dict[str, Any]:
@@ -69,7 +78,7 @@ _DEFAULT_TIMEOUT = float(os.getenv("REGLLM_LLM_TIMEOUT", "120"))
 @dataclass
 class ChatResponse:
     text: str
-    backend: str                       # "litert" | "ollama" | "stub"
+    backend: str                       # "litert" | "ollama" | "bedrock" | "stub"
     model: str
     raw: dict[str, Any] | None = None
     tool_calls: list[dict[str, Any]] | None = None  # populated by ``chat_tools``
@@ -116,6 +125,17 @@ class LocalLLMClient:
         # OLLAMA_MODEL=none → force stub mode (no model download needed)
         if self.ollama_model == "none":
             prefer = "stub"
+        self.bedrock_model_id = (
+            os.getenv("BEDROCK_MODEL_ID")
+            or _LLM_CFG.get("bedrock_model_id")
+            or "anthropic.claude-3-haiku-20240307-v1:0"
+        )
+        self.bedrock_region = (
+            os.getenv("BEDROCK_REGION")
+            or _LLM_CFG.get("bedrock_region")
+            or "eu-west-1"
+        )
+        self._bedrock_client = None
         self.prefer = prefer or os.getenv("REGLLM_LLM") or _LLM_CFG.get("backend") or "auto"
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
@@ -130,6 +150,13 @@ class LocalLLMClient:
         if self.prefer == "stub":
             self._backend = "stub"
             return "stub"
+        if self.prefer == "bedrock":
+            if _boto3 is None:
+                logger.error("REGLLM_LLM=bedrock but boto3 is not installed")
+                self._backend = "stub"
+                return "stub"
+            self._backend = "bedrock"
+            return "bedrock"
         if self.prefer in ("auto", "litert") and self._probe_litert():
             self._backend = "litert"
             return "litert"
@@ -180,6 +207,59 @@ class LocalLLMClient:
         except Exception:
             return False
 
+    # ── Bedrock ───────────────────────────────────────────────────────────
+
+    def _get_bedrock_client(self):
+        if self._bedrock_client is None:
+            self._bedrock_client = _boto3.client(
+                "bedrock-runtime",
+                region_name=self.bedrock_region,
+            )
+        return self._bedrock_client
+
+    def _chat_bedrock(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool,
+    ) -> ChatResponse:
+        client = self._get_bedrock_client()
+
+        system_parts: list[dict[str, str]] = []
+        converse_msgs: list[dict[str, Any]] = []
+        for m in messages:
+            if m["role"] == "system":
+                system_parts.append({"text": m["content"]})
+            else:
+                converse_msgs.append({
+                    "role": m["role"],
+                    "content": [{"text": m["content"]}],
+                })
+
+        if json_mode and system_parts:
+            system_parts[0]["text"] += "\n\nRespond ONLY with valid JSON."
+
+        kwargs: dict[str, Any] = {
+            "modelId": self.bedrock_model_id,
+            "messages": converse_msgs,
+            "inferenceConfig": {
+                "temperature": temperature,
+                "maxTokens": max_tokens,
+            },
+        }
+        if system_parts:
+            kwargs["system"] = system_parts
+
+        response = client.converse(**kwargs)
+        text = response["output"]["message"]["content"][0]["text"]
+        return ChatResponse(
+            text=text,
+            backend="bedrock",
+            model=self.bedrock_model_id,
+            raw=response,
+        )
+
     # ── Chat ──────────────────────────────────────────────────────────────
 
     def chat(
@@ -196,6 +276,8 @@ class LocalLLMClient:
             return self._chat_litert(messages, temperature, max_tokens, json_mode)
         if backend == "ollama":
             return self._chat_ollama(messages, temperature, max_tokens, json_mode)
+        if backend == "bedrock":
+            return self._chat_bedrock(messages, temperature, max_tokens, json_mode)
         return self._chat_stub(messages, json_mode)
 
     def _chat_litert(
@@ -230,19 +312,26 @@ class LocalLLMClient:
         max_tokens: int,
         json_mode: bool,
     ) -> ChatResponse:
-        # For JSON mode with thinking-capable models (qwen3*), disable
-        # thinking to prevent <think> tokens consuming the output budget
-        # and returning empty JSON.
+        # For thinking-capable models (qwen3*) in non-JSON mode, disable
+        # thinking to prevent <think> tokens consuming the output budget.
+        # In JSON mode, skip /no_think — it causes empty output with format:json.
+        # Instead we let the model think and strip tags from the result.
         msgs = list(messages)
-        if json_mode and self._is_thinking_model():
+        if self._is_thinking_model() and not json_mode:
             msgs = _inject_no_think(msgs)
         msgs = _inject_spanish(msgs)
+
+        # Thinking models need extra token budget for <think> tokens in JSON mode;
+        # the think content is stripped from the final output.
+        predict = max_tokens
+        if json_mode and self._is_thinking_model():
+            predict = max_tokens + 4096
 
         payload: dict[str, Any] = {
             "model": self.ollama_model,
             "messages": msgs,
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": max_tokens},
+            "options": {"temperature": temperature, "num_predict": predict},
         }
         if json_mode:
             payload["format"] = "json"
@@ -320,6 +409,8 @@ class LocalLLMClient:
             return self._chat_tools_openai(messages, tools, temperature, max_tokens)
         if backend == "ollama":
             return self._chat_tools_ollama(messages, tools, temperature, max_tokens)
+        if backend == "bedrock":
+            raise NotImplementedError("Bedrock tool-calling not yet implemented")
         return self._chat_tools_stub(messages, tools)
 
     def _chat_tools_ollama(

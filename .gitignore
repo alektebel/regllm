@@ -45,6 +45,11 @@ tmp/
 # Frontend
 frontend/.next/
 frontend/node_modules/
+
+# DQC Angular app
+DQC/app/node_modules/
+DQC/app/.angular/
+DQC/app/dist/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
 
