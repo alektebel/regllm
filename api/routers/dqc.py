@@ -467,7 +467,7 @@ def generate_dqc(req: DQCRequest) -> DQCResponse:
         result = get_client().chat_json(
             system=DQC_SYSTEM_PROMPT,
             user=user_prompt,
-            max_tokens=12288,
+            max_tokens=8192,
         )
     except Exception as exc:
         logger.error("LLM call failed: %s", exc)
@@ -601,7 +601,7 @@ def batch_stream(session_id: str = "default"):
                 for chunk in client.chat_json_stream(
                     system=DQC_SYSTEM_PROMPT,
                     user=user_prompt,
-                    max_tokens=12288,
+                    max_tokens=8192,
                 ):
                     if isinstance(chunk, dict):
                         result = chunk

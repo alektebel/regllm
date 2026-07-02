@@ -97,13 +97,20 @@ class DqcStack(Stack):
             role_name=f"{project}-ecs-task",
             assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
         )
+        # Cross-region inference profiles (e.g. eu.amazon.nova-micro-v1:0) route
+        # calls across multiple regions.  The policy must cover both the inference
+        # profile ARN (account-scoped, home region) and the foundation-model ARNs
+        # in every region the profile may route to.
         task_role.add_to_policy(iam.PolicyStatement(
             actions=[
                 "bedrock:InvokeModel",
                 "bedrock:InvokeModelWithResponseStream",
             ],
             resources=[
-                f"arn:aws:bedrock:{self.region}::foundation-model/{bedrock_model_id}",
+                # Inference profile (account-scoped)
+                f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/{bedrock_model_id}",
+                # Foundation models reachable by the profile (all regions wildcard)
+                f"arn:aws:bedrock:*::foundation-model/*",
             ],
         ))
 

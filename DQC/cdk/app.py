@@ -21,6 +21,7 @@ DqcStack(
     app,
     "RegllmDqcStack",
     env=cdk.Environment(
+        account=app.node.try_get_context("aws_account") or cdk.Aws.ACCOUNT_ID,
         region=app.node.try_get_context("aws_region") or "eu-west-1",
     ),
 )
