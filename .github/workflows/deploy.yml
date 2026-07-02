@@ -1,0 +1,59 @@
+name: Deploy DQC to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "production"
+        type: choice
+        options: [production]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-1
+  PROJECT: regllm-dqc
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push API image
+        run: |
+          docker build -t ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}-api:${{ github.sha }} \
+                       -t ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}-api:latest \
+                       -f Dockerfile .
+          docker push ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}-api --all-tags
+
+      - name: Build & push DQC frontend image
+        run: |
+          docker build -t ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}-dqc:${{ github.sha }} \
+                       -t ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}-dqc:latest \
+                       -f DQC/app/Dockerfile DQC/app/
+          docker push ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}-dqc --all-tags
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.PROJECT }} \
+            --service ${{ env.PROJECT }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}

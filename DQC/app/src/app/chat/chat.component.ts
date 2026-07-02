@@ -1,8 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, EventEmitter, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DqcService } from '../services/dqc.service';
-import { ChatMessage, DqcItem, RAGSource } from '../models/dqc.model';
+import { ChatMessage, RAGSource } from '../models/dqc.model';
 
 @Component({
   selector: 'app-chat',
@@ -12,6 +12,8 @@ import { ChatMessage, DqcItem, RAGSource } from '../models/dqc.model';
   styleUrls: ['./chat.component.css'],
 })
 export class ChatComponent {
+  @Output() dqcGenerated = new EventEmitter<void>();
+
   messages: ChatMessage[] = [];
   userMessage = '';
   isLoading = false;
@@ -19,7 +21,7 @@ export class ChatComponent {
     'Verifica que PD_ESTIMADA cumple los suelos regulatorios',
     'Comprueba la consistencia de LGD_ESTIMADA con los floors por segmento',
     'Valida que el provision period cumple los mínimos por fase de ciclo',
-    'Genera DQCs para comprobar el cálculo de ECL (PD × LGD × EAD)',
+    'Genera DQCs para comprobar el cálculo de ECL (PD x LGD x EAD)',
     'Comprueba que STAGE_IFRS9 es coherente con DPDS',
   ];
 
@@ -35,13 +37,21 @@ export class ChatComponent {
 
     this.dqcService.generate(msg).subscribe({
       next: (res) => {
+        const count = res.dqcs.length;
+        const summary = count > 0
+          ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} para **${res.variable}**. Revisa el panel izquierdo.`
+          : res.context_summary;
+
         this.messages.push({
           role: 'assistant',
-          content: res.context_summary,
-          dqcs: res.dqcs,
+          content: summary,
           sources: res.sources,
         });
         this.isLoading = false;
+
+        if (count > 0) {
+          this.dqcGenerated.emit();
+        }
       },
       error: (err) => {
         this.messages.push({
@@ -56,13 +66,5 @@ export class ChatComponent {
   useSuggestion(text: string): void {
     this.userMessage = text;
     this.send();
-  }
-
-  severityClass(sev: string): string {
-    switch (sev) {
-      case 'bloqueante': return 'badge-error';
-      case 'advertencia': return 'badge-warn';
-      default: return 'badge-info';
-    }
   }
 }

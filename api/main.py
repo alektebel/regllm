@@ -1,4 +1,4 @@
-"""FastAPI entry point — SAS diff explainer + change-log GraphRAG.
+"""FastAPI entry point — DQC generator API.
 
 Run with:
     uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
@@ -23,33 +23,22 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="RegLLM — Regulatory Knowledge Graph Agent",
-    description=(
-        "Self-learning agent for banking regulatory compliance (COREP/FINREP). "
-        "Combines a regulatory knowledge graph (KuzuDB), vector search (ChromaDB), "
-        "SAS field attribution (gradient + Shapley), and experience memory to "
-        "validate reporting databases against EBA regulations."
-    ),
-    version="0.4.0",
+    title="RegLLM — DQC Generator",
+    description="Data Quality Check generator for banking regulatory compliance (COREP/FINREP).",
+    version="0.5.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:4200").split(","),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from api.routers import agent, diff, embeddings, kb, kg, sas, tabular  # noqa: E402
+from api.routers import dqc  # noqa: E402
 
-app.include_router(sas.router)
-app.include_router(diff.router)
-app.include_router(kb.router)
-app.include_router(kg.router)
-app.include_router(agent.router)
-app.include_router(embeddings.router)
-app.include_router(tabular.router)
+app.include_router(dqc.router)
 
 
 @app.get("/health")

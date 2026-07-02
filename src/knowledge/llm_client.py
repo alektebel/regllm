@@ -22,7 +22,7 @@ Configuration via environment variables (with sensible defaults):
 - ``OLLAMA_MODEL``           Ollama tag or path to ``.gguf`` file
 - ``LITERT_URL``             default ``http://localhost:9379/v1``
 - ``LITERT_MODEL``           default ``gemma4-12b,gpu``
-- ``BEDROCK_MODEL_ID``       default ``anthropic.claude-3-haiku-20240307-v1:0``
+- ``BEDROCK_MODEL_ID``       default ``eu.amazon.nova-micro-v1:0``
 - ``BEDROCK_REGION``         default ``eu-west-1``
 - ``REGLLM_LLM_TIMEOUT``     request timeout in seconds, default ``120``
 
@@ -131,7 +131,7 @@ class LocalLLMClient:
         self.bedrock_model_id = (
             os.getenv("BEDROCK_MODEL_ID")
             or _LLM_CFG.get("bedrock_model_id")
-            or "anthropic.claude-3-haiku-20240307-v1:0"
+            or "eu.amazon.nova-micro-v1:0"
         )
         self.bedrock_region = (
             os.getenv("BEDROCK_REGION")
@@ -420,6 +420,77 @@ class LocalLLMClient:
             backend="stub", model="stub",
         )
 
+    # ── Streaming ─────────────────────────────────────────────────────────
+
+    def chat_json_stream(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
+    ):
+        """Yield (token, full_text_so_far) tuples, then final parsed JSON.
+
+        Yields ``str`` tokens as they arrive. The last yield is a
+        ``dict`` with the parsed JSON result (or an error dict).
+        Only implemented for Ollama; other backends fall back to
+        non-streaming and yield the full result at once.
+        """
+        backend = self.detect_backend()
+        if backend != "ollama":
+            result = self.chat_json(system, user, temperature=temperature, max_tokens=max_tokens)
+            yield result
+            return
+
+        msgs = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        msgs = _inject_spanish(msgs)
+
+        predict = max_tokens
+        if self._is_thinking_model():
+            predict = max_tokens + 4096
+
+        payload: dict[str, Any] = {
+            "model": self.ollama_model,
+            "messages": msgs,
+            "stream": True,
+            "options": {"temperature": temperature, "num_predict": predict},
+            "format": "json",
+        }
+
+        full_text = ""
+        in_think = False
+        with httpx.stream(
+            "POST",
+            f"{self.ollama_url}/api/chat",
+            json=payload,
+            timeout=self.timeout,
+        ) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                token = (chunk.get("message") or {}).get("content", "")
+                if not token:
+                    continue
+                full_text += token
+                # Suppress <think> content from streaming output
+                if "<think>" in token:
+                    in_think = True
+                if in_think:
+                    if "</think>" in token:
+                        in_think = False
+                    continue
+                yield token
+
+        # Final parsed result
+        cleaned = _strip_think_tags(full_text)
+        yield _safe_json(cleaned)
+
     # ── JSON helper ───────────────────────────────────────────────────────
 
     def chat_json(
@@ -638,7 +709,11 @@ def _inject_no_think(messages: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def _safe_json(text: str) -> dict[str, Any]:
-    """Best-effort JSON extraction from a model response."""
+    """Best-effort JSON extraction from a model response.
+
+    Handles truncated JSON from models that hit token limits by attempting
+    to repair incomplete output (close open arrays/objects).
+    """
     # Strip any residual thinking tags (belt-and-suspenders with _strip_think_tags)
     text = _strip_think_tags(text)
     for fence in ("```json", "```"):
@@ -656,7 +731,45 @@ def _safe_json(text: str) -> dict[str, Any]:
                 return json.loads(text[s:e])
             except json.JSONDecodeError:
                 pass
+        # Attempt to repair truncated JSON by closing open brackets
+        repaired = _repair_truncated_json(text)
+        if repaired:
+            return repaired
     return {"error": "invalid_json", "raw": text[:500]}
+
+
+def _repair_truncated_json(text: str) -> dict[str, Any] | None:
+    """Try to repair truncated JSON by closing open brackets/braces."""
+    # Find the outermost opening brace
+    start = text.find("{")
+    if start < 0:
+        return None
+    fragment = text[start:]
+    # Try progressively truncating from the last comma and closing
+    # E.g. '{"dqcs": [{...}, {... incomplete' → '{"dqcs": [{...}]}'
+    for _ in range(5):
+        # Count open vs closed brackets
+        opens = []
+        for ch in fragment:
+            if ch in "{[":
+                opens.append("}" if ch == "{" else "]")
+            elif ch in "}]":
+                if opens:
+                    opens.pop()
+        # Close remaining open brackets
+        if opens:
+            candidate = fragment + "".join(reversed(opens))
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+        # Try truncating at last comma (remove incomplete last element)
+        last_comma = fragment.rfind(",")
+        if last_comma > 0:
+            fragment = fragment[:last_comma]
+        else:
+            break
+    return None
 
 
 # ── Backwards-compatible aliases ────────────────────────────────────────────

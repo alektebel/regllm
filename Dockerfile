@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -13,17 +13,17 @@ RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Project source. Data is also copied so that running the image WITHOUT a
-# bind mount still produces a working demo; if the host bind-mounts ./data
-# the bundled copy is harmlessly shadowed.
+# Project source — only what the DQC API needs
 COPY src/ ./src/
 COPY api/ ./api/
-COPY scripts/ ./scripts/
-COPY data/ ./data/
+COPY training/__init__.py ./training/__init__.py
+COPY training/dq/ ./training/dq/
+COPY config.yaml ./config.yaml
 
-COPY docker/api-entrypoint.sh /usr/local/bin/api-entrypoint.sh
-RUN chmod +x /usr/local/bin/api-entrypoint.sh
+# Data directory (bind-mount in production for persistence)
+COPY data/docs/ ./data/docs/
+COPY data/regulation/ ./data/regulation/
+RUN mkdir -p data/dq data/sas data/sessions data/knowledge data/samples
 
 EXPOSE 8000
-ENTRYPOINT ["/usr/local/bin/api-entrypoint.sh"]
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
