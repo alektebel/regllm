@@ -1,2 +1,0 @@
-column,n_missing,n_outlier_missing,frac_outlier_given_missing,baseline_outlier_rate,odds_ratio,p_value,significant_005
-ADJUDICACION_TIPO,22291,220,0.0099,0.01,0.17,1.0163e-04,True

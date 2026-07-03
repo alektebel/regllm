@@ -157,6 +157,7 @@ class DqcStack(Stack):
             environment={
                 "CORS_ORIGINS": "*",
                 "REGLLM_LLM": "bedrock",
+                "REGLLM_ROUTERS": "dqc",
                 "BEDROCK_MODEL_ID": bedrock_model_id,
                 "BEDROCK_REGION": self.region,
             },

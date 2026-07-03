@@ -68,5 +68,9 @@ mlruns/
 unsloth_compiled_cache/
 data/embeddings/
 data/sessions/
+data/uploads/
 data/eval_results*.json
 autoresearch/mlflow.db
+
+# Test-generated SAS session artifacts (written by the pytest suite)
+data/sas/sessions/test_session*/

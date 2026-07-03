@@ -54,6 +54,12 @@ resource "aws_iam_role" "ecs_task" {
   })
 }
 
+# Cross-region inference profiles (e.g. eu.amazon.nova-micro-v1:0) route
+# calls across multiple regions. The policy must cover both the inference
+# profile ARN (account-scoped, home region) and the foundation-model ARNs
+# in every region the profile may route to. Mirrors DQC/cdk/stacks/dqc_stack.py.
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_role_policy" "bedrock_invoke" {
   name = "bedrock-invoke"
   role = aws_iam_role.ecs_task.id
@@ -65,7 +71,10 @@ resource "aws_iam_role_policy" "bedrock_invoke" {
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ]
-      Resource = "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_model_id}"
+      Resource = [
+        "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:inference-profile/${var.bedrock_model_id}",
+        "arn:aws:bedrock:*::foundation-model/*"
+      ]
     }]
   })
 }
@@ -181,6 +190,7 @@ resource "aws_ecs_task_definition" "main" {
       environment = [
         { name = "CORS_ORIGINS", value = "*" },
         { name = "REGLLM_LLM", value = "bedrock" },
+        { name = "REGLLM_ROUTERS", value = "dqc" },
         { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
         { name = "BEDROCK_REGION", value = var.aws_region },
       ]
@@ -198,6 +208,10 @@ resource "aws_ecs_task_definition" "main" {
       image     = "${aws_ecr_repository.dqc.repository_url}:latest"
       essential = true
       portMappings = [{ containerPort = 80 }]
+      environment = [
+        # Fargate sidecars share localhost (see DQC/app/nginx.conf)
+        { name = "API_UPSTREAM", value = "localhost:8000" },
+      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {

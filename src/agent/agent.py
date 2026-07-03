@@ -383,7 +383,7 @@ class SASDiffAgent:
                     ),
                 })
                 continue
-            if not text or len(text) < 20:
+            if not text:
                 messages.append({"role": "assistant", "content": resp.text or ""})
                 messages.append({
                     "role": "user",

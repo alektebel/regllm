@@ -1,9 +1,24 @@
-# RegLLM — SAS Field-Diff Explainer
+# RegLLM
 
-> *Why is the value of this field different in V3 versus V2 of the same
-> table?* — answered with a differentiable AST, Shapley values, and a
-> change-log GraphRAG grounded by a local LLM
-> (Qwen 2.5 14B by default; Gemma 4 12B on LiteRT-LM optional).
+Two related applications for IRB / IFRS 9 regulatory data pipelines:
+
+1. **DQC Generator** (`DQC/`, `api/routers/dqc.py`) — generates structured
+   data-quality checks (SQL) for a database whose schema and dictionary are
+   known, grounded in the EBA GL/2017/16 PD & LGD guidelines via a regulation
+   knowledge graph. Ships with an Angular chat UI, an AWS (ECS Fargate +
+   Bedrock) deployment, and a mutation-testing **eval harness**
+   (`DQC/eval/`) that scores generated checks against 26 ground-truth
+   defects across 8 data-quality dimensions. See
+   [`DQC/eval/README.md`](DQC/eval/README.md) and
+   [`docs/EVALUATION.md`](docs/EVALUATION.md).
+2. **SAS Field-Diff Explainer** — *why is the value of this field different
+   in V3 versus V2 of the same table?* — answered with a differentiable AST,
+   Shapley values, and a change-log GraphRAG grounded by a local LLM.
+   Documented in the rest of this README.
+
+The FastAPI backend serves both: the router set is selected with
+`REGLLM_ROUTERS` (`all` by default; the AWS DQC deployment sets
+`REGLLM_ROUTERS=dqc` for a slim surface).
 
 ---
 
@@ -91,7 +106,12 @@ flowchart LR
 | `data/changelog/`                   | Markdown change notes + persisted graph           |
 | `demo/sas_compiler_demo.py`         | CLI: AST, lineage, simulation, **`--diff`**       |
 | `scripts/seed_docs.py`              | Bootstrap V2/V3 SAS + docs corpus                 |
-| `tests/`                            | Pytest suite (197 tests, ~30 s)                   |
+| `tests/`                            | Pytest suite (~600 tests, ~40 s)                  |
+| `DQC/app/`                          | Angular chat UI for the DQC generator             |
+| `DQC/eval/`                         | DQC eval harness (defect catalog + trap DBs)      |
+| `DQC/cdk/`, `DQC/terraform/`        | AWS infra (ECS Fargate + ALB + Bedrock IAM)       |
+| `api/routers/dqc.py`                | DQC generation + validation endpoints             |
+| `training/dq/`                      | GRPO/RL pipeline for the DQC model                |
 | `Dockerfile`                        | API container build                               |
 | `frontend/Dockerfile`               | Next.js standalone container build                |
 | `docker/api-entrypoint.sh`          | Auto-seed data + index on first run               |
@@ -520,16 +540,17 @@ return strict JSON of the form
 
 ---
 
-## Out of scope
+## Out of scope (for the diff explainer)
 
-This project is **deliberately small**. The following were intentionally
-removed or not implemented:
+The **diff explainer** stays deliberately small. Not implemented for it:
 
-- model fine-tuning (LoRA, GRPO, DPO, SFT)
 - chat history, auth, multi-user, JWT
-- pgvector / Postgres / Alembic / Terraform / AWS deployment
+- pgvector / Postgres / Alembic
 - regulatory compliance verdict tiers — replaced by the explainer's
   per-field "justified vs. unjustified" verdict from the local LLM.
+
+Model fine-tuning (`training/`) and the AWS deployment (`DQC/cdk`,
+`DQC/terraform`) exist for the **DQC generator** side of the repo.
 
 ---
 

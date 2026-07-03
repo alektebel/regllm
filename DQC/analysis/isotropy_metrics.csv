@@ -1,7 +1,0 @@
-metric,value,interpretation
-condition_number_max_min,47663.25,Highly anisotropic (>1000)
-n_dims_for_90pct_variance,18.0,Effective dimensionality at 90% variance
-n_dims_for_95pct_variance,22.0,Effective dimensionality at 95% variance
-n_dims_for_99pct_variance,29.0,Effective dimensionality at 99% variance
-top_1_eigenvalue_ratio,0.2102,Variance fraction in first component
-top_3_eigenvalue_ratio,0.3839,Variance fraction in top 3 components
