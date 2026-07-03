@@ -60,6 +60,10 @@ import { CheckRecord } from './models/dqc.model';
                   (click)="filter = 'rejected'">Rechazados</button>
         </div>
 
+        <button class="copy-all-btn" (click)="copyAll()" [disabled]="copiedAll">
+          {{ copiedAll ? '✓ Copiado' : (copyAllMsg || 'Copiar todo (consultas + dashboard)') }}
+        </button>
+
         <div class="dqc-list">
           @for (c of filteredChecks; track c.check_id) {
             <div class="dqc-item" [class.selected]="selected?.check_id === c.check_id"
@@ -322,6 +326,23 @@ import { CheckRecord } from './models/dqc.model';
       border-color: #6c7bbf;
     }
     .filter-btn:hover:not(.active) { background: #1e1e35; color: #ccc; }
+
+    .copy-all-btn {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 8px 12px 0;
+      padding: 8px;
+      background: transparent;
+      color: #6c7bbf;
+      border: 1px solid #2a2a40;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-all-btn:hover:not(:disabled) { background: #1e1e35; }
+    .copy-all-btn:disabled { color: #4caf50; border-color: #2e7d32; cursor: default; }
 
     .dqc-list {
       flex: 1;
@@ -628,6 +649,8 @@ export class AppComponent implements OnInit, OnDestroy {
   batchField = '';
   batchGenerated = 0;
   llmOutput = '';
+  copiedAll = false;
+  copyAllMsg = '';
   private eventSource: EventSource | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -748,6 +771,28 @@ export class AppComponent implements OnInit, OnDestroy {
 
   onDqcGenerated(): void {
     this.loadChecks();
+  }
+
+  // Copy every validated check query plus the UNION ALL dashboard query in a
+  // single block. The /dashboard endpoint only returns data once no visible
+  // pending checks remain; otherwise it comes back empty.
+  copyAll(): void {
+    this.dqc.dashboard().subscribe({
+      next: (d) => {
+        const parts: string[] = [];
+        if (d.checks.length) parts.push(d.checks.map(c => c.sql).join('\n\n;\n\n'));
+        if (d.sql) parts.push(d.sql);
+        if (!parts.length) {
+          this.copyAllMsg = 'Sin consultas validadas';
+          setTimeout(() => { this.copyAllMsg = ''; }, 2000);
+          return;
+        }
+        navigator.clipboard.writeText(parts.join('\n\n;\n\n')).then(() => {
+          this.copiedAll = true;
+          setTimeout(() => { this.copiedAll = false; }, 2000);
+        });
+      },
+    });
   }
 
   private loadChecks(): void {
