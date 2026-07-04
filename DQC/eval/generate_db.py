@@ -30,20 +30,30 @@ DATA_DIR = HERE / "data"
 
 # Full ordered column list of the final table (see data_dictionary.md).
 COLUMNS: list[str] = [
-    # identity / segmentation
-    "ID_CONTR_CICLO_LGD", "ID_CONTRATO", "ID_FUSION_FINAL", "SW_FUSION",
+    # identity / segmentation / counterparty
+    "ID_CONTR_CICLO_LGD", "ID_CONTRATO", "ID_CLIENTE", "TIPO_PERSONA",
+    "ID_FUSION_FINAL", "SW_FUSION",
     "SEGMENTO", "CALIBRATION_SEGMENT", "PRODUCTO", "MES_CICLO",
     "ENTIDAD_ORIGEN",
+    # cycle dates (YYYYMM)
+    "MES_DEFAULT", "MES_CIERRE_CICLO",
+    # currency
+    "DIVISA", "TIPO_CAMBIO",
     # exposure (BASILEA)
     "OR_EAD", "OR_DISPTO", "OR_DISBLE", "SALDO_PENDIENTE", "EAD",
     "EAD_BALANCE", "CCF_ESTIMADO", "EAD_FUERA_BALANCE", "EAD_TOTAL",
+    "EAD_TOTAL_EUR",
     # collateral
     "COLATERAL_TIPO", "VALOR_COLATERAL_INICIAL", "VALOR_COLATERAL",
-    "HAIRCUT", "LTV",
+    "HAIRCUT", "LTV", "MES_VALORACION_COLATERAL",
     # PD
     "RATING_GRADO", "PD_ESTIMADA", "PD_SUELO", "PD_FINAL", "PD_DOWNTURN",
-    # LGD
-    "LGD_ESTIMADA", "LGD_REALIZADA", "LGD_SUELO", "MOC", "LGD_CON_MOC", "LGD_FINAL",
+    # LGD (incl. MoC category breakdown per EBA GL 2017/16 §43-44)
+    "LGD_ESTIMADA", "LGD_REALIZADA", "LGD_SUELO",
+    "MOC_CAT_A", "MOC_CAT_B", "MOC_CAT_C", "MOC",
+    "LGD_CON_MOC", "LGD_FINAL", "LGD_DOWNTURN",
+    # calibration governance
+    "VENTANA_OBSERVACION_YEARS", "FLAG_NC",
     # ECL / RWA / stage
     "K_IRB", "M_VENCIMIENTO", "RWA", "ECL", "PROVISION", "STAGE_IFRS9",
     # lifecycle / recovery
@@ -57,10 +67,19 @@ SEGMENTS = ["CORP", "SME", "RETAIL_HIP", "RETAIL_CONS"]
 PRODUCTS = {"CORP": ["PRESTAMO", "LINEA"], "SME": ["PRESTAMO", "LINEA"],
             "RETAIL_HIP": ["HIPOTECA_LN"], "RETAIL_CONS": ["TARJETA", "PRESTAMO"]}
 CAUSAS = ["90_DIAS_VENCIDO", "IMPROBABLE_PAGO", "REFINANCIACION_DETERIORO"]
-TERMINACIONES = ["CURA", "FALLIDO", "VENTA_CARTERA", "LIQUIDACION"]
+TERMINACIONES_NO_CURA = ["FALLIDO", "VENTA_CARTERA", "LIQUIDACION"]
 ADJ_TIPOS = ["SUBASTA", "DACCION", "SEGURO", "GARANTIA"]
 ENTIDADES = ["BANCO_A", "BANCO_B", "BANCO_C"]
+CURRENCIES = ["EUR", "USD", "GBP"]
+FX_RATES = {"EUR": 1.0, "USD": 0.92, "GBP": 1.17}   # units of EUR per unit
 CCF = 0.75
+REFERENCE_PERIOD = 202412
+
+
+def month_shift(yyyymm: int, months: int) -> int:
+    """Shift a YYYYMM period by ``months`` (negative = into the past)."""
+    total = (yyyymm // 100) * 12 + (yyyymm % 100) - 1 + months
+    return (total // 12) * 100 + (total % 12) + 1
 
 
 def _type_of(col: str) -> str:
@@ -119,7 +138,13 @@ def _base_row(rng: random.Random, idx: int) -> dict:
 
     cerrado = rng.random() < 0.4
     estado = "CERRADO" if cerrado else "ESTIMACION"
-    terminacion = rng.choice(TERMINACIONES) if cerrado else ""
+    # CURE_FLAG and TERMINACION must agree: a cured cycle closes with 'CURA',
+    # a non-cured closed cycle with one of the terminal causes (invariant D32).
+    cure = 1 if (cerrado and rng.random() < 0.6) else 0
+    if cerrado:
+        terminacion = "CURA" if cure else rng.choice(TERMINACIONES_NO_CURA)
+    else:
+        terminacion = ""
 
     adjud = rng.random() < 0.3
     if adjud:
@@ -145,11 +170,43 @@ def _base_row(rng: random.Random, idx: int) -> dict:
 
     period = (2019 + rng.randint(0, 4)) * 100 + rng.randint(1, 12)  # valid YYYYMM
 
+    # Cycle dates: the cycle opens at default; closed cycles get a closure
+    # month after the default month (capped at the reference period).
+    mes_default = period
+    mes_cierre = None
+    if cerrado:
+        mes_cierre = min(month_shift(mes_default, rng.randint(1, 24)),
+                         REFERENCE_PERIOD)
+
+    # Collateral valuation month: within the last 12 months for secured
+    # exposures (CRR Art. 208.3 revaluation), NULL when unsecured.
+    mes_valoracion = (
+        month_shift(period, -rng.randint(0, 11)) if colat != "NINGUNA" else None
+    )
+
+    # Currency + FX (EUR-converted amounts must satisfy the FX invariant).
+    divisa = rng.choices(CURRENCIES, weights=[8, 1, 1])[0]
+    fx = round(FX_RATES[divisa] * rng.uniform(0.97, 1.03), 6) if divisa != "EUR" else 1.0
+
+    # Calibration governance: observation window and the non-conformity flag
+    # must agree (EBA GL 2017/16 — minimum 5-year historical window).
+    ventana = rng.randint(3, 9)
+    flag_nc = 1 if ventana < 5 else 0
+
     return {
         "ID_CONTR_CICLO_LGD": f"{contrato}_{period}",
         "ID_CONTRATO": contrato,
+        "ID_CLIENTE": f"CLI_{rng.randint(1, 400_000):06d}",
+        "TIPO_PERSONA": "J" if seg in ("CORP", "SME") else "F",
         "ID_FUSION_FINAL": id_fusion,
         "SW_FUSION": sw_fusion,
+        "MES_DEFAULT": mes_default,
+        "MES_CIERRE_CICLO": mes_cierre,
+        "MES_VALORACION_COLATERAL": mes_valoracion,
+        "DIVISA": divisa,
+        "TIPO_CAMBIO": fx,
+        "VENTANA_OBSERVACION_YEARS": ventana,
+        "FLAG_NC": flag_nc,
         "SEGMENTO": seg,
         "CALIBRATION_SEGMENT": f"{seg}_{rng.choice(['HIGH','MED','LOW','MICRO'])}",
         "PRODUCTO": rng.choice(PRODUCTS[seg]),
@@ -168,10 +225,13 @@ def _base_row(rng: random.Random, idx: int) -> dict:
         "LGD_REALIZADA": round(rng.uniform(0.0, 0.95), 6),
         "STAGE_IFRS9": stage,
         "DPDS": dpds,
-        "CURE_FLAG": 1 if (cerrado and rng.random() < 0.6) else 0,
+        "CURE_FLAG": cure,
         "ESTADO_CICLO": estado,
         "TERMINACION": terminacion,
-        "CAUSA_DEFAULT": rng.choice(CAUSAS),
+        # default cause must agree with the DPD counter (CRR Art. 178):
+        # '90_DIAS_VENCIDO' is only a valid cause at >= 90 days past due.
+        "CAUSA_DEFAULT": ("90_DIAS_VENCIDO" if dpds >= 90
+                          else rng.choice(CAUSAS[1:])),
         "ADJUDICACION_FLAG": adj_flag,
         "ADJUDICACION_TIPO": adj_tipo,
         "ADJUDICACION_VALOR": adj_valor,
@@ -183,11 +243,13 @@ def _base_row(rng: random.Random, idx: int) -> dict:
         "INTERESES_ACUMULADOS": round(rng.uniform(0, 8000), 2),
         # placeholders filled by derive()
         "EAD": None, "EAD_BALANCE": None, "EAD_FUERA_BALANCE": None,
-        "EAD_TOTAL": None, "CCF_ESTIMADO": None, "LTV": None,
-        "VALOR_COLATERAL": None, "PD_SUELO": None, "PD_FINAL": None,
-        "PD_DOWNTURN": None, "LGD_SUELO": None, "MOC": None,
-        "LGD_CON_MOC": None, "LGD_FINAL": None, "K_IRB": None,
-        "M_VENCIMIENTO": None, "RWA": None, "ECL": None, "PROVISION": None,
+        "EAD_TOTAL": None, "EAD_TOTAL_EUR": None, "CCF_ESTIMADO": None,
+        "LTV": None, "VALOR_COLATERAL": None, "PD_SUELO": None,
+        "PD_FINAL": None, "PD_DOWNTURN": None, "LGD_SUELO": None,
+        "MOC_CAT_A": None, "MOC_CAT_B": None, "MOC_CAT_C": None, "MOC": None,
+        "LGD_CON_MOC": None, "LGD_FINAL": None, "LGD_DOWNTURN": None,
+        "K_IRB": None, "M_VENCIMIENTO": None, "RWA": None, "ECL": None,
+        "PROVISION": None,
     }
 
 
@@ -209,16 +271,31 @@ def derive(row: dict) -> dict:
     else:
         lgd_suelo = 0.0
     r["LGD_SUELO"] = lgd_suelo
-    moc = 0.05 * lgd_est
+    # MoC broken down by EBA GL 2017/16 §43-44 categories:
+    #   A = data/methodological deficiencies, B = representativeness,
+    #   C = general estimation error.  MOC must equal their sum.
+    moc_a = 0.02 * lgd_est
+    moc_b = 0.02 * lgd_est
+    moc_c = 0.01 * lgd_est
+    moc = moc_a + moc_b + moc_c
+    r["MOC_CAT_A"], r["MOC_CAT_B"], r["MOC_CAT_C"] = moc_a, moc_b, moc_c
     r["MOC"] = moc
     r["LGD_CON_MOC"] = lgd_est + moc
     r["LGD_FINAL"] = max(r["LGD_CON_MOC"], lgd_suelo)
+    # Downturn LGD must never undercut the long-run average (CRR Art. 181.1(b))
+    r["LGD_DOWNTURN"] = min(1.0, lgd_est * 1.15)
     # L6 EAD
     r["CCF_ESTIMADO"] = CCF
     r["EAD_BALANCE"] = r["OR_DISPTO"] if r["OR_DISPTO"] is not None else r["SALDO_PENDIENTE"]
     r["EAD_FUERA_BALANCE"] = CCF * (r["OR_DISBLE"] or 0.0)
     r["EAD_TOTAL"] = r["EAD_BALANCE"] + r["EAD_FUERA_BALANCE"]
     r["EAD"] = r["EAD_TOTAL"]
+    r["EAD_TOTAL_EUR"] = round(r["EAD_TOTAL"] * (r["TIPO_CAMBIO"] or 1.0), 2)
+    # Realised LGD backtesting formula (EBA GL 2017/16 §135) holds for
+    # closed cycles: LGD_REALIZADA = clamp(1 - (recup - costes)/EAD, 0, 1).
+    if r["ESTADO_CICLO"] == "CERRADO" and r["EAD_TOTAL"]:
+        loss = 1.0 - (r["RECUPERACION_ACUMULADA"] - r["COSTE_TOTAL_ACUMULADO"]) / r["EAD_TOTAL"]
+        r["LGD_REALIZADA"] = round(max(0.0, min(1.0, loss)), 6)
     # collateral derived
     vcol_in = r["VALOR_COLATERAL_INICIAL"] or 0.0
     hc = r["HAIRCUT"] or 0.0
@@ -255,20 +332,74 @@ def build_clean_conn(n_rows: int = 2000, seed: int = 42,
     return conn
 
 
+def plant_defect(conn: sqlite3.Connection, defect: Defect, *,
+                 seed: int = 42, k: int = 1,
+                 table: str = TABLE_NAME) -> list[str]:
+    """Plant ``k`` violations of ``defect`` into ``conn``; return their PKs.
+
+    Each planted row is derived from a *different* deterministic base row so
+    the violation space is sampled at k points instead of one (a check must
+    detect the invariant, not memorise a single row).
+
+    Uniqueness defects (``plants_duplicate_pk``) are planted by re-inserting
+    verbatim copies of existing rows — the only way to create a true PK
+    duplicate without breaking any other invariant.
+    """
+    placeholders = ", ".join(["?"] * len(COLUMNS))
+    ins = f'INSERT INTO "{table}" VALUES ({placeholders})'
+    planted: list[str] = []
+
+    if defect.plants_duplicate_pk:
+        rows = conn.execute(
+            f'SELECT * FROM "{table}" ORDER BY {PK_COLUMN} LIMIT ?', (k,)
+        ).fetchall()
+        for row in rows:
+            conn.execute(ins, list(row))
+            planted.append(row[PK_COLUMN])
+        conn.commit()
+        return planted
+
+    for i in range(k):
+        rng = random.Random(seed + 7919 + 31 * i)
+        base = derive(_base_row(rng, 1_000_000 + i))
+        dirty = defect.mutate(base)
+        dirty[PK_COLUMN] = f"__DIRTY_{defect.defect_id}_{i}__"
+        conn.execute(ins, [dirty.get(c) for c in COLUMNS])
+        planted.append(dirty[PK_COLUMN])
+    conn.commit()
+    return planted
+
+
+def build_trap(defect: Defect, n_rows: int = 2000, seed: int = 42,
+               table: str = TABLE_NAME, k: int = 1,
+               ) -> tuple[sqlite3.Connection, list[str]]:
+    """Clean DB + ``k`` rows mutated by ``defect``. Returns (conn, planted PKs)."""
+    clean = build_clean_conn(n_rows, seed, table)
+    planted = plant_defect(clean, defect, seed=seed, k=k, table=table)
+    return clean, planted
+
+
 def build_trap_conn(defect: Defect, n_rows: int = 2000, seed: int = 42,
                     table: str = TABLE_NAME) -> sqlite3.Connection:
-    """Clean DB + ONE row mutated by ``defect`` (fresh PK appended last)."""
-    clean = build_clean_conn(n_rows, seed, table)
-    # mutate a deterministic base row so the planted defect is reproducible
-    rng = random.Random(seed + 7919)
-    base = derive(_base_row(rng, 1_000_000))
-    dirty = defect.mutate(base)
-    dirty[PK_COLUMN] = f"__DIRTY_{defect.defect_id}__"
-    placeholders = ", ".join(["?"] * len(COLUMNS))
-    clean.execute(f'INSERT INTO "{table}" VALUES ({placeholders})',
-                  [dirty.get(c) for c in COLUMNS])
-    clean.commit()
-    return clean
+    """Backward-compatible single-row trap (see ``build_trap``)."""
+    return build_trap(defect, n_rows, seed, table, k=1)[0]
+
+
+def build_mixed(defects: list[Defect], n_rows: int = 2000, seed: int = 42,
+                table: str = TABLE_NAME, k: int = 1,
+                ) -> tuple[sqlite3.Connection, dict[str, list[str]]]:
+    """One DB with ALL defects planted simultaneously (production-like).
+
+    Returns (conn, {defect_id: [planted PKs]}). Used for the confusion
+    matrix: which checks fire on which defects' rows when every defect is
+    present at once.
+    """
+    conn = build_clean_conn(n_rows, seed, table)
+    planted: dict[str, list[str]] = {}
+    for j, d in enumerate(defects):
+        planted[d.defect_id] = plant_defect(
+            conn, d, seed=seed + 104_729 * (j + 1), k=k, table=table)
+    return conn, planted
 
 
 # ── CLI: dump clean + per-defect trap DBs to disk ───────────────────────────
@@ -299,6 +430,10 @@ def main() -> None:
         trap = build_trap_conn(d, args.rows, args.seed)
         _dump(trap, args.out / f"trap_{d.defect_id}.db")
     print(f"Wrote {len(DEFECTS)} trap DBs (trap_<id>.db) to {args.out}/")
+
+    mixed, planted = build_mixed(DEFECTS, args.rows, args.seed)
+    _dump(mixed, args.out / "mixed.db")
+    print(f"mixed.db  → all {len(planted)} defects planted simultaneously")
 
 
 if __name__ == "__main__":

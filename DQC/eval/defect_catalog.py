@@ -39,8 +39,10 @@ DIMENSIONS = (
 REAL_COLS = {
     "PD_ESTIMADA", "PD_SUELO", "PD_FINAL", "PD_DOWNTURN",
     "LGD_ESTIMADA", "LGD_REALIZADA", "LGD_SUELO", "MOC", "LGD_CON_MOC", "LGD_FINAL",
+    "MOC_CAT_A", "MOC_CAT_B", "MOC_CAT_C", "LGD_DOWNTURN",
     "OR_EAD", "OR_DISPTO", "OR_DISBLE", "SALDO_PENDIENTE", "EAD",
     "EAD_BALANCE", "CCF_ESTIMADO", "EAD_FUERA_BALANCE", "EAD_TOTAL",
+    "EAD_TOTAL_EUR", "TIPO_CAMBIO",
     "VALOR_COLATERAL_INICIAL", "VALOR_COLATERAL", "HAIRCUT", "LTV",
     "K_IRB", "M_VENCIMIENTO", "RWA", "ECL", "PROVISION",
     "TIPO_INTERES_ORIGINAL", "TIPO_INTERES_ACTUAL", "INTERESES_ACUMULADOS",
@@ -49,6 +51,8 @@ REAL_COLS = {
 }
 INT_COLS = {
     "MES_CICLO", "RATING_GRADO", "DPDS", "STAGE_IFRS9", "CURE_FLAG", "SW_FUSION",
+    "MES_DEFAULT", "MES_CIERRE_CICLO", "MES_VALORACION_COLATERAL",
+    "VENTANA_OBSERVACION_YEARS", "FLAG_NC",
 }
 
 FORMULA_EPS = 0.01  # tolerance for floating formula invariants
@@ -68,6 +72,7 @@ class Defect:
     mutate: Callable[[dict], dict] = field(default=lambda r: dict(r), repr=False)
     regulation_ref: str = ""
     decoy: bool = False   # True => single-column, must score r_coherence=0
+    plants_duplicate_pk: bool = False  # planted as a verbatim PK duplicate
 
 
 # ── mutators — each plants exactly its own incoherence into a clean row ──────
@@ -147,6 +152,123 @@ def _d24_fusion_flag_inconsistente(row):  # conformity / integrity
 
 def _d25_grade_pd_no_monotono(row):  # plausibility / monotonicity
     r = dict(row); r["RATING_GRADO"] = 16; r["PD_ESTIMADA"] = 0.002; return r
+
+def _month_shift(yyyymm: int, months: int) -> int:
+    total = (yyyymm // 100) * 12 + (yyyymm % 100) - 1 + months
+    return (total // 12) * 100 + (total % 12) + 1
+
+
+def _force_secured(r: dict) -> dict:
+    """Make a row secured without tripping other collateral invariants.
+
+    RETAIL_HIP rows are already HIPOTECA in the clean generator; everything
+    else becomes PRENDA (which carries no LGD-floor constraint, so D14/D15
+    stay silent) with a plausible, *fresh* valuation.
+    """
+    if r["COLATERAL_TIPO"] == "NINGUNA":
+        r["COLATERAL_TIPO"] = "PRENDA"
+        r["VALOR_COLATERAL_INICIAL"] = 50_000.0
+        r["HAIRCUT"] = 0.10
+        r["VALOR_COLATERAL"] = 45_000.0
+        r["MES_VALORACION_COLATERAL"] = r["MES_CICLO"]
+    return r
+
+
+def _d26_downturn_bajo(row):  # consistency — downturn LGD undercuts long-run
+    r = dict(row); r["LGD_DOWNTURN"] = r["LGD_ESTIMADA"] * 0.7; return r
+
+def _d27_moc_sum(row):  # consistency — MoC != sum of categories
+    r = dict(row); r["MOC_CAT_A"] = (r["MOC_CAT_A"] or 0.0) + 0.05; return r
+
+def _d28_ventana_sin_flag(row):  # conformity — short window not flagged
+    r = dict(row); r["VENTANA_OBSERVACION_YEARS"] = 3; r["FLAG_NC"] = 0; return r
+
+def _d29_valoracion_estancada(row):  # timeliness — stale collateral valuation
+    r = _force_secured(dict(row))
+    r["MES_VALORACION_COLATERAL"] = _month_shift(r["MES_CICLO"], -48)
+    return r
+
+def _d30_fx_mal_convertido(row):  # accuracy — EUR conversion broken
+    r = dict(row)
+    r["EAD_TOTAL_EUR"] = r["EAD_TOTAL"] * (r["TIPO_CAMBIO"] or 1.0) + 25_000.0
+    return r
+
+def _d31_cierre_antes_default(row):  # plausibility — impossible date order
+    r = dict(row)
+    r["ESTADO_CICLO"] = "CERRADO"
+    r["CURE_FLAG"] = 0
+    r["TERMINACION"] = "FALLIDO"
+    r["MES_CIERRE_CICLO"] = _month_shift(r["MES_DEFAULT"], -3)
+    return r
+
+def _d32_cura_sin_flag(row):  # conformity — cured closure without cure flag
+    r = dict(row)
+    r["ESTADO_CICLO"] = "CERRADO"
+    r["TERMINACION"] = "CURA"
+    r["CURE_FLAG"] = 0
+    r["MES_CIERRE_CICLO"] = r["MES_CIERRE_CICLO"] or _month_shift(r["MES_DEFAULT"], 6)
+    return r
+
+def _d34_divisa_invalida(row):  # validity — currency outside domain
+    r = dict(row); r["DIVISA"] = "XXX"; return r
+
+def _d35_colateral_sin_valor(row):  # completeness — secured without valuation
+    r = _force_secured(dict(row))
+    r["VALOR_COLATERAL"] = None
+    return r
+
+
+def _d36_provision_ecl(row):  # consistency — provision decoupled from ECL
+    r = dict(row); r["PROVISION"] = r["ECL"] + 500.0; return r
+
+def _d37_pd_downturn_bajo(row):  # consistency — downturn PD under estimate
+    r = dict(row); r["PD_DOWNTURN"] = r["PD_ESTIMADA"] / 2; return r
+
+def _d38_lgd_con_moc(row):  # consistency — MoC not applied to LGD
+    r = dict(row); r["LGD_CON_MOC"] = r["LGD_ESTIMADA"]; return r
+
+def _d39_vencimiento_fuera(row):  # validity — maturity outside [1,5]
+    r = dict(row); r["M_VENCIMIENTO"] = 7.0; return r
+
+def _d40_ead_alias(row):  # consistency — EAD alias diverges from EAD_TOTAL
+    r = dict(row); r["EAD"] = r["EAD_TOTAL"] + 1_000.0; return r
+
+def _d41_descuento_cero(row):  # plausibility — recoveries without discount rate
+    r = dict(row)
+    r["TASA_DESCUENTO"] = 0.0
+    r["RECUPERACION_ACUMULADA"] = min(5_000.0, 0.5 * (r["EAD_TOTAL"] or 10_000.0))
+    return r
+
+def _d42_causa_sin_dpd(row):  # conformity — 90-DPD cause with low DPDs
+    r = dict(row); r["CAUSA_DEFAULT"] = "90_DIAS_VENCIDO"; r["DPDS"] = 10
+    r["STAGE_IFRS9"] = 1  # keep D06/D20 silent: stage 1 is valid for DPDS=10
+    return r
+
+def _d43_tipo_persona(row):  # conformity — legal nature vs segment
+    r = dict(row)
+    r["TIPO_PERSONA"] = "F" if r["SEGMENTO"] in ("CORP", "SME") else "J"
+    return r
+
+def _d44_calibration_segment(row):  # conformity — calibration bucket unmapped
+    r = dict(row); r["CALIBRATION_SEGMENT"] = "UNMAPPED_X"; return r
+
+
+def _d45_haircut_implausible(row):  # plausibility — haircut out of band
+    r = _force_secured(dict(row)); r["HAIRCUT"] = 0.90; return r
+
+def _d46_cliente_nulo(row):  # completeness — active cycle without client
+    r = dict(row); r["ESTADO_CICLO"] = "ESTIMACION"; r["TERMINACION"] = ""
+    r["MES_CIERRE_CICLO"] = None; r["CURE_FLAG"] = 0; r["ID_CLIENTE"] = None
+    return r
+
+def _d47_lgd_realizada_formula(row):  # accuracy — realised LGD off-formula
+    r = dict(row)
+    r["ESTADO_CICLO"] = "CERRADO"
+    if not r.get("TERMINACION"):
+        r["TERMINACION"] = "FALLIDO"; r["CURE_FLAG"] = 0
+    r["LGD_REALIZADA"] = 0.01  # clean closed cycles sit in [0.45, 1.0]
+    return r
+
 
 def _da_ead_cero(row):  # validity decoy
     r = dict(row); r["EAD_TOTAL"] = 0.0; return r
@@ -292,6 +414,160 @@ DEFECTS: list[Defect] = [
            ("RATING_GRADO", "PD_ESTIMADA"),
            f"SELECT {PK_COLUMN} FROM {TABLE_NAME} WHERE RATING_GRADO>=14 AND PD_ESTIMADA<0.01",
            _d25_grade_pd_no_monotono, "EBA GL 2017/16 §73"),
+    # ── D26+: downturn / MoC / governance / dates / FX / uniqueness ─────────
+    Defect("D26", "consistency", "referencial", "HIGH",
+           "La LGD downturn es inferior a la LGD estimada a largo plazo: "
+           "LGD_DOWNTURN < LGD_ESTIMADA.",
+           ("LGD_DOWNTURN", "LGD_ESTIMADA"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} WHERE LGD_DOWNTURN < LGD_ESTIMADA - 0.0001",
+           _d26_downturn_bajo, "CRR Art. 181.1(b) / EBA GL 2017/16 §345"),
+    Defect("D27", "consistency", "formula", "MED",
+           "El MoC total no coincide con la suma de sus categorías "
+           "(A: deficiencias de datos, B: representatividad, C: error general): "
+           "MOC != MOC_CAT_A + MOC_CAT_B + MOC_CAT_C.",
+           ("MOC", "MOC_CAT_A", "MOC_CAT_B", "MOC_CAT_C"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE ABS(MOC - (MOC_CAT_A+MOC_CAT_B+MOC_CAT_C)) > 0.0001",
+           _d27_moc_sum, "EBA GL 2017/16 §43-44"),
+    Defect("D28", "conformity", "consistencia", "HIGH",
+           "Ventana de observación histórica < 5 años sin marcar el flag de "
+           "no conformidad (FLAG_NC=0).",
+           ("VENTANA_OBSERVACION_YEARS", "FLAG_NC"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE VENTANA_OBSERVACION_YEARS < 5 AND FLAG_NC = 0",
+           _d28_ventana_sin_flag, "EBA GL 2017/16 §6.3.2.1"),
+    Defect("D29", "timeliness", "consistencia", "MED",
+           "Exposición con colateral cuya última valoración tiene más de 36 "
+           "meses de antigüedad respecto al mes del ciclo (revaluación "
+           "periódica incumplida).",
+           ("COLATERAL_TIPO", "MES_VALORACION_COLATERAL", "MES_CICLO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE COLATERAL_TIPO <> 'NINGUNA' AND "
+           f"(MES_CICLO/100*12 + MES_CICLO%100) - "
+           f"(MES_VALORACION_COLATERAL/100*12 + MES_VALORACION_COLATERAL%100) > 36",
+           _d29_valoracion_estancada, "CRR Art. 208.3"),
+    Defect("D30", "accuracy", "formula", "MED",
+           "El EAD convertido a EUR no coincide con EAD_TOTAL * TIPO_CAMBIO "
+           "más allá de la tolerancia.",
+           ("EAD_TOTAL_EUR", "EAD_TOTAL", "TIPO_CAMBIO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE ABS(EAD_TOTAL_EUR - EAD_TOTAL*TIPO_CAMBIO) > 1.0",
+           _d30_fx_mal_convertido, "BCBS 239 P3"),
+    Defect("D31", "plausibility", "consistencia", "HIGH",
+           "Ciclo cerrado cuyo mes de cierre es anterior al mes de default: "
+           "orden temporal imposible.",
+           ("MES_CIERRE_CICLO", "MES_DEFAULT"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE MES_CIERRE_CICLO IS NOT NULL AND MES_CIERRE_CICLO < MES_DEFAULT",
+           _d31_cierre_antes_default, "BCBS 239 P3"),
+    Defect("D32", "conformity", "consistencia", "MED",
+           "Ciclo cerrado por CURA sin el flag de curación activo "
+           "(TERMINACION='CURA' con CURE_FLAG=0).",
+           ("TERMINACION", "CURE_FLAG"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE TERMINACION = 'CURA' AND CURE_FLAG = 0",
+           _d32_cura_sin_flag, "EBA GL 2017/16 §101"),
+    Defect("D33", "uniqueness", "cardinality", "HIGH",
+           "Clave primaria duplicada: el mismo ID_CONTR_CICLO_LGD aparece en "
+           "más de una fila (duplicidad real, no síntoma).",
+           (PK_COLUMN,),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"GROUP BY {PK_COLUMN} HAVING COUNT(*) > 1",
+           regulation_ref="BCBS 239 P3", plants_duplicate_pk=True),
+    Defect("D34", "validity", "rango", "MED",
+           "DIVISA fuera del dominio permitido ('EUR','USD','GBP').",
+           ("DIVISA",),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE DIVISA NOT IN ('EUR','USD','GBP')",
+           _d34_divisa_invalida, "ISO 4217 / BCBS 239 P3"),
+    Defect("D35", "completeness", "completitud", "HIGH",
+           "Exposición con colateral informado (COLATERAL_TIPO <> 'NINGUNA') "
+           "sin valor de colateral vigente (VALOR_COLATERAL NULL).",
+           ("COLATERAL_TIPO", "VALOR_COLATERAL"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE COLATERAL_TIPO <> 'NINGUNA' AND VALOR_COLATERAL IS NULL",
+           _d35_colateral_sin_valor, "CRR Art. 199 / BCBS 239 P4"),
+    Defect("D36", "consistency", "formula", "HIGH",
+           "La provisión contable no coincide con la ECL calculada: "
+           "PROVISION != ECL.",
+           ("PROVISION", "ECL"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} WHERE ABS(PROVISION - ECL) > {FORMULA_EPS}",
+           _d36_provision_ecl, "IFRS 9"),
+    Defect("D37", "consistency", "referencial", "HIGH",
+           "La PD downturn es inferior a la PD estimada: PD_DOWNTURN < PD_ESTIMADA.",
+           ("PD_DOWNTURN", "PD_ESTIMADA"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} WHERE PD_DOWNTURN < PD_ESTIMADA - 0.000001",
+           _d37_pd_downturn_bajo, "CRR Art. 181.1.b"),
+    Defect("D38", "consistency", "formula", "MED",
+           "La LGD con MoC no incorpora el margen de cautela: "
+           "LGD_CON_MOC != LGD_ESTIMADA + MOC.",
+           ("LGD_CON_MOC", "LGD_ESTIMADA", "MOC"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE ABS(LGD_CON_MOC - (LGD_ESTIMADA + MOC)) > 0.0001",
+           _d38_lgd_con_moc, "EBA GL 2017/16 §50"),
+    Defect("D39", "validity", "rango", "MED",
+           "Vencimiento efectivo fuera del rango regulatorio [1, 5] años.",
+           ("M_VENCIMIENTO",),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} WHERE M_VENCIMIENTO NOT BETWEEN 1.0 AND 5.0",
+           _d39_vencimiento_fuera, "CRR Art. 162"),
+    Defect("D40", "consistency", "formula", "MED",
+           "El alias EAD no coincide con EAD_TOTAL (deriva de vistas "
+           "desincronizadas).",
+           ("EAD", "EAD_TOTAL"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} WHERE ABS(EAD - EAD_TOTAL) > {FORMULA_EPS}",
+           _d40_ead_alias, "CRR Art. 166"),
+    Defect("D41", "plausibility", "consistencia", "MED",
+           "Recuperaciones acumuladas positivas con tasa de descuento nula o "
+           "negativa: los flujos no pueden descontarse.",
+           ("RECUPERACION_ACUMULADA", "TASA_DESCUENTO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE RECUPERACION_ACUMULADA > 0 AND TASA_DESCUENTO <= 0",
+           _d41_descuento_cero, "EBA GL 2019/03 §85"),
+    Defect("D42", "conformity", "consistencia", "MED",
+           "Causa de default '90_DIAS_VENCIDO' con menos de 90 días de impago.",
+           ("CAUSA_DEFAULT", "DPDS"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE CAUSA_DEFAULT = '90_DIAS_VENCIDO' AND DPDS < 90",
+           _d42_causa_sin_dpd, "CRR Art. 178"),
+    Defect("D43", "conformity", "consistencia", "LOW",
+           "Naturaleza jurídica incoherente con el segmento: CORP/SME deben "
+           "ser persona jurídica ('J') y retail persona física ('F').",
+           ("TIPO_PERSONA", "SEGMENTO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE (SEGMENTO IN ('CORP','SME') AND TIPO_PERSONA <> 'J') "
+           f"OR (SEGMENTO IN ('RETAIL_HIP','RETAIL_CONS') AND TIPO_PERSONA <> 'F')",
+           _d43_tipo_persona, "CRR Art. 147"),
+    Defect("D44", "conformity", "referencial", "MED",
+           "Bucket de calibración no derivado del segmento: "
+           "CALIBRATION_SEGMENT debe comenzar por SEGMENTO.",
+           ("CALIBRATION_SEGMENT", "SEGMENTO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE CALIBRATION_SEGMENT NOT LIKE SEGMENTO || '%'",
+           _d44_calibration_segment, "EBA GL 2017/16 §73"),
+    Defect("D45", "plausibility", "rango", "MED",
+           "Haircut implausible (> 50%) sobre una exposición con colateral: "
+           "valoración prudencial fuera de toda banda regulatoria.",
+           ("HAIRCUT", "COLATERAL_TIPO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE COLATERAL_TIPO <> 'NINGUNA' AND (HAIRCUT < 0 OR HAIRCUT > 0.5)",
+           _d45_haircut_implausible, "CRR Art. 161.4"),
+    Defect("D46", "completeness", "completitud", "HIGH",
+           "Ciclo activo (no CERRADO) sin identificador de cliente: campo "
+           "mandatorio para agregación por deudor.",
+           ("ID_CLIENTE", "ESTADO_CICLO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE (ID_CLIENTE IS NULL OR ID_CLIENTE = '') AND ESTADO_CICLO <> 'CERRADO'",
+           _d46_cliente_nulo, "BCBS 239 P3"),
+    Defect("D47", "accuracy", "formula", "MED",
+           "La LGD realizada de un ciclo cerrado no respeta la fórmula de "
+           "backtesting LGD = 1 - (recuperaciones - costes) / EAD.",
+           ("LGD_REALIZADA", "RECUPERACION_ACUMULADA", "COSTE_TOTAL_ACUMULADO",
+            "EAD_TOTAL", "ESTADO_CICLO"),
+           f"SELECT {PK_COLUMN} FROM {TABLE_NAME} "
+           f"WHERE ESTADO_CICLO = 'CERRADO' AND EAD_TOTAL > 0 AND "
+           f"ABS(LGD_REALIZADA - MAX(0.0, MIN(1.0, "
+           f"1.0 - (RECUPERACION_ACUMULADA - COSTE_TOTAL_ACUMULADO)/EAD_TOTAL))) > 0.001",
+           _d47_lgd_realizada_formula, "EBA GL 2017/16 §135"),
     # ── decoys: single-column range, must score r_coherence = 0 ──────────────
     Defect("DA", "validity", "rango", "MED",
            "EAD_TOTAL <= 0 en un ciclo activo (control de rango, no coherencia).",

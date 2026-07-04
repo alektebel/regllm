@@ -291,3 +291,132 @@ always. The chat UI survives unchanged as the review/exploration surface;
 
 Suite status after fixes: **597 passed, 0 failed**. `DQC/eval` self-test:
 **26/26 oracles pass**.
+
+---
+
+# Addendum (2nd pass) — production hardening & coverage certification
+
+## 6. What changed in this pass
+
+### 6.1 The toy database grew into a production-context schema
+
+`CICLOS_CALIBRADOS` went from 53 to **66 fields**, adding the context classes
+a real IRB warehouse carries and that the previous schema couldn't express
+checks about:
+
+- **Counterparty**: `ID_CLIENTE`, `TIPO_PERSONA` (legal nature vs segment).
+- **Cycle dates** (YYYYMM): `MES_DEFAULT`, `MES_CIERRE_CICLO`,
+  `MES_VALORACION_COLATERAL` — enabling temporal-ordering and staleness
+  checks (closure before default; collateral revaluation > 36 months old,
+  CRR Art. 208.3).
+- **Multi-currency**: `DIVISA`, `TIPO_CAMBIO`, `EAD_TOTAL_EUR` with the FX
+  conversion invariant.
+- **MoC decomposition** per EBA GL 2017/16 §43-44: `MOC_CAT_A/B/C` with
+  `MOC = A + B + C`.
+- **Downturn parameters**: `LGD_DOWNTURN` (must never undercut the long-run
+  LGD — CRR Art. 181.1(b)); `PD_DOWNTURN` now has its own invariant.
+- **Calibration governance**: `VENTANA_OBSERVACION_YEARS` + `FLAG_NC`
+  (5-year historical window, EBA GL §6.3.2.1).
+- Clean-generator alignment fixes: `TERMINACION`↔`CURE_FLAG`,
+  `CAUSA_DEFAULT`↔`DPDS`, and `LGD_REALIZADA` now actually satisfies the
+  backtesting formula the dictionary documents for closed cycles.
+
+The defect catalog grew **26 → 48** (46 coherence + 2 decoys), with every
+non-decoy defect carrying a `regulation_ref`.
+
+### 6.2 The eval harness was hardened against the failure modes flagged in §3
+
+- **k planted rows per defect** (default 3), each from a different random
+  base; `r_catches` is now the *fraction* caught. Memorising one row no
+  longer scores full recall (E1 → done).
+- **Mixed DB**: coverage mode plants all 48 defects at once and attributes
+  hits by planted PK — one query per check instead of one per
+  (check × defect), and the realistic production condition (E2 → done via
+  set attribution; full Jaccard was unnecessary because clean-zero checks
+  can only return planted rows).
+- **Confusion / gaming detection**: checks firing on > 3 distinct defects are
+  flagged *overbroad*; a regression test proves that PK-fishing
+  (`WHERE pk LIKE '__DIRTY%'`) is caught.
+- **Oracle overlap matrix** in the self-test makes nested-invariant overlap
+  (D01 ⊃ D03/D04/D05/D12) visible instead of silent.
+- **True uniqueness defect**: duplicate PKs are planted as verbatim row
+  copies, not proxy symptoms.
+- **CI gates**: `--fail-under` on the harness, plus two new steps in
+  `.github/workflows/test.yml` (oracle self-test + coverage matrix at 1.0).
+  The dead `DQC/.github/workflows/dqc-deploy.yml` was removed — GitHub never
+  reads nested workflow dirs, so that deploy pipeline had *never run*; the
+  root `deploy.yml` is the live one.
+- The harness itself is now under test (`tests/test_dqc_eval.py`, 15 tests) —
+  and its dictionary-vs-schema test immediately caught two fields missing
+  from the data dictionary (`ENTIDAD_ORIGEN`, `LTV`).
+
+### 6.3 Coverage is now a computable artifact (the §4 proposal, implemented)
+
+`DQC/eval/coverage_matrix.py` builds the **field × article matrix**
+deterministically:
+
+- rows = the 66 dictionary fields; columns = the regulatory references the
+  dictionary attaches to them (49 applicable cells);
+- a cell is `covered` when a catalog defect touches the field *and* cites the
+  article (trap + oracle exist ⇒ certifiable), `partial` when the field is
+  exercised under another article, `todo` otherwise;
+- `--fail-under 1.0` gates CI on **zero todo cells** — currently
+  **49/49 cells covered (80% exact-article, 20% partial), 0 todo**;
+- `--emit-applicability` generates `DQC/coverage/applicability.yaml`: all 58
+  sections of the ingested EBA GL/2017/16 (221 paragraphs) with suggested
+  field mappings, each pending human sign-off.
+
+## 7. How we make sure ALL the PD/LGD articles and coherence rules are checked
+
+The guarantee is a chain of three versioned, machine-verifiable artifacts —
+no step relies on trusting LLM output:
+
+1. **Applicability** (`DQC/coverage/applicability.yaml`): every GL/2017/16
+   section is either mapped to schema fields or explicitly marked
+   not-applicable with a reason. Completeness over *articles* is enumerated,
+   and the residual judgment (is this section about our data?) is a one-time
+   human review, recorded in git.
+2. **Certifiability** (`coverage_matrix.py`, CI-gated at 1.0): every
+   applicable (field × article) cell must be backed by a catalog defect —
+   meaning a planted violation and a reference oracle that the self-test
+   proves fires on it. A check for that cell is not "believed" to work; it
+   *demonstrably catches a planted breach of exactly that rule*.
+3. **Achievement** (`eval_harness.py --sql/--agent`, CI-gateable via
+   `--fail-under`): the actual check set (hand-written, template-generated,
+   or LLM-generated) is scored on the mixed DB; per-article and
+   per-dimension recall show precisely which articles and which coherence
+   classes the current checks miss.
+
+Database-coherence rules ride the same rails: they are catalog defects with
+`regulation_ref = BCBS 239 P3/P4/P5` (or bank-internal), so "all coherence
+checks present" is the same computable statement as the article coverage.
+
+What remains judgment (and is deliberately kept as reviewed YAML, not code):
+approving the applicability map, and deciding tolerance thresholds. Everything
+downstream is enforced by CI.
+
+## 8. Updated overall assessment
+
+- The DQC application (`main` branch) now has: a green test suite (605), a
+  self-testing 48-defect eval harness with anti-gaming measures, a
+  CI-enforced coverage matrix at 100%, and infra whose two stacks agree.
+  The remaining production blockers are unchanged from §2 and are
+  *operational*, not evaluative: durable storage for the validated-checks
+  DB, auth/TLS on the ALB, and running the agent-mode eval as a deploy gate
+  against a staged endpoint.
+- **Repo fragmentation is now the biggest organizational risk.** The remote
+  has three unrelated histories: `main` (this DQC + SAS-diff project),
+  `master` (a *different* application — "RegLLM Spanish Banking Regulation
+  Assistant": Next.js + FastAPI + pgvector + Groq/LoRA chat, 33 commits,
+  separate root commit), and `update-model` (an earlier Gradio/Modal variant
+  of the same assistant, 22 commits). They share a repo name but no code or
+  history. Recommendation: split the chat assistant into its own repository
+  (or make it a top-level `assistant/` subtree on `main` via a deliberate
+  merge), and delete stale branches — a repo where `main` and `master` are
+  different products will eventually ship the wrong thing.
+- Next highest-value step remains §4.3: template-DSL instantiation of checks
+  from the dictionary, now trivial to certify because the matrix and traps
+  already exist.
+
+Status after this pass: **605 tests passed** (incl. 15 harness tests),
+self-test **48/48 oracles**, coverage matrix **49/49 cells, 0 todo**.

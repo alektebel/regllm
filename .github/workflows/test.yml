@@ -32,3 +32,12 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+      # DQC eval harness gates — every oracle must hold (0 rows on clean,
+      # all planted rows on its trap) and the field × article coverage
+      # matrix must have no TODO cells.
+      - name: DQC eval — oracle self-test
+        run: python DQC/eval/eval_harness.py --selftest
+
+      - name: DQC eval — coverage matrix gate
+        run: python DQC/eval/coverage_matrix.py --fail-under 1.0
