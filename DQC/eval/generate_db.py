@@ -19,6 +19,7 @@ import argparse
 import math
 import random
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 from defect_catalog import (
@@ -35,8 +36,11 @@ COLUMNS: list[str] = [
     "ID_FUSION_FINAL", "SW_FUSION",
     "SEGMENTO", "CALIBRATION_SEGMENT", "PRODUCTO", "MES_CICLO",
     "ENTIDAD_ORIGEN",
-    # cycle dates (YYYYMM)
+    # cycle dates (YYYYMM periods)
     "MES_DEFAULT", "MES_CIERRE_CICLO",
+    # cycle dates (ISO day-level, for interrelation checks)
+    "FECHA_ALTA_CONTRATO", "FECHA_DEFAULT", "FECHA_CIERRE_CICLO",
+    "FECHA_ADJUDICACION", "FECHA_VENTA_COLATERAL",
     # currency
     "DIVISA", "TIPO_CAMBIO",
     # exposure (BASILEA)
@@ -193,6 +197,22 @@ def _base_row(rng: random.Random, idx: int) -> dict:
     ventana = rng.randint(3, 9)
     flag_nc = 1 if ventana < 5 else 0
 
+    # Day-level dates with the ordering invariants a real cycle satisfies:
+    #   alta <= default <= (adjudicacion) <= cierre,  and  venta >= adjudicacion.
+    d_default = date(mes_default // 100, mes_default % 100, rng.randint(1, 28))
+    d_alta = d_default - timedelta(days=rng.randint(180, 1825))
+    d_cierre = (date(mes_cierre // 100, mes_cierre % 100, rng.randint(1, 28))
+                if mes_cierre else None)
+    d_adj = d_venta = None
+    if adjud:
+        # keep adjudication strictly inside (default, cierre] so the clean DB
+        # never trips the date-window check
+        hi = max((d_cierre - d_default).days - 1, 1) if d_cierre else 365
+        d_adj = d_default + timedelta(days=rng.randint(1, hi))
+        if rng.random() < 0.6:
+            d_venta = d_adj + timedelta(days=rng.randint(30, 300))
+    _iso = lambda d: d.isoformat() if d else None
+
     return {
         "ID_CONTR_CICLO_LGD": f"{contrato}_{period}",
         "ID_CONTRATO": contrato,
@@ -202,6 +222,11 @@ def _base_row(rng: random.Random, idx: int) -> dict:
         "SW_FUSION": sw_fusion,
         "MES_DEFAULT": mes_default,
         "MES_CIERRE_CICLO": mes_cierre,
+        "FECHA_ALTA_CONTRATO": _iso(d_alta),
+        "FECHA_DEFAULT": _iso(d_default),
+        "FECHA_CIERRE_CICLO": _iso(d_cierre),
+        "FECHA_ADJUDICACION": _iso(d_adj),
+        "FECHA_VENTA_COLATERAL": _iso(d_venta),
         "MES_VALORACION_COLATERAL": mes_valoracion,
         "DIVISA": divisa,
         "TIPO_CAMBIO": fx,
@@ -311,23 +336,85 @@ def derive(row: dict) -> dict:
     return r
 
 
+# ── source (upstream) tables ────────────────────────────────────────────────
+# The final CICLOS_CALIBRADOS is derived from three source tables. Reproducing
+# them lets the harness exercise CROSS-TABLE checks: referential integrity
+# (every reported cycle has a parent contract) and reconciliation (the same
+# attribute reported in two tables must agree). Each is built from the same
+# clean rows, so every cross-table invariant holds by construction.
+
+_AUX_SCHEMA = {
+    "contratos": (
+        "ID_CONTRATO", "ID_CLIENTE", "TIPO_PERSONA", "SEGMENTO", "PRODUCTO",
+        "ENTIDAD_ORIGEN", "FECHA_ALTA_CONTRATO",
+    ),
+    "basilea_mensual": (
+        "ID_CONTRATO", "MES_CICLO", "OR_EAD", "OR_DISPTO", "OR_DISBLE",
+    ),
+    "colaterales": (
+        "ID_COLATERAL", "ID_CONTRATO", "COLATERAL_TIPO",
+        "VALOR_COLATERAL_INICIAL", "HAIRCUT", "FECHA_VALORACION",
+    ),
+}
+
+
+def _has_aux(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contratos'"
+    ).fetchone()
+    return row is not None
+
+
+def _create_aux(conn: sqlite3.Connection) -> None:
+    conn.execute('CREATE TABLE contratos ("ID_CONTRATO" TEXT, "ID_CLIENTE" '
+                 'TEXT, "TIPO_PERSONA" TEXT, "SEGMENTO" TEXT, "PRODUCTO" TEXT, '
+                 '"ENTIDAD_ORIGEN" TEXT, "FECHA_ALTA_CONTRATO" TEXT)')
+    conn.execute('CREATE TABLE basilea_mensual ("ID_CONTRATO" TEXT, '
+                 '"MES_CICLO" INTEGER, "OR_EAD" REAL, "OR_DISPTO" REAL, '
+                 '"OR_DISBLE" REAL)')
+    conn.execute('CREATE TABLE colaterales ("ID_COLATERAL" TEXT, '
+                 '"ID_CONTRATO" TEXT, "COLATERAL_TIPO" TEXT, '
+                 '"VALOR_COLATERAL_INICIAL" REAL, "HAIRCUT" REAL, '
+                 '"FECHA_VALORACION" TEXT)')
+
+
+def _populate_aux(conn: sqlite3.Connection, rows: list[dict]) -> None:
+    seen: set[str] = set()
+    contr, bas, col = [], [], []
+    for r in rows:
+        cid = r["ID_CONTRATO"]
+        if cid not in seen:
+            seen.add(cid)
+            contr.append([r.get(c) for c in _AUX_SCHEMA["contratos"]])
+        bas.append([r.get(c) for c in _AUX_SCHEMA["basilea_mensual"]])
+        if r["COLATERAL_TIPO"] != "NINGUNA":
+            mv = r["MES_VALORACION_COLATERAL"]
+            col.append([
+                f"COL_{cid}", cid, r["COLATERAL_TIPO"],
+                r["VALOR_COLATERAL_INICIAL"], r["HAIRCUT"],
+                f"{mv // 100:04d}-{mv % 100:02d}-15" if mv else None,
+            ])
+    conn.executemany(f'INSERT INTO contratos VALUES ({",".join("?"*7)})', contr)
+    conn.executemany(f'INSERT INTO basilea_mensual VALUES ({",".join("?"*5)})', bas)
+    conn.executemany(f'INSERT INTO colaterales VALUES ({",".join("?"*6)})', col)
+    conn.commit()
+
+
 def build_clean_conn(n_rows: int = 2000, seed: int = 42,
                      table: str = TABLE_NAME) -> sqlite3.Connection:
-    """Build an in-memory clean DB with all invariants satisfied."""
+    """Build an in-memory clean DB (final table + source tables) with all
+    single-table AND cross-table invariants satisfied by construction."""
     rng = random.Random(seed)
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute(create_table_sql(table))
     placeholders = ", ".join(["?"] * len(COLUMNS))
     ins = f'INSERT INTO "{table}" VALUES ({placeholders})'
-    batch = []
-    for i in range(1, n_rows + 1):
-        row = derive(_base_row(rng, i))           # derive ONCE per row
-        batch.append([row.get(c) for c in COLUMNS])
-        if len(batch) >= 1000:
-            conn.executemany(ins, batch); batch.clear()
-    if batch:
-        conn.executemany(ins, batch)
+    rows = [derive(_base_row(rng, i)) for i in range(1, n_rows + 1)]
+    conn.executemany(ins, [[r.get(c) for c in COLUMNS] for r in rows])
+    if table == TABLE_NAME:
+        _create_aux(conn)
+        _populate_aux(conn, rows)
     conn.commit()
     return conn
 
@@ -344,6 +431,12 @@ def plant_defect(conn: sqlite3.Connection, defect: Defect, *,
     Uniqueness defects (``plants_duplicate_pk``) are planted by re-inserting
     verbatim copies of existing rows — the only way to create a true PK
     duplicate without breaking any other invariant.
+
+    Cross-table defects (``plants_from_existing``) are planted by copying an
+    *existing clean row* (so its parents in contratos/basilea/colaterales stay
+    valid), applying the mutation to break exactly one cross-table invariant,
+    and re-keying it. ``pick_where`` restricts which clean rows are eligible
+    (e.g. only secured rows for a collateral reconciliation).
     """
     placeholders = ", ".join(["?"] * len(COLUMNS))
     ins = f'INSERT INTO "{table}" VALUES ({placeholders})'
@@ -359,13 +452,41 @@ def plant_defect(conn: sqlite3.Connection, defect: Defect, *,
         conn.commit()
         return planted
 
+    if defect.plants_from_existing:
+        where = f"WHERE {defect.pick_where}" if defect.pick_where else ""
+        rows = conn.execute(
+            f'SELECT * FROM "{table}" {where} ORDER BY {PK_COLUMN} LIMIT ?',
+            (k,),
+        ).fetchall()
+        for i, row in enumerate(rows):
+            dirty = defect.mutate(dict(row))
+            dirty[PK_COLUMN] = f"__DIRTY_{defect.defect_id}_{i}__"
+            conn.execute(ins, [dirty.get(c) for c in COLUMNS])
+            planted.append(dirty[PK_COLUMN])
+        conn.commit()
+        return planted
+
+    dirties: list[dict] = []
     for i in range(k):
         rng = random.Random(seed + 7919 + 31 * i)
         base = derive(_base_row(rng, 1_000_000 + i))
         dirty = defect.mutate(base)
         dirty[PK_COLUMN] = f"__DIRTY_{defect.defect_id}_{i}__"
+        # Globally-unique contract id so this row's registered parent is its
+        # own — two defects planting off the same base idx must not collide in
+        # the contratos/basilea parent tables (which would fabricate spurious
+        # cross-table mismatches).
+        dirty["ID_CONTRATO"] = f"CONT_{defect.defect_id}_{i}"
         conn.execute(ins, [dirty.get(c) for c in COLUMNS])
+        dirties.append(dirty)
         planted.append(dirty[PK_COLUMN])
+    # Register matching parent rows for the fresh contracts so a single-table
+    # defect does NOT read as a cross-table orphan/mismatch. Parents are built
+    # from the dirty row itself, so they AGREE with what the cycle reports —
+    # only the deliberate cross-table defects (plants_from_existing) leave the
+    # real parent untouched and thereby mismatch.
+    if table == TABLE_NAME and _has_aux(conn):
+        _populate_aux(conn, dirties)
     conn.commit()
     return planted
 

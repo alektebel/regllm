@@ -32,8 +32,9 @@ SAS pipeline (7 layers) ──► CICLOS_CALIBRADOS schema ──► data_dictio
 |---|---|
 | `sas/ciclos_calibrados_pipeline.sas` | 7-layer PD+LGD pipeline (L0 sources → L7 ECL/RWA), corrective fixes, documents planted defects D01–D25. |
 | `data_dictionary.md` | Final-table schema (66 fields) + per-field description, lineage layer, regulatory ref. **The single source of truth for the coverage matrix.** |
-| `defect_catalog.py` | 48 ground-truth defects across 8 DQ dimensions, each with an `oracle_sql`, a `mutate(row)` and a `regulation_ref`. |
-| `generate_db.py` | Clean SQLite (all invariants hold by construction), k-row traps per defect, and a **mixed DB** with every defect planted at once. |
+| `defect_catalog.py` | 58 ground-truth defects across 8 DQ dimensions (incl. 6 cross-table + 4 date-interrelation), each with an `oracle_sql`, a `mutate(row)` and a `regulation_ref`. |
+| `generate_db.py` | Clean SQLite — the final table **plus 3 source tables** (`contratos`, `basilea_mensual`, `colaterales`) — with all single-table AND cross-table invariants true by construction; k-row traps per defect; **mixed DB** with every defect planted at once. |
+| `source_tables.md` | Schema of the 3 source tables + the cross-table reconciliation map. |
 | `eval_harness.py` | Self-test, mixed-DB coverage, agent-targeted scoring, per-dimension + per-article deficiency report, `--fail-under` CI gate. |
 | `coverage_matrix.py` | Field × article coverage certification + GL applicability skeleton generator. |
 | `../coverage/applicability.yaml` | EBA GL/2017/16 section → field applicability map (human-reviewed). |
@@ -52,6 +53,23 @@ with EUR conversion, MoC broken into EBA GL §43-44 categories A/B/C, downturn
 PD/LGD, and calibration-governance fields (observation window +
 non-conformity flag). Every derived field satisfies its documented formula in
 the clean DB **by construction**, so any oracle firing on `clean.db` is a bug.
+
+**Multi-table.** The final `ciclos_calibrados` is materialised alongside the
+three source tables it derives from — `contratos` (contract master),
+`basilea_mensual` (authoritative monthly exposure), `colaterales` (collateral)
+— all consistent by construction. This forces **cross-table** checks that a
+single-table schema cannot:
+
+- **referential integrity** — every cycle has a parent contract (D48);
+- **reconciliation** — the same attribute reported in two tables must agree:
+  EAD vs BASILEA (D49), segment/client/origination-date vs CONTRATOS
+  (D50/D51/D53), collateral value vs COLATERALES (D52);
+- **date interrelations** — the lifecycle dates `FECHA_ALTA → FECHA_DEFAULT →
+  FECHA_ADJUDICACION → FECHA_CIERRE`, and `FECHA_VENTA ≥ FECHA_ADJUDICACION`,
+  must be monotonic (D54–D56), and `FECHA_DEFAULT`'s month must equal
+  `MES_DEFAULT` (D57).
+
+See [`source_tables.md`](source_tables.md) for the source-table schemas.
 
 ## Trap protocol (mutation testing, hardened)
 

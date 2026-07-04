@@ -420,3 +420,91 @@ downstream is enforced by CI.
 
 Status after this pass: **605 tests passed** (incl. 15 harness tests),
 self-test **48/48 oracles**, coverage matrix **49/49 cells, 0 todo**.
+
+---
+
+# Addendum (3rd pass) — multi-table (cross-table) checks & date interrelations
+
+## 9. Does the harness compare tables against each other? Now yes.
+
+Until this pass the whole stress DB was one denormalised table, so the harness
+could not force **cross-table** checks — the class that verifies *the same
+thing is reported consistently in different tables*. That gap is closed.
+
+`generate_db.build_clean_conn` now materialises the final `ciclos_calibrados`
+**together with the three source tables it derives from** —
+`contratos` (contract master), `basilea_mensual` (authoritative monthly
+exposure), `colaterales` (collateral) — all consistent by construction. Six
+new defects (D48–D53) exercise the two cross-table families:
+
+- **Referential integrity** — D48: a reported cycle whose `ID_CONTRATO` has no
+  parent in `contratos` (`LEFT JOIN … WHERE parent IS NULL`).
+- **Reconciliation** (same attribute, two tables, must agree) — D49 EAD vs
+  `basilea_mensual`, D50 segment vs `contratos`, D51 client, D52 collateral
+  value vs `colaterales`, D53 origination date. All `JOIN … WHERE a.x <> b.x`.
+
+Planting these correctly required a new mechanism: cross-table defects are
+planted by **copying a real clean row** (so its parents stay valid) and
+breaking exactly one cross-table invariant, while normally-planted rows now
+**register their own matching parent rows** — otherwise every single-table
+planted row would read as an orphan/mismatch. A regression test
+(`test_cross_table_defect_isolated_in_mixed_db`) locks in that isolation; it
+caught a real bug where a shared fresh-contract id made the reconciliation
+oracles fire on 47 unrelated defects.
+
+## 10. Date interrelations (start / default / adjudication / close / sale)
+
+The schema gained five ISO day-level dates —
+`FECHA_ALTA_CONTRATO`, `FECHA_DEFAULT`, `FECHA_ADJUDICACION`,
+`FECHA_CIERRE_CICLO`, `FECHA_VENTA_COLATERAL` — with the lifecycle ordering a
+real cycle satisfies, and four defects that break it:
+
+- D54 — origination after default (`alta > default`);
+- D55 — adjudication outside the `[default, cierre]` window;
+- D56 — collateral sold before it was foreclosed (`venta < adjudicacion`);
+- D57 — `FECHA_DEFAULT`'s month disagrees with the `MES_DEFAULT` period
+  (two representations of one date).
+
+These are multi-date, multi-column predicates — exactly the checks a
+`col IS NULL` generator cannot produce. Building them surfaced (and the
+self-test's clean-DB gate caught) a real generator bug: the adjudication date
+could land past the closure date when the closure gap was under 20 days,
+which would have made the clean DB itself violate D55. Fixed by sampling the
+adjudication strictly inside the window; verified clean across 5 seeds.
+
+## 11. "What would we need — a more extended dictionary?" — yes, and it's done
+
+The three source tables are documented in a new
+[`DQC/eval/source_tables.md`](../DQC/eval/source_tables.md) — kept separate
+from `data_dictionary.md` so the field × article coverage matrix stays scoped
+to the reporting table — with an explicit **reconciliation map** (which column
+in the final table must equal which column in which source table). The five
+new date fields were added to `data_dictionary.md`; a harness test
+(`test_dictionary_parses_all_schema_columns`) enforces that every schema
+column is documented, and it immediately flagged the five missing date fields
+before they could rot.
+
+Two golden traces were added for the new capability: **G17** (cross-table:
+orphan + segment-reconciliation + EAD-vs-BASILEA, all requiring JOINs) and
+**G18** (the full date lifecycle). Both score 100% on the gold answers.
+
+## 12. Status after the 3rd pass
+
+- Catalog: **58 defects** (56 coherence + 2 decoys) across 8 dimensions,
+  now including 6 cross-table and 4 date-interrelation defects.
+- Self-test: **58/58 oracles** clean-by-construction, verified across 5 seeds.
+- Coverage matrix: **51/51 applicable cells, 0 todo** (still CI-gated at 1.0).
+- Golden traces: **18/18** (16 single-table + 2 cross-table/date).
+- Suite: **616 tests passed** (incl. the 4 new cross-table/date harness tests).
+
+**Is the toy DB now complex enough to force non-trivial tests?** For
+row-level and cross-table coherence, yes — a lazy generator scores near zero
+against 58 defects spanning three-way formulas, JOIN reconciliation and
+multi-date ordering. The remaining honest gaps (next expansions, in order):
+**(1) temporal panels** — one row per cycle, no monthly history, so
+"cumulative recovery is monotone over months" / "stage can't skip 1→3"
+(window functions) can't yet be forced; **(2) statistical/distributional**
+checks — segment-level default-rate reasonableness, vintage drift
+(`GROUP BY … HAVING` aggregates); **(3) a second reporting table** to check
+consistency between two *outputs* (e.g. COREP vs FINREP), not just output vs
+source.

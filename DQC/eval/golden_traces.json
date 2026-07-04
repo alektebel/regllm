@@ -469,6 +469,90 @@
           "campos_entrada": ["EAD_TOTAL", "EAD_BALANCE", "EAD_FUERA_BALANCE"]
         }
       ]
+    },
+    {
+      "trace_id": "G17",
+      "dimension": "accuracy",
+      "difficulty": "hard",
+      "request": "Necesito controles que crucen ciclos_calibrados con las tablas fuente CONTRATOS y BASILEA: integridad referencial, que el segmento cuadre con el maestro del contrato y que el EAD cuadre con BASILEA.",
+      "variable": "ID_CONTRATO",
+      "expects": {
+        "defects": ["D48", "D49", "D50"],
+        "must_cite": ["CRR Art. 166"],
+        "forbid_single_column": true,
+        "note": "Cross-table trace: requires JOINs to contratos and basilea_mensual. A single-table generator cannot answer this."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_XT_ORFANDAD_001",
+          "descripcion": "Todo ciclo debe tener un contrato padre en CONTRATOS.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc LEFT JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO WHERE c.ID_CONTRATO IS NULL",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["ID_CONTRATO"]
+        },
+        {
+          "dqc_id": "DQC_XT_SEGMENTO_002",
+          "descripcion": "El segmento del ciclo debe coincidir con el segmento maestro del contrato.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO WHERE cc.SEGMENTO <> c.SEGMENTO",
+          "referencia_regulatoria": "CRR Art. 147 / BCBS 239 P3",
+          "campos_entrada": ["SEGMENTO"]
+        },
+        {
+          "dqc_id": "DQC_XT_EAD_BASILEA_003",
+          "descripcion": "El OR_EAD del ciclo debe reconciliar con el OR_EAD autorizado en BASILEA_MENSUAL para el mismo contrato y mes.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc JOIN basilea_mensual b ON cc.ID_CONTRATO = b.ID_CONTRATO AND cc.MES_CICLO = b.MES_CICLO WHERE ABS(cc.OR_EAD - b.OR_EAD) > 1.0",
+          "referencia_regulatoria": "CRR Art. 166 / BCBS 239 P3",
+          "campos_entrada": ["OR_EAD"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G18",
+      "dimension": "plausibility",
+      "difficulty": "hard",
+      "request": "Controles sobre la cronología del ciclo: alta, default, adjudicación, cierre y venta del colateral deben ir en orden.",
+      "variable": "FECHA_DEFAULT",
+      "expects": {
+        "defects": ["D54", "D55", "D56"],
+        "must_cite": ["CRR Art. 178"],
+        "forbid_single_column": true,
+        "note": "Date-interrelation trace: multiple lifecycle dates that must be monotonic. Needs multi-date reasoning, not a range check."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_FECHA_ALTA_DEFAULT_001",
+          "descripcion": "La fecha de alta del contrato debe preceder a la fecha de default.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE FECHA_ALTA_CONTRATO > FECHA_DEFAULT",
+          "referencia_regulatoria": "CRR Art. 178",
+          "campos_entrada": ["FECHA_ALTA_CONTRATO", "FECHA_DEFAULT"]
+        },
+        {
+          "dqc_id": "DQC_FECHA_ADJ_VENTANA_002",
+          "descripcion": "La adjudicación debe caer entre el default y el cierre del ciclo.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ADJUDICACION_FLAG = '1' AND FECHA_ADJUDICACION IS NOT NULL AND (FECHA_ADJUDICACION < FECHA_DEFAULT OR (FECHA_CIERRE_CICLO IS NOT NULL AND FECHA_ADJUDICACION > FECHA_CIERRE_CICLO))",
+          "referencia_regulatoria": "EBA GL 2017/16 §159",
+          "campos_entrada": ["FECHA_ADJUDICACION", "FECHA_DEFAULT", "FECHA_CIERRE_CICLO"]
+        },
+        {
+          "dqc_id": "DQC_FECHA_VENTA_ADJ_003",
+          "descripcion": "La venta del colateral no puede ser anterior a su adjudicación.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE FECHA_VENTA_COLATERAL IS NOT NULL AND FECHA_VENTA_COLATERAL < FECHA_ADJUDICACION",
+          "referencia_regulatoria": "EBA GL 2017/16 §159",
+          "campos_entrada": ["FECHA_VENTA_COLATERAL", "FECHA_ADJUDICACION"]
+        }
+      ]
     }
   ]
 }

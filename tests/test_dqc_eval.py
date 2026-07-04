@@ -18,7 +18,7 @@ from defect_catalog import (  # noqa: E402
     DEFECTS, DEFECTS_BY_ID, DIMENSIONS, PK_COLUMN, TABLE_NAME,
 )
 from generate_db import (  # noqa: E402
-    build_clean_conn, build_mixed, build_trap,
+    build_clean_conn, build_mixed, build_trap, _has_aux,
 )
 from eval_harness import (  # noqa: E402
     coverage, score_check, selftest, _safe_run,
@@ -137,6 +137,51 @@ def test_coverage_requires_clean_zero():
                    rows=ROWS, seed=SEED, k=1)
     assert rep.n_valid == 0
     assert rep.recall == 0.0
+
+
+def test_clean_db_has_source_tables_and_no_cross_table_violations():
+    conn = build_clean_conn(ROWS, SEED)
+    assert _has_aux(conn)
+    for tbl in ("contratos", "basilea_mensual", "colaterales"):
+        n = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+        assert n > 0, tbl
+    # every cross-table oracle is clean on the clean DB
+    for d in DEFECTS:
+        if d.cross_table:
+            _, rows = _safe_run(conn, d.oracle_sql)
+            assert rows == [], f"{d.defect_id} fires on clean DB"
+
+
+def test_cross_table_defect_isolated_in_mixed_db():
+    # A cross-table oracle must catch its own planted rows and not be dominated
+    # by other defects (the collision bug we fixed). Verify D50 (segment
+    # reconciliation) catches exactly its own planted PKs on the mixed DB.
+    d = DEFECTS_BY_ID["D50"]
+    mixed, planted = build_mixed(DEFECTS, ROWS, SEED, k=1)
+    pk_to_defect = {pk: did for did, pks in planted.items() for pk in pks}
+    _, rows = _safe_run(mixed, d.oracle_sql)
+    caught = {r[PK_COLUMN] for r in rows}
+    attributed = {pk_to_defect.get(pk) for pk in caught}
+    # every planted D50 row caught, and nothing wildly over-broad
+    assert set(planted["D50"]) <= caught
+    assert len(attributed - {"D50", None}) <= 2
+
+
+def test_referential_integrity_orphan_only_caught_by_d48():
+    trap, planted = build_trap(DEFECTS_BY_ID["D48"], ROWS, SEED, k=2)
+    _, rows = _safe_run(trap, DEFECTS_BY_ID["D48"].oracle_sql)
+    assert set(planted) <= {r[PK_COLUMN] for r in rows}
+    # a reconciliation oracle (inner join) must NOT catch the orphan
+    _, recon = _safe_run(trap, DEFECTS_BY_ID["D49"].oracle_sql)
+    assert not (set(planted) & {r[PK_COLUMN] for r in recon})
+
+
+def test_date_interrelation_defect_catches():
+    for did in ("D54", "D55", "D56", "D57"):
+        d = DEFECTS_BY_ID[did]
+        trap, planted = build_trap(d, ROWS, SEED, k=2)
+        _, rows = _safe_run(trap, d.oracle_sql)
+        assert set(planted) <= {r[PK_COLUMN] for r in rows}, did
 
 
 def test_mixed_db_contains_all_defects():

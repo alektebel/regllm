@@ -73,6 +73,9 @@ class Defect:
     regulation_ref: str = ""
     decoy: bool = False   # True => single-column, must score r_coherence=0
     plants_duplicate_pk: bool = False  # planted as a verbatim PK duplicate
+    plants_from_existing: bool = False  # planted by mutating a real clean row
+    pick_where: str = ""  # SQL filter on eligible clean rows (cross-table)
+    cross_table: bool = False  # oracle joins ciclos_calibrados to a source table
 
 
 # ── mutators — each plants exactly its own incoherence into a clean row ──────
@@ -251,6 +254,62 @@ def _d43_tipo_persona(row):  # conformity — legal nature vs segment
 
 def _d44_calibration_segment(row):  # conformity — calibration bucket unmapped
     r = dict(row); r["CALIBRATION_SEGMENT"] = "UNMAPPED_X"; return r
+
+
+# ── cross-table mutators (operate on a copy of a real clean row) ────────────
+
+def _d48_orphan_contrato(row):  # referential integrity — no parent contract
+    r = dict(row); r["ID_CONTRATO"] = "CONT_GHOST"; return r
+
+def _d49_or_ead_reconc(row):  # accuracy — OR_EAD disagrees with BASILEA source
+    r = dict(row)
+    r["OR_EAD"] = (r["OR_EAD"] or 0.0) + 50_000.0
+    r["SW_FUSION"] = 0            # keep D17 (fusion dedup) silent
+    r["ID_FUSION_FINAL"] = None   # keep D24 (fusion flag) silent
+    return r
+
+def _d50_segmento_reconc(row):  # consistency — SEGMENTO differs from CONTRATOS
+    r = dict(row)
+    new = "CORP" if r["SEGMENTO"] != "CORP" else "SME"
+    r["SEGMENTO"] = new
+    r["TIPO_PERSONA"] = "J"          # both CORP and SME are legal persons (D43 ok)
+    r["CALIBRATION_SEGMENT"] = f"{new}_MED"   # keep D44 (bucket prefix) silent
+    return r
+
+def _d51_cliente_reconc(row):  # consistency — ID_CLIENTE differs from CONTRATOS
+    r = dict(row); r["ID_CLIENTE"] = "CLI_MISMATCH"; return r
+
+def _d52_colateral_valor_reconc(row):  # accuracy — collateral value vs source
+    r = dict(row)
+    r["VALOR_COLATERAL_INICIAL"] = (r["VALOR_COLATERAL_INICIAL"] or 0.0) + 100_000.0
+    return r
+
+def _d53_fecha_alta_reconc(row):  # consistency — origination date vs CONTRATOS
+    r = dict(row); r["FECHA_ALTA_CONTRATO"] = "1900-01-01"; return r
+
+
+# ── date-interrelation mutators ─────────────────────────────────────────────
+
+def _d54_alta_tras_default(row):  # plausibility — contract opened after default
+    r = dict(row); r["FECHA_ALTA_CONTRATO"] = "2099-12-31"; return r
+
+def _d55_adj_fuera_ventana(row):  # plausibility — foreclosure before default
+    r = dict(row)
+    r["ADJUDICACION_FLAG"] = "1"; r["ADJUDICACION_TIPO"] = "SUBASTA"
+    r["ADJUDICACION_VALOR"] = 30_000.0
+    r["FECHA_ADJUDICACION"] = "1990-01-01"   # long before any default
+    return r
+
+def _d56_venta_antes_adj(row):  # plausibility — sold before foreclosed
+    r = dict(row)
+    r["ADJUDICACION_FLAG"] = "1"; r["ADJUDICACION_TIPO"] = "DACCION"
+    r["ADJUDICACION_VALOR"] = 40_000.0
+    r["FECHA_ADJUDICACION"] = "2023-06-01"
+    r["FECHA_VENTA_COLATERAL"] = "2023-01-01"
+    return r
+
+def _d57_fecha_periodo(row):  # consistency — FECHA_DEFAULT month != MES_DEFAULT
+    r = dict(row); r["FECHA_DEFAULT"] = "2000-07-15"; return r
 
 
 def _d45_haircut_implausible(row):  # plausibility — haircut out of band
@@ -568,6 +627,98 @@ DEFECTS: list[Defect] = [
            f"ABS(LGD_REALIZADA - MAX(0.0, MIN(1.0, "
            f"1.0 - (RECUPERACION_ACUMULADA - COSTE_TOTAL_ACUMULADO)/EAD_TOTAL))) > 0.001",
            _d47_lgd_realizada_formula, "EBA GL 2017/16 §135"),
+    # ── cross-table: referential integrity + reconciliation ─────────────────
+    Defect("D48", "conformity", "cross_table", "HIGH",
+           "Ciclo reportado cuyo ID_CONTRATO no existe en la tabla CONTRATOS: "
+           "integridad referencial rota (huérfano).",
+           ("ID_CONTRATO",),
+           "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc "
+           "LEFT JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO "
+           "WHERE c.ID_CONTRATO IS NULL",
+           _d48_orphan_contrato, "BCBS 239 P3",
+           plants_from_existing=True, cross_table=True),
+    Defect("D49", "accuracy", "cross_table", "HIGH",
+           "El OR_EAD del ciclo no cuadra con el OR_EAD autorizado en "
+           "BASILEA_MENSUAL para el mismo contrato y mes (reconciliación).",
+           ("OR_EAD",),
+           "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc "
+           "JOIN basilea_mensual b ON cc.ID_CONTRATO = b.ID_CONTRATO "
+           "AND cc.MES_CICLO = b.MES_CICLO "
+           "WHERE ABS(cc.OR_EAD - b.OR_EAD) > 1.0",
+           _d49_or_ead_reconc, "CRR Art. 166 / BCBS 239 P3",
+           plants_from_existing=True, pick_where="SW_FUSION = 0",
+           cross_table=True),
+    Defect("D50", "consistency", "cross_table", "HIGH",
+           "El SEGMENTO reportado en el ciclo difiere del SEGMENTO maestro del "
+           "contrato en CONTRATOS: el mismo atributo se informa distinto en "
+           "dos tablas.",
+           ("SEGMENTO",),
+           "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc "
+           "JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO "
+           "WHERE cc.SEGMENTO <> c.SEGMENTO",
+           _d50_segmento_reconc, "CRR Art. 147 / BCBS 239 P3",
+           plants_from_existing=True, cross_table=True),
+    Defect("D51", "consistency", "cross_table", "MED",
+           "El ID_CLIENTE del ciclo no coincide con el del contrato en "
+           "CONTRATOS (deudor mal asignado).",
+           ("ID_CLIENTE",),
+           "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc "
+           "JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO "
+           "WHERE cc.ID_CLIENTE <> c.ID_CLIENTE",
+           _d51_cliente_reconc, "BCBS 239 P3",
+           plants_from_existing=True, cross_table=True),
+    Defect("D52", "accuracy", "cross_table", "MED",
+           "El valor de colateral del ciclo no cuadra con el registrado en "
+           "COLATERALES para el contrato (reconciliación de garantías).",
+           ("VALOR_COLATERAL_INICIAL",),
+           "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc "
+           "JOIN colaterales co ON cc.ID_CONTRATO = co.ID_CONTRATO "
+           "WHERE ABS(cc.VALOR_COLATERAL_INICIAL - co.VALOR_COLATERAL_INICIAL) > 1.0",
+           _d52_colateral_valor_reconc, "CRR Art. 208 / BCBS 239 P3",
+           plants_from_existing=True, pick_where="COLATERAL_TIPO <> 'NINGUNA'",
+           cross_table=True),
+    Defect("D53", "consistency", "cross_table", "MED",
+           "La fecha de alta del contrato en el ciclo difiere de la registrada "
+           "en CONTRATOS.",
+           ("FECHA_ALTA_CONTRATO",),
+           "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc "
+           "JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO "
+           "WHERE cc.FECHA_ALTA_CONTRATO <> c.FECHA_ALTA_CONTRATO",
+           _d53_fecha_alta_reconc, "BCBS 239 P3",
+           plants_from_existing=True, cross_table=True),
+    # ── date interrelations (start / default / close / adjudication / sale) ──
+    Defect("D54", "plausibility", "consistencia", "HIGH",
+           "La fecha de alta del contrato es posterior a la fecha de default: "
+           "orden temporal imposible.",
+           ("FECHA_ALTA_CONTRATO", "FECHA_DEFAULT"),
+           "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados "
+           "WHERE FECHA_ALTA_CONTRATO > FECHA_DEFAULT",
+           _d54_alta_tras_default, "CRR Art. 178"),
+    Defect("D55", "plausibility", "consistencia", "MED",
+           "La fecha de adjudicación cae fuera de la ventana del ciclo "
+           "(anterior al default o posterior al cierre).",
+           ("FECHA_ADJUDICACION", "FECHA_DEFAULT", "FECHA_CIERRE_CICLO"),
+           "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados "
+           "WHERE ADJUDICACION_FLAG = '1' AND FECHA_ADJUDICACION IS NOT NULL AND "
+           "(FECHA_ADJUDICACION < FECHA_DEFAULT OR (FECHA_CIERRE_CICLO IS NOT NULL "
+           "AND FECHA_ADJUDICACION > FECHA_CIERRE_CICLO))",
+           _d55_adj_fuera_ventana, "EBA GL 2017/16 §159"),
+    Defect("D56", "plausibility", "consistencia", "MED",
+           "La venta del colateral es anterior a la adjudicación: no se puede "
+           "vender lo aún no adjudicado.",
+           ("FECHA_VENTA_COLATERAL", "FECHA_ADJUDICACION"),
+           "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados "
+           "WHERE FECHA_VENTA_COLATERAL IS NOT NULL AND "
+           "FECHA_VENTA_COLATERAL < FECHA_ADJUDICACION",
+           _d56_venta_antes_adj, "EBA GL 2017/16 §159"),
+    Defect("D57", "consistency", "consistencia", "MED",
+           "El mes derivado de FECHA_DEFAULT no coincide con MES_DEFAULT: dos "
+           "representaciones de la misma fecha en desacuerdo.",
+           ("FECHA_DEFAULT", "MES_DEFAULT"),
+           "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE "
+           "CAST(substr(FECHA_DEFAULT,1,4)||substr(FECHA_DEFAULT,6,2) AS INTEGER) "
+           "<> MES_DEFAULT",
+           _d57_fecha_periodo, "BCBS 239 P3"),
     # ── decoys: single-column range, must score r_coherence = 0 ──────────────
     Defect("DA", "validity", "rango", "MED",
            "EAD_TOTAL <= 0 en un ciclo activo (control de rango, no coherencia).",

@@ -1,5 +1,10 @@
 # Data Dictionary — `CICLOS_CALIBRADOS`
 
+> The three **source tables** this reporting table is derived from
+> (`CONTRATOS`, `BASILEA_MENSUAL`, `COLATERALES`) — and the cross-table
+> reconciliation checks between them — are documented in
+> [`source_tables.md`](source_tables.md).
+
 Final output table of the 7-layer PD & LGD estimation pipeline
 (`sas/ciclos_calibrados_pipeline.sas`). Every field below has a lineage of
 **≥ 7 hops** from the raw sources (`CICLOS`, `CONTRATOS`, `BASILEA_MENSUAL`,
@@ -25,6 +30,11 @@ Final output table of the 7-layer PD & LGD estimation pipeline
 | `TIPO_PERSONA` | TEXT | L0 | no | Counterparty legal nature: `J` (corporate/SME) / `F` (retail). | CRR Art. 147 |
 | `MES_DEFAULT` | INTEGER | L0 | no | YYYYMM month the default event opened the cycle (= `MES_CICLO` at origination). | CRR Art. 178 |
 | `MES_CIERRE_CICLO` | INTEGER | L0 | yes | YYYYMM closure month; only for `ESTADO_CICLO='CERRADO'`; must be `>= MES_DEFAULT`. | EBA GL 2017/16 §101 |
+| `FECHA_ALTA_CONTRATO` | TEXT (date) | L0 | no | Contract origination date (ISO). Must equal `contratos.FECHA_ALTA_CONTRATO` and precede `FECHA_DEFAULT`. | BCBS 239 P3 |
+| `FECHA_DEFAULT` | TEXT (date) | L0 | no | Default event date (ISO); its month must equal `MES_DEFAULT`. Opens the cycle. | CRR Art. 178 |
+| `FECHA_CIERRE_CICLO` | TEXT (date) | L0 | yes | Cycle closure date (ISO); `>= FECHA_DEFAULT`; NULL when open. Ordering checked by D55. | — |
+| `FECHA_ADJUDICACION` | TEXT (date) | L0 | yes | Foreclosure/adjudication date (ISO); must fall within `[FECHA_DEFAULT, FECHA_CIERRE_CICLO]`. Ordering checked by D55. | — |
+| `FECHA_VENTA_COLATERAL` | TEXT (date) | L0 | yes | Collateral sale date (ISO); `>= FECHA_ADJUDICACION`. Ordering checked by D56. | — |
 | `DIVISA` | TEXT | L0 | no | Exposure currency: `EUR`/`USD`/`GBP` (ISO 4217). | BCBS 239 P3 |
 | `TIPO_CAMBIO` | REAL | L0 | no | FX rate to EUR at the cycle month (`1.0` for EUR). | — |
 | `ID_FUSION_FINAL` | TEXT | L2 | yes | Fusion-group id; populated only when `SW_FUSION=1`. Non-unique in BASILEA (duplication hazard). | — |
