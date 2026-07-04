@@ -41,3 +41,6 @@ jobs:
 
       - name: DQC eval — coverage matrix gate
         run: python DQC/eval/coverage_matrix.py --fail-under 1.0
+
+      - name: DQC eval — golden traces self-test
+        run: python DQC/eval/golden_eval.py --selftest
