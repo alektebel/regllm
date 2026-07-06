@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   forceSimulation,
@@ -550,6 +550,14 @@ function ForceGraphView({
 type TabId = "graph" | "whatif" | "validation";
 
 export default function TracePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">Cargando…</div>}>
+      <TracePageContent />
+    </Suspense>
+  );
+}
+
+function TracePageContent() {
   const searchParams = useSearchParams();
   const initialField = searchParams?.get("field") ?? "";
 
