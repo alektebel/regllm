@@ -1,19 +1,20 @@
 """RegLLM DQC — AWS CDK stack.
 
-Deploys the DQC application on ECS Fargate behind an ALB, with Bedrock
-access for the API container.  Direct translation of DQC/terraform/main.tf.
+Deploys the DQC application on ECS Fargate behind an ALB, with a Gemini
+(or Bedrock) LLM backend for the API container.  Self-contained: creates
+its own VPC, ECR repos, IAM roles, ALB, ECS cluster and service.
 
-Required context values (pass via ``cdk deploy -c key=value`` or cdk.json):
-  vpc_id       — VPC to deploy into
-  subnet_ids   — comma-separated subnet IDs for ALB + ECS tasks
-Optional:
+Optional context (pass via ``cdk deploy -c key=value``):
   project          — resource name prefix   (default: regllm-dqc)
   aws_region       — AWS region             (default: eu-west-1)
   cpu              — Fargate CPU units       (default: 1024)
   memory           — Fargate memory MiB      (default: 4096)
   bedrock_model_id — Bedrock model           (default: eu.amazon.nova-micro-v1:0)
   gemini_api_key   — Google Gemini API key; when set, switches LLM backend to gemini
-  gemini_model     — Gemini model            (default: gemini-2.0-flash)
+  gemini_model     — Gemini model            (default: gemini-2.5-pro)
+
+Use ``DQC/cdk/deploy.sh`` for a one-command deploy that also builds and
+pushes the Docker images to the CDK-created ECR repos.
 """
 
 from __future__ import annotations
@@ -47,18 +48,22 @@ class DqcStack(Stack):
         cpu = int(self.node.try_get_context("cpu") or 1024)
         memory = int(self.node.try_get_context("memory") or 4096)
 
-        vpc_id = self.node.try_get_context("vpc_id")
-        subnet_csv = self.node.try_get_context("subnet_ids") or ""
-
-        # Look up existing VPC + subnets (the bank provides these)
-        vpc = ec2.Vpc.from_lookup(self, "Vpc", vpc_id=vpc_id)
-        subnet_ids = [s.strip() for s in subnet_csv.split(",") if s.strip()]
-        subnets = ec2.SubnetSelection(
-            subnets=[
-                ec2.Subnet.from_subnet_id(self, f"Sub{i}", sid)
-                for i, sid in enumerate(subnet_ids)
-            ]
-        ) if subnet_ids else ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
+        # ── VPC — create a dedicated public-only VPC (no NAT gateways).
+        # The Fargate tasks get public IPs (assign_public_ip=True), so they
+        # can pull from ECR / reach the Gemini API directly without NAT.
+        vpc = ec2.Vpc(
+            self, "Vpc",
+            max_azs=2,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="public",
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                    cidr_mask=24,
+                ),
+            ],
+            nat_gateways=0,
+        )
+        subnets = ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
 
         # ── ECR ────────────────────────────────────────────────────────────
         ecr_api = ecr.Repository(

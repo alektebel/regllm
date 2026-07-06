@@ -640,6 +640,47 @@ Angular build (`:80`) that proxies `/api/` to `localhost:8000`. When
 `gemini_api_key` is supplied, the CDK stack switches the API to the Gemini
 backend automatically.
 
+#### Fresh account — one-command deploy (CDK)
+
+The CDK stack is self-contained: it creates its own VPC (public subnets,
+**no NAT gateways**), ECR repos, IAM roles, ALB, ECS cluster and service.
+The included `deploy.sh` also builds and pushes the Docker images.
+
+Prerequisites on your machine: `aws` CLI (configured for the target
+account), `docker`, `node`/`npm`, and Python 3.11+.
+
+```bash
+cd DQC/cdk
+export GEMINI_API_KEY="your-key"        # optional; switches backend to gemini
+./deploy.sh                             # bootstraps CDK, deploys, builds+pushes images
+```
+
+`deploy.sh` will print the ALB URL when done (e.g.
+`http://regllm-dqc-xxxx.eu-west-1.elb.amazonaws.com`). Verify:
+
+```bash
+curl http://<alb-dns>/api/health        # → {"status":"ok","llm_backend":"gemini"}
+```
+
+Override defaults via environment variables:
+
+| Variable        | Default          | Effect                                   |
+|-----------------|------------------|------------------------------------------|
+| `AWS_REGION`    | `eu-west-1`      | Target region                            |
+| `PROJECT`       | `regllm-dqc`     | Resource name prefix (cluster, repos)    |
+| `GEMINI_API_KEY`| —                | Google Gemini key; enables gemini backend|
+| `GEMINI_MODEL`  | `gemini-2.5-pro` | Gemini model id                          |
+
+**Notes**
+
+- First deploy is slowest (VPC + ALB creation). Subsequent runs update
+  in place and only rebuild changed images.
+- The Gemini key is passed via CDK context at deploy time and ends up as
+  a plaintext env var on the ECS task definition (same as a manual
+  `register-task-definition`). Do not commit `cdk.context.json`.
+- To redeploy only code changes later: rebuild + push both images, then
+  `aws ecs update-service --cluster regllm-dqc --service regllm-dqc --force-new-deployment`.
+
 ---
 
 
