@@ -87,8 +87,9 @@ container. First boot is slow (Ollama pulls the model); later boots are fast.
 
 ### Option B — Manual (two terminals)
 
-**Backend** — note the port: the dev UI proxy targets `:8001`, so run uvicorn
-there (not the 8000 default):
+**Backend** — full walkthrough (LLM backends, checks store, env reference) in
+**[api/README.md](api/README.md)**. Note the port: the dev UI proxy targets
+`:8001`, so run uvicorn there (not the 8000 default):
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
