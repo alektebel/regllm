@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import sqlite3
 import threading
 import uuid
 from typing import Any
@@ -27,7 +26,7 @@ from src.agent.tools import (
     _t_trace_dependencies,
 )
 from src.knowledge import get_client
-from training.dq import checks_db
+from training.dq.checks_store import get_store
 
 logger = logging.getLogger(__name__)
 
@@ -74,12 +73,6 @@ class DashboardResponse(BaseModel):
     checks: list[CheckRecord] = []
 
 
-def _db() -> sqlite3.Connection:
-    """Per-call connection — SQLite objects are thread-bound."""
-    conn = checks_db.connect()
-    return conn
-
-
 # Severity/category vocab translation: the LLM emits Spanish tokens from
 # DQC_SYSTEM_PROMPT; normalise to the canonical English set the table CHECK
 # constraints accept.
@@ -100,8 +93,7 @@ def _persist_dqc_items(items: list[DQCItem], visible: bool = True) -> list[str]:
         sev = _SEV_MAP.get(it.severidad, it.severidad or "MED")
         cat = _CAT_MAP.get(it.tipo, it.tipo or "consistencia")
         try:
-            cid = checks_db.insert_check(
-                _db(),
+            cid = get_store().insert_check(
                 name=(it.dqc_id or "dqc").lower(),
                 description=it.descripcion,
                 severity=sev,
@@ -119,8 +111,8 @@ def _persist_dqc_items(items: list[DQCItem], visible: bool = True) -> list[str]:
                 justificacion=it.justificacion,
             )
             ids.append(cid)
-        except sqlite3.IntegrityError as exc:
-            logger.warning("DQC persist failed (check_id clash?): %s", exc)
+        except Exception as exc:  # noqa: BLE001 — persist is best-effort
+            logger.warning("DQC persist failed: %s", exc)
     return ids
 
 # ── Request / Response models ───────────────────────────────────────────────
@@ -791,33 +783,31 @@ def list_checks(
     Default: visible only (ocultos never surface here). Pass ``visible=null``
     via the querystring (i.e. omit) to include them.
     """
-    rows = checks_db.list_checks(_db(), status=status, visible=visible)
+    rows = get_store().list_checks(status=status, visible=visible)
     return [CheckRecord(**r) for r in rows]
 
 
 @router.get("/checks/counts")
 def checks_counts() -> dict:
     """Status breakdown + ``dashboard_ready`` flag for the UI badge."""
-    return checks_db.counts(_db())
+    return get_store().counts()
 
 
 @router.post("/checks/{check_id}/status", response_model=CheckRecord)
 def update_check_status(check_id: str, body: StatusUpdate) -> CheckRecord:
     """Validate or reject a check. Idempotent."""
-    if not checks_db.set_status(_db(), check_id, body.status):
+    store = get_store()
+    if not store.set_status(check_id, body.status):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"check_id {check_id} not found")
-    row = checks_db.get_check(_db(), check_id)
+    row = store.get_check(check_id)
     return CheckRecord(**row)
 
 
 @router.delete("/checks/{check_id}")
 def delete_check(check_id: str) -> dict:
     """Permanently delete a check."""
-    conn = _db()
-    cur = conn.execute("DELETE FROM checks WHERE check_id=?", (check_id,))
-    conn.commit()
-    if cur.rowcount == 0:
+    if not get_store().delete_check(check_id):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"check_id {check_id} not found")
     return {"deleted": check_id}
@@ -831,9 +821,10 @@ def dashboard() -> DashboardResponse:
     visible checks; at least one validated). The UI exposes the Copy
     button only in that state.
     """
-    c = checks_db.counts(_db())
-    sql = checks_db.build_dashboard_query(_db(), status="validated") if c["dashboard_ready"] else None
-    validated = checks_db.export_validated(_db()) if c["dashboard_ready"] else []
+    store = get_store()
+    c = store.counts()
+    sql = store.build_dashboard_query(status="validated") if c["dashboard_ready"] else None
+    validated = store.export_validated() if c["dashboard_ready"] else []
     return DashboardResponse(
         ready=c["dashboard_ready"],
         pending_visible=c["pending_visible"],

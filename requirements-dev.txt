@@ -1,0 +1,5 @@
+# Development / CI-only dependencies (not installed into the runtime image).
+-r requirements.txt
+
+# DynamoDB checks-store tests run against a mock — no AWS account needed.
+moto[dynamodb]>=5.0
