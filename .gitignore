@@ -47,8 +47,10 @@ DQC/app/node_modules/
 DQC/app/.angular/
 DQC/app/dist/
 
-# AWS IaC — build/state artifacts (cdk.context.json IS committed)
+# AWS IaC — build/state artifacts. cdk.context.json can cache the Gemini
+# key that deploy.sh passes as CDK context, so keep it out of git too.
 DQC/cdk/cdk.out/
+DQC/cdk/cdk.context.json
 DQC/terraform/.terraform/
 DQC/terraform/*.tfstate*
 
