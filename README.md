@@ -520,14 +520,136 @@ return strict JSON of the form
 
 ---
 
-## Out of scope
+## DQC — Data Quality Check generator
+
+DQC is a separate subsystem (`DQC/`) that generates portable **SAS/SQL data
+quality checks** for IRB / IFRS 9 regulatory fields, grounded in the SAS
+lineage graph and the regulation corpus. It has its own Angular UI, its own
+FastAPI router (`api/routers/dqc.py`), and a validation pipeline that
+persists generated checks to SQLite.
+
+### How it works
+
+```
+┌────────────────────┐     /api/dqc/*      ┌──────────────────────┐
+│  Angular UI        │ ───────────────────▶ │  FastAPI (api/)      │
+│  DQC/app           │ ◀──── JSON ───────── │  /dqc/generate …     │
+│  • Chat            │                      │                      │
+│  • Tests en lote   │                      │  ┌─ SAS lineage tools│
+│  • Validate/Dash   │                      │  ├─ Regulation graph │
+└────────────────────┘                      │  └─ LLM (Gemini /    │
+                                            │       Bedrock/Ollama)│
+                                            └─────────┬────────────┘
+                                                      │
+                                            ┌─────────▼──────────┐
+                                            │  SQLite checks.db  │
+                                            │  (validation store)│
+                                            └────────────────────┘
+```
+
+1. **Context gathering** — for the target variable, six read-only tools
+   (`src/agent/tools.py`) pull the SAS formula, the dependency lineage, the
+   field definition, relevant regulation sections, and docs hits (BM25).
+2. **LLM generation** — the bundled context is sent to the LLM with
+   `DQC_SYSTEM_PROMPT`, which returns structured DQC objects. Each DQC has a
+   `regla_sql` field containing **SAS code** (a `DATA` step or `PROC SQL`)
+   that flags offending rows on `mylib.ciclos_recuperacion`.
+3. **Persistence** — generated DQCs are saved to SQLite as `pending`.
+4. **Validation pipeline** — the UI lets you validate / reject each check;
+   once all visible checks are resolved, a UNION-ALL dashboard query is
+   unlocked for copy.
+
+The LLM backend is pluggable via `REGLLM_LLM`:
+
+| Backend   | Env                                            |
+|-----------|------------------------------------------------|
+| `gemini`  | `GEMINI_API_KEY`, `GEMINI_MODEL` (default `gemini-2.5-pro`) |
+| `bedrock` | `BEDROCK_MODEL_ID`, `BEDROCK_REGION` (IAM auth)|
+| `ollama`  | `OLLAMA_URL`, `OLLAMA_MODEL`                   |
+| `stub`    | none — deterministic placeholder for offline   |
+
+### Run the frontend locally (APIs from AWS)
+
+The Angular UI runs locally with hot reload, while every `/api/*` request is
+proxied to the AWS deployment (which already serves the Gemini-backed API).
+No Python, Docker, or API key is needed locally.
+
+```bash
+cd DQC/app
+npm install
+ng serve --proxy-config proxy.aws.conf.json --port 4200 --open
+```
+
+Then open **http://localhost:4200**. Verify the API is reachable:
+
+```bash
+curl http://localhost:4200/api/health
+# → {"status":"ok","llm_backend":"gemini"}
+```
+
+`proxy.aws.conf.json` forwards `/api/*` to the AWS ALB without rewriting the
+path (the ALB's nginx expects the `/api` prefix and strips it itself). The
+companion `proxy.conf.json` (which strips `/api` and targets `localhost:8001`)
+is kept for full local-stack development.
+
+To point at a different backend, edit the `target` in
+`DQC/app/proxy.aws.conf.json`.
+
+### Serve the frontend on your local network
+
+Add `--host 0.0.0.0` so other machines on the LAN can reach the dev server:
+
+```bash
+ng serve --proxy-config proxy.aws.conf.json --host 0.0.0.0 --port 4200
+```
+
+Then from any device on the same network open
+`http://<your-machine-ip>:4200` (find your IP with `hostname -I` or
+`ipconfig getifaddr en0`). The proxied API calls still go to AWS, so only
+port 4200 needs to be reachable on your machine.
+
+### Batch tests — natural-language cases → DQCs
+
+The **Tests en lote** tab (top-right of the app) lets you attach a batch of
+natural-language test descriptions and generate **one DQC per test**:
+
+- Paste one test per line in the textarea, **or** click *Adjuntar .txt* to
+  load a `.txt`/`.md`/`.csv` file.
+- Click *Procesar tests*. Each test is sent to
+  `POST /api/dqc/generate/tests`, which detects the variable, gathers
+  context, and asks the LLM for a single SAS check.
+- Each result shows the source test linked 1:1 to its generated DQC (with
+  the SAS code block). All generated DQCs also land in the sidebar as
+  `pending`, where they enter the normal validate/reject pipeline.
+
+Example `.txt` (one test per line):
+
+```
+Verifica que PD_ESTIMADA cumple los suelos regulatorios
+Comprueba que ECL = PD x LGD x EAD
+Valida que STAGE_IFRS9=3 implica PD=1.0
+Comprueba la consistencia de LGD_ESTIMADA con los floors por segmento
+```
+
+### Deploy to AWS
+
+The DQC stack is deployed on ECS Fargate behind an ALB. Two IaC paths exist:
+CDK (`DQC/cdk/`) and Terraform (`DQC/terraform/`). The ECS task runs two
+sidecar containers — the FastAPI API (`:8000`) and an nginx serving the
+Angular build (`:80`) that proxies `/api/` to `localhost:8000`. When
+`gemini_api_key` is supplied, the CDK stack switches the API to the Gemini
+backend automatically.
+
+---
+
+
 
 This project is **deliberately small**. The following were intentionally
 removed or not implemented:
 
 - model fine-tuning (LoRA, GRPO, DPO, SFT)
 - chat history, auth, multi-user, JWT
-- pgvector / Postgres / Alembic / Terraform / AWS deployment
+- pgvector / Postgres / Alembic
 - regulatory compliance verdict tiers — replaced by the explainer's
   per-field "justified vs. unjustified" verdict from the local LLM.
 

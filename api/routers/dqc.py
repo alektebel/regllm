@@ -159,6 +159,23 @@ class DQCResponse(BaseModel):
     sources: list[RAGSource] = []
 
 
+class TestsRequest(BaseModel):
+    tests: list[str]
+    session_id: str = "default"
+
+
+class TestResult(BaseModel):
+    test: str
+    variable: str = ""
+    dqc: DQCItem | None = None
+    error: str | None = None
+
+
+class TestsResponse(BaseModel):
+    total: int
+    results: list[TestResult]
+
+
 # ── System prompt ───────────────────────────────────────────────────────────
 
 DQC_SYSTEM_PROMPT = """\
@@ -174,8 +191,12 @@ REGLAS OBLIGATORIAS:
 - Cada DQC debe estar FUNDAMENTADO en el contexto regulatorio proporcionado. \
   Cita artículos exactos. Si NO hay contexto regulatorio, indica \
   "Sin referencia regulatoria disponible" y NO inventes normas.
-- Las reglas SQL usan la tabla `mylib.ciclos_recuperacion` y nombres de campo \
-  exactos del contexto.
+- Las reglas van en **código SAS** (DATA step o PROC SQL) sobre el dataset \
+  `mylib.ciclos_recuperacion` y nombres de campo exactos del contexto. Usa \
+  patrones SAS idiomáticos: `data <dataset>_bad; set mylib.ciclos_recuperacion; \
+  if <condición de error> then output; run;` o `proc sql; select ... from \
+  mylib.ciclos_recuperacion where <condición de error>; quit;`. NO emitas SQL \
+  genérico sin envoltura SAS.
 
 DIMENSIONES DE VALIDACIÓN — genera al menos un DQC por cada dimensión \
 aplicable al campo objetivo:
@@ -208,7 +229,7 @@ Responde con JSON: {"dqcs": [...]}. Cada objeto DQC:
   "descripcion": "<qué verifica — sé específico, menciona los campos involucrados>",
   "tipo": "formula|consistencia|referencial|rango|completitud",
   "severidad": "bloqueante|advertencia|informativo",
-  "regla_sql": "<SQL sobre mylib.ciclos_recuperacion — debe involucrar 2+ campos>",
+  "regla_sql": "<código SAS (DATA step o PROC SQL) sobre mylib.ciclos_recuperacion — debe involucrar 2+ campos>",
   "condicion_error": "<cuándo falla — sé específico con los valores>",
   "campos_entrada": ["campo1", "campo2", "..."],
   "referencia_regulatoria": "<artículo exacto del contexto o 'Sin referencia'>",
@@ -218,6 +239,45 @@ Responde con JSON: {"dqcs": [...]}. Cada objeto DQC:
 }
 
 Genera entre 5 y 12 DQCs por campo, cubriendo el máximo de dimensiones. \
+Responde SOLO con JSON válido.
+"""
+
+
+# Single-DQC prompt: one natural-language test → one DQC.
+TEST_SYSTEM_PROMPT = """\
+Eres un experto en calidad de datos para reporting regulatorio bancario IRB. \
+A partir de UN caso de prueba descrito en lenguaje natural, generas UN único \
+control DQC que lo materializa como código SAS ejecutable.
+
+REGLAS OBLIGATORIAS:
+- Genera EXACTAMENTE UN DQC (no una lista) que verifique lo que describe el caso \
+  de prueba. Si el caso menciona varios checks ambiguos, concreta al más relevante.
+- La regla va en **código SAS** (DATA step o PROC SQL) sobre el dataset \
+  `mylib.ciclos_recuperacion` y nombres de campo exactos del contexto. Usa \
+  patrones SAS idiomáticos: `data <dataset>_bad; set mylib.ciclos_recuperacion; \
+  if <condición de error> then output; run;` o `proc sql; select ... from \
+  mylib.ciclos_recuperacion where <condición de error>; quit;`. NO emitas SQL \
+  genérico sin envoltura SAS.
+- Fundamenta el control en el contexto regulatorio proporcionado. Cita artículos \
+  exactos. Si NO hay contexto, indica "Sin referencia regulatoria disponible" \
+  y NO inventes normas.
+
+Responde con JSON: {"dqcs": [<UN objeto DQC>]}. El objeto DQC:
+{
+  "dqc_id": "DQC_<VARIABLE>_<DIMENSION>_NNN",
+  "variable": "<nombre>",
+  "descripcion": "<qué verifica — sé específico, menciona los campos involucrados>",
+  "tipo": "formula|consistencia|referencial|rango|completitud",
+  "severidad": "bloqueante|advertencia|informativo",
+  "regla_sql": "<código SAS (DATA step o PROC SQL) sobre mylib.ciclos_recuperacion — debe involucrar 2+ campos>",
+  "condicion_error": "<cuándo falla — sé específico con los valores>",
+  "campos_entrada": ["campo1", "campo2", "..."],
+  "referencia_regulatoria": "<artículo exacto del contexto o 'Sin referencia'>",
+  "umbral": "<valor si aplica>",
+  "periodicidad": "diaria|mensual|trimestral",
+  "justificacion": "<por qué este control importa, citando el caso de prueba y el contexto>"
+}
+
 Responde SOLO con JSON válido.
 """
 
@@ -514,6 +574,78 @@ def generate_dqc(req: DQCRequest) -> DQCResponse:
         context_summary=f"Se generaron {len(dqcs)} DQCs para {variable} usando contexto SAS + regulación.",
         sources=sources,
     )
+
+
+def _parse_dqc_items(result: Any) -> list[DQCItem]:
+    """Parse LLM JSON output into DQCItem list, tolerating varied key names."""
+    if not isinstance(result, dict) or "error" in result:
+        return []
+    dqcs: list[DQCItem] = []
+    for d in _extract_dqc_list(result):
+        cleaned = {}
+        for k, v in d.items():
+            if k not in DQCItem.model_fields or v is None:
+                continue
+            field_type = DQCItem.model_fields[k].annotation
+            if field_type is str and not isinstance(v, str):
+                v = str(v)
+            cleaned[k] = v
+        dqcs.append(DQCItem(**cleaned))
+    return dqcs
+
+
+# ── Batch generation from natural-language tests ────────────────────────────
+
+@router.post("/generate/tests", response_model=TestsResponse)
+def generate_tests(req: TestsRequest) -> TestsResponse:
+    """Generate one DQC per natural-language test description.
+
+    Each test string is mapped 1:1 to its own DQC: context is gathered for the
+    variable detected in the test, the LLM produces a single SAS check, and the
+    result is persisted as ``pending`` (so it surfaces in the validation UI).
+    """
+    results: list[TestResult] = []
+    client = get_client()
+
+    for test in req.tests:
+        test = test.strip()
+        if not test:
+            continue
+        variable = _extract_variable(test) or "(test)"
+        try:
+            ctx = _gather_context(variable, req.session_id)
+            sources = _extract_sources(ctx)
+            context_str = json.dumps(ctx, ensure_ascii=False, default=str)[:10000]
+            source_note = (
+                "\n\nAVISO: No se encontró contexto regulatorio. Indica "
+                "'Sin referencia regulatoria disponible'." if not sources else ""
+            )
+            cross_field_ctx = _build_cross_field_context(variable)
+            user_prompt = (
+                f"Caso de prueba (lenguaje natural): {test}\n\n"
+                f"Variable objetivo: {variable}\n\n"
+                f"{cross_field_ctx}\n\n"
+                f"Contexto recopilado (fórmula SAS, dependencias, regulación):\n"
+                f"{context_str}{source_note}"
+            )
+            result = client.chat_json(
+                system=TEST_SYSTEM_PROMPT,
+                user=user_prompt,
+                max_tokens=4096,
+            )
+            items = _parse_dqc_items(result)
+            dqc = items[0] if items else None
+            if dqc:
+                try:
+                    _persist_dqc_items([dqc])
+                except Exception as exc:
+                    logger.warning("persist failed for test '%s': %s", test[:60], exc)
+            results.append(TestResult(test=test, variable=variable, dqc=dqc))
+        except Exception as exc:
+            logger.error("Test generation failed for '%s': %s", test[:60], exc)
+            results.append(TestResult(test=test, variable=variable, error=str(exc)))
+
+    return TestsResponse(total=len(results), results=results)
 
 
 # ── Batch generation (SSE streaming) ───────────────────────────────────────

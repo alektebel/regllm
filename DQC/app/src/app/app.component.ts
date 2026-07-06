@@ -1,13 +1,14 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChatComponent } from './chat/chat.component';
+import { TestsComponent } from './tests/tests.component';
 import { DqcService } from './services/dqc.service';
 import { CheckRecord } from './models/dqc.model';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, ChatComponent],
+  imports: [CommonModule, ChatComponent, TestsComponent],
   template: `
     <div class="shell">
       <!-- Left: DQC sidebar -->
@@ -189,7 +190,15 @@ import { CheckRecord } from './models/dqc.model';
             <pre class="llm-output" #llmOutputEl>{{ llmOutput }}</pre>
           </div>
         }
-        <app-chat (dqcGenerated)="onDqcGenerated()" />
+        <div class="view-tabs">
+          <button class="view-tab" [class.active]="view === 'chat'" (click)="view = 'chat'">Chat</button>
+          <button class="view-tab" [class.active]="view === 'tests'" (click)="view = 'tests'">Tests en lote</button>
+        </div>
+        @if (view === 'chat') {
+          <app-chat (dqcGenerated)="onDqcGenerated()" />
+        } @else {
+          <app-tests (testsGenerated)="onDqcGenerated()" />
+        }
       </main>
     </div>
   `,
@@ -591,6 +600,28 @@ import { CheckRecord } from './models/dqc.model';
       flex-direction: column;
     }
 
+    .view-tabs {
+      display: flex;
+      border-bottom: 1px solid #2a2a40;
+      background: #161625;
+    }
+    .view-tab {
+      background: transparent;
+      border: none;
+      color: #666;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .view-tab:hover { color: #ccc; }
+    .view-tab.active {
+      color: #6c7bbf;
+      border-bottom-color: #6c7bbf;
+    }
+
     /* ── Live LLM output ── */
     .llm-panel {
       border-bottom: 1px solid #2a2a40;
@@ -642,6 +673,7 @@ export class AppComponent implements OnInit, OnDestroy {
   checks: CheckRecord[] = [];
   selected: CheckRecord | null = null;
   filter: 'all' | 'pending' | 'validated' | 'rejected' = 'all';
+  view: 'chat' | 'tests' = 'chat';
 
   batchRunning = false;
   batchTotal = 0;

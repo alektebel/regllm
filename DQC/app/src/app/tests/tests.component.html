@@ -1,0 +1,69 @@
+<div class="tests-container">
+  <header class="tests-header">
+    <h1>Tests en lote</h1>
+    <p>Un caso de prueba por línea — cada uno genera su propio DQC</p>
+  </header>
+
+  <div class="input-area">
+    <div class="input-toolbar">
+      <label class="file-btn">
+        Adjuntar .txt
+        <input type="file" accept=".txt,.md,.csv" (change)="onFile($event)" hidden />
+      </label>
+      <button class="clear-btn" (click)="clear()" [disabled]="isLoading">Limpiar</button>
+    </div>
+    <textarea
+      [(ngModel)]="testsText"
+      name="tests"
+      placeholder="Verifica que PD_ESTIMADA cumple los suelos regulatorios&#10;Comprueba que ECL = PD x LGD x EAD&#10;Valida que STAGE_IFRS9=3 implica PD=1.0"
+      [disabled]="isLoading"
+      rows="8"
+    ></textarea>
+    <div class="run-row">
+      <span class="count">{{ parseTests().length }} tests</span>
+      <button class="run-btn" (click)="run()" [disabled]="isLoading || !parseTests().length">
+        {{ isLoading ? 'Procesando…' : 'Procesar tests' }}
+      </button>
+    </div>
+  </div>
+
+  @if (error) {
+    <div class="error-box">{{ error }}</div>
+  }
+
+  @if (results.length > 0) {
+    <div class="results">
+      <h3 class="results-title">
+        {{ generatedCount }} / {{ results.length }} DQCs generados
+      </h3>
+      @for (r of results; track $index) {
+        <div class="test-card" [class.failed]="!r.dqc">
+          <div class="test-source">
+            <span class="test-label">TEST</span>
+            <span class="test-text">{{ r.test }}</span>
+            @if (r.variable && r.variable !== '(test)') {
+              <code class="test-var">{{ r.variable }}</code>
+            }
+          </div>
+          @if (r.dqc) {
+            <div class="dqc-block">
+              <div class="dqc-head">
+                <span class="dqc-name">{{ r.dqc.descripcion }}</span>
+                <span class="dqc-sev" [attr.data-sev]="r.dqc.severidad">{{ r.dqc.severidad }}</span>
+              </div>
+              <pre class="sql-block">{{ r.dqc.regla_sql }}</pre>
+            </div>
+          } @else {
+            <div class="dqc-block failed">
+              @if (r.error) {
+                <span class="err-text">Error: {{ r.error }}</span>
+              } @else {
+                <span class="err-text">No se pudo generar un DQC para este test.</span>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

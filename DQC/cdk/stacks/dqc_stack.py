@@ -12,6 +12,8 @@ Optional:
   cpu              — Fargate CPU units       (default: 1024)
   memory           — Fargate memory MiB      (default: 4096)
   bedrock_model_id — Bedrock model           (default: eu.amazon.nova-micro-v1:0)
+  gemini_api_key   — Google Gemini API key; when set, switches LLM backend to gemini
+  gemini_model     — Gemini model            (default: gemini-2.0-flash)
 """
 
 from __future__ import annotations
@@ -40,6 +42,8 @@ class DqcStack(Stack):
             self.node.try_get_context("bedrock_model_id")
             or "eu.amazon.nova-micro-v1:0"
         )
+        gemini_api_key = self.node.try_get_context("gemini_api_key") or ""
+        gemini_model = self.node.try_get_context("gemini_model") or "gemini-2.5-pro"
         cpu = int(self.node.try_get_context("cpu") or 1024)
         memory = int(self.node.try_get_context("memory") or 4096)
 
@@ -150,16 +154,23 @@ class DqcStack(Stack):
         )
 
         # API container
+        api_env: dict[str, str] = {
+            "CORS_ORIGINS": "*",
+            "BEDROCK_MODEL_ID": bedrock_model_id,
+            "BEDROCK_REGION": self.region,
+        }
+        if gemini_api_key:
+            api_env["REGLLM_LLM"] = "gemini"
+            api_env["GEMINI_API_KEY"] = gemini_api_key
+            api_env["GEMINI_MODEL"] = gemini_model
+        else:
+            api_env["REGLLM_LLM"] = "bedrock"
+
         api_container = task_def.add_container(
             "api",
             image=ecs.ContainerImage.from_ecr_repository(ecr_api, "latest"),
             essential=True,
-            environment={
-                "CORS_ORIGINS": "*",
-                "REGLLM_LLM": "bedrock",
-                "BEDROCK_MODEL_ID": bedrock_model_id,
-                "BEDROCK_REGION": self.region,
-            },
+            environment=api_env,
             logging=ecs.LogDriver.aws_logs(
                 stream_prefix="api",
                 log_group=log_group,

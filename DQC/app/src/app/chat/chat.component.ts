@@ -46,6 +46,7 @@ export class ChatComponent {
           role: 'assistant',
           content: summary,
           sources: res.sources,
+          dqcs: res.dqcs,
         });
         this.isLoading = false;
 

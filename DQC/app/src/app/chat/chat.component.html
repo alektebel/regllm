@@ -10,6 +10,20 @@
         <div class="message-bubble">
           <p class="msg-text">{{ msg.content }}</p>
 
+          @if (msg.dqcs && msg.dqcs.length > 0) {
+            <div class="dqc-list">
+              @for (dqc of msg.dqcs; track dqc.dqc_id) {
+                <div class="dqc-block">
+                  <div class="dqc-header">
+                    <span class="dqc-name">{{ dqc.descripcion }}</span>
+                    <span class="dqc-severity" [attr.data-sev]="dqc.severidad">{{ dqc.severidad }}</span>
+                  </div>
+                  <pre class="sql-block">{{ dqc.regla_sql }}</pre>
+                </div>
+              }
+            </div>
+          }
+
           @if (msg.sources && msg.sources.length > 0) {
             <div class="sources-row">
               @for (src of msg.sources; track $index) {

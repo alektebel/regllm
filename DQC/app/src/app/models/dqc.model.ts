@@ -27,6 +27,18 @@ export interface DqcResponse {
   sources: RAGSource[];
 }
 
+export interface TestsResponse {
+  total: number;
+  results: TestResult[];
+}
+
+export interface TestResult {
+  test: string;
+  variable: string;
+  dqc: DqcItem | null;
+  error: string | null;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;

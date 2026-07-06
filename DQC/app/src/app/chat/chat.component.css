@@ -197,6 +197,63 @@
 .input-bar button:hover:not(:disabled) { background: #5a69a8; }
 .input-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ── DQC code blocks in chat ── */
+.dqc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dqc-block {
+  border: 1px solid #2a2a40;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dqc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #12122a;
+  gap: 8px;
+}
+
+.dqc-name {
+  font-size: 12px;
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dqc-severity {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.dqc-severity[data-sev="HIGH"]   { background: rgba(192,57,43,0.25);  color: #e74c3c; }
+.dqc-severity[data-sev="MEDIUM"],
+.dqc-severity[data-sev="MED"]    { background: rgba(243,156,18,0.2);  color: #f39c12; }
+.dqc-severity[data-sev="LOW"]    { background: rgba(39,174,96,0.2);   color: #2ecc71; }
+
+.sql-block {
+  margin: 0;
+  padding: 10px 12px;
+  background: #0a0a14;
+  color: #7ec8e3;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  border-top: 1px solid #1e1e35;
+}
+
 /* ── Loading dots ── */
 .loading {
   display: flex;

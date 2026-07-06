@@ -11,19 +11,23 @@ Auto-detects an available OpenAI-compatible local backend:
    verdicts and is small enough to run on a single 24 GB GPU.
 3. **Amazon Bedrock** — managed LLM backend via the Converse API. Set
    ``REGLLM_LLM=bedrock`` and let the IAM task role handle auth.
-4. **Stub** mode: when ``REGLLM_LLM=stub`` or no backend reachable, returns a
+4. **Google Gemini** — cloud API. Set ``REGLLM_LLM=gemini`` and supply
+   ``GEMINI_API_KEY``. Model defaults to ``gemini-2.5-pro``.
+5. **Stub** mode: when ``REGLLM_LLM=stub`` or no backend reachable, returns a
    deterministic JSON-shaped placeholder so unit tests and the frontend keep
    working without any model installed.
 
 Configuration via environment variables (with sensible defaults):
 
-- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``bedrock`` | ``stub``
+- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``bedrock`` | ``gemini`` | ``stub``
 - ``OLLAMA_URL``             default ``http://localhost:11434``
 - ``OLLAMA_MODEL``           Ollama tag or path to ``.gguf`` file
 - ``LITERT_URL``             default ``http://localhost:9379/v1``
 - ``LITERT_MODEL``           default ``gemma4-12b,gpu``
 - ``BEDROCK_MODEL_ID``       default ``eu.amazon.nova-micro-v1:0``
 - ``BEDROCK_REGION``         default ``eu-west-1``
+- ``GEMINI_API_KEY``         Google Gemini API key
+- ``GEMINI_MODEL``           default ``gemini-2.5-pro``
 - ``REGLLM_LLM_TIMEOUT``     request timeout in seconds, default ``120``
 
 Backwards-compatible aliases (still read for migration):
@@ -50,6 +54,11 @@ try:
     import boto3 as _boto3
 except ImportError:  # boto3 not installed — bedrock backend unavailable
     _boto3 = None
+
+try:
+    from google import genai as _genai
+except ImportError:  # google-genai not installed — gemini backend unavailable
+    _genai = None
 
 
 def _load_yaml_config() -> dict[str, Any]:
@@ -139,6 +148,16 @@ class LocalLLMClient:
             or "eu-west-1"
         )
         self._bedrock_client = None
+        self.gemini_api_key = (
+            os.getenv("GEMINI_API_KEY")
+            or _LLM_CFG.get("gemini_api_key")
+            or ""
+        )
+        self.gemini_model = (
+            os.getenv("GEMINI_MODEL")
+            or _LLM_CFG.get("gemini_model")
+            or "gemini-2.5-pro"
+        )
         self.prefer = prefer or os.getenv("REGLLM_LLM") or _LLM_CFG.get("backend") or "auto"
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
@@ -207,6 +226,17 @@ class LocalLLMClient:
                 return "stub"
             self._backend = "bedrock"
             return "bedrock"
+        if self.prefer == "gemini":
+            if _genai is None:
+                logger.error("REGLLM_LLM=gemini but google-genai is not installed")
+                self._backend = "stub"
+                return "stub"
+            if not self.gemini_api_key:
+                logger.error("REGLLM_LLM=gemini but GEMINI_API_KEY is not set")
+                self._backend = "stub"
+                return "stub"
+            self._backend = "gemini"
+            return "gemini"
         if self.prefer in ("auto", "litert") and self._probe_litert():
             self._backend = "litert"
             return "litert"
@@ -310,6 +340,47 @@ class LocalLLMClient:
             raw=response,
         )
 
+    # ── Gemini ────────────────────────────────────────────────────────────
+
+    def _chat_gemini(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool,
+    ) -> ChatResponse:
+        client = _genai.Client(api_key=self.gemini_api_key)
+
+        # Split system message from the conversation
+        system_instruction: str | None = None
+        contents: list[Any] = []
+        for m in messages:
+            if m["role"] == "system":
+                system_instruction = m["content"]
+            else:
+                role = "user" if m["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [{"text": m["content"]}]})
+
+        if json_mode and system_instruction:
+            system_instruction += "\n\nRespond ONLY with valid JSON."
+        elif json_mode:
+            system_instruction = "Respond ONLY with valid JSON."
+
+        config: dict[str, Any] = {
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+        }
+        if system_instruction:
+            config["system_instruction"] = system_instruction
+
+        response = client.models.generate_content(
+            model=self.gemini_model,
+            contents=contents,
+            config=config,
+        )
+        text = response.text or ""
+        return ChatResponse(text=text, backend="gemini", model=self.gemini_model, raw=None)
+
     # ── Chat ──────────────────────────────────────────────────────────────
 
     def chat(
@@ -328,6 +399,8 @@ class LocalLLMClient:
             return self._chat_ollama(messages, temperature, max_tokens, json_mode)
         if backend == "bedrock":
             return self._chat_bedrock(messages, temperature, max_tokens, json_mode)
+        if backend == "gemini":
+            return self._chat_gemini(messages, temperature, max_tokens, json_mode)
         return self._chat_stub(messages, json_mode)
 
     def _chat_litert(
