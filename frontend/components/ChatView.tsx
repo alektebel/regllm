@@ -318,7 +318,7 @@ export default function ChatView({ chat, onUpdate, sidebarOpen, onToggleSidebar 
               id="llm-model"
               value={llmModel}
               disabled={running}
-              onChange={(e) => setLlmModel(e.target.value)}
+              onChange={(e) => setLlmModel(e.target.value as typeof DEFAULT_LLM_MODEL)}
               className="flex-1 text-xs rounded-md border border-border bg-background px-2 py-1"
             >
               {LLM_OPTIONS.map((o) => (
