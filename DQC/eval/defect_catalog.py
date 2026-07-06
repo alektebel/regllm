@@ -76,6 +76,10 @@ class Defect:
     plants_from_existing: bool = False  # planted by mutating a real clean row
     pick_where: str = ""  # SQL filter on eligible clean rows (cross-table)
     cross_table: bool = False  # oracle joins ciclos_calibrados to a source table
+    target_table: str = "ciclos_calibrados"  # table the defect is planted into
+    # For panel defects: mutate a clean monthly series (list[dict], rng) -> series
+    panel_mutate: Callable[[list, Any], list] = field(
+        default=lambda s, rng: s, repr=False)
 
 
 # ── mutators — each plants exactly its own incoherence into a clean row ──────
@@ -310,6 +314,68 @@ def _d56_venta_antes_adj(row):  # plausibility — sold before foreclosed
 
 def _d57_fecha_periodo(row):  # consistency — FECHA_DEFAULT month != MES_DEFAULT
     r = dict(row); r["FECHA_DEFAULT"] = "2000-07-15"; return r
+
+
+# ── panel (monthly evolution) mutators — operate on a clean series ──────────
+
+def _pd58_recup_baja(series, rng):  # recovery cumulative decreases MoM
+    s = [dict(r) for r in series]
+    s[1]["RECUPERACION_ACUMULADA"] = s[0]["RECUPERACION_ACUMULADA"] - 500.0
+    return s
+
+def _pd59_hueco_mes(series, rng):  # a month is missing from the series
+    s = [dict(r) for r in series]
+    for j in range(1, len(s)):
+        s[j]["MES_CICLO"] = _month_shift(s[j]["MES_CICLO"], 1)
+    return s
+
+def _pd60_mes_duplicado(series, rng):  # same month appears twice for a cycle
+    s = [dict(r) for r in series]
+    s.append(dict(s[1]))
+    return s
+
+def _pd61_stage3_pd_baja(series, rng):  # STAGE=3 (default) with PD < 1.0
+    s = [dict(r) for r in series]
+    s[0]["PD_ESTIMADA"] = 0.5            # seq 1 is always in default
+    return s
+
+def _pd62_regresion_stage(series, rng):  # stage improves without a cure
+    s = [dict(r) for r in series]
+    s[-1]["STAGE_IFRS9"] = 1
+    s[-1]["CURE_FLAG"] = 0
+    return s
+
+def _pd63_dpd_baja(series, rng):  # DPD falls without a cure
+    s = [dict(r) for r in series]
+    s[-1]["DPDS"] = max(0, s[-2]["DPDS"] - 40)
+    s[-1]["STAGE_IFRS9"] = 3
+    s[-1]["CURE_FLAG"] = 0
+    s[-1]["PD_ESTIMADA"] = 1.0
+    return s
+
+
+# ── "weird data" cross-domain mutators (main table) ─────────────────────────
+
+def _d64_colateral_en_tarjeta(row):  # conformity — a credit card with collateral
+    r = dict(row)
+    r["SEGMENTO"] = "RETAIL_CONS"; r["TIPO_PERSONA"] = "F"
+    r["CALIBRATION_SEGMENT"] = "RETAIL_CONS_MED"
+    r["PRODUCTO"] = "TARJETA"; r["COLATERAL_TIPO"] = "PRENDA"
+    return r
+
+def _d65_hipoteca_sin_garantia(row):  # conformity — mortgage loan, no mortgage
+    r = dict(row)
+    r["SEGMENTO"] = "RETAIL_CONS"; r["TIPO_PERSONA"] = "F"
+    r["CALIBRATION_SEGMENT"] = "RETAIL_CONS_MED"
+    r["PRODUCTO"] = "HIPOTECA_LN"; r["COLATERAL_TIPO"] = "NINGUNA"
+    return r
+
+def _d66_adjudicacion_sin_colateral(row):  # conformity — foreclose the unsecured
+    r = dict(row)
+    r["COLATERAL_TIPO"] = "NINGUNA"
+    r["ADJUDICACION_FLAG"] = "1"; r["ADJUDICACION_TIPO"] = "SUBASTA"
+    r["ADJUDICACION_VALOR"] = 30_000.0
+    return r
 
 
 def _d45_haircut_implausible(row):  # plausibility — haircut out of band
@@ -719,6 +785,86 @@ DEFECTS: list[Defect] = [
            "CAST(substr(FECHA_DEFAULT,1,4)||substr(FECHA_DEFAULT,6,2) AS INTEGER) "
            "<> MES_DEFAULT",
            _d57_fecha_periodo, "BCBS 239 P3"),
+    # ── panel: monthly evolution (temporal invariants) ──────────────────────
+    Defect("D58", "plausibility", "consistencia", "HIGH",
+           "La recuperación acumulada de un ciclo DISMINUYE de un mes al "
+           "siguiente: un acumulado no puede decrecer.",
+           ("RECUPERACION_ACUMULADA", "SEQ"),
+           "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e "
+           "JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD "
+           "AND p.SEQ = e.SEQ - 1 "
+           "WHERE e.RECUPERACION_ACUMULADA < p.RECUPERACION_ACUMULADA",
+           (lambda r: r), "EBA GL 2017/16 §135",  # row mutate unused for panel
+           target_table="evolucion_mensual", panel_mutate=_pd58_recup_baja),
+    Defect("D59", "completeness", "completitud", "MED",
+           "La serie mensual del ciclo tiene un hueco: dos meses consecutivos "
+           "no son contiguos.",
+           ("MES_CICLO", "SEQ"),
+           "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e "
+           "JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD "
+           "AND p.SEQ = e.SEQ - 1 WHERE "
+           "(e.MES_CICLO/100*12 + e.MES_CICLO%100) - "
+           "(p.MES_CICLO/100*12 + p.MES_CICLO%100) <> 1",
+           (lambda r: r), "BCBS 239 P4",
+           target_table="evolucion_mensual", panel_mutate=_pd59_hueco_mes),
+    Defect("D60", "uniqueness", "cardinality", "HIGH",
+           "Un mismo mes aparece dos veces para el mismo ciclo en la serie "
+           "mensual (duplicidad de observación).",
+           ("ID_CONTR_CICLO_LGD", "MES_CICLO"),
+           "SELECT ID_CONTR_CICLO_LGD FROM evolucion_mensual "
+           "GROUP BY ID_CONTR_CICLO_LGD, MES_CICLO HAVING COUNT(*) > 1",
+           (lambda r: r), "BCBS 239 P3",
+           target_table="evolucion_mensual", panel_mutate=_pd60_mes_duplicado),
+    Defect("D61", "consistency", "consistencia", "HIGH",
+           "Observación mensual en STAGE_IFRS9=3 (default) con PD estimada "
+           "inferior a 1.0: en default la PD debe ser 1.",
+           ("STAGE_IFRS9", "PD_ESTIMADA"),
+           "SELECT DISTINCT ID_CONTR_CICLO_LGD FROM evolucion_mensual "
+           "WHERE STAGE_IFRS9 = 3 AND PD_ESTIMADA < 1.0",
+           (lambda r: r), "CRR Art. 178",
+           target_table="evolucion_mensual", panel_mutate=_pd61_stage3_pd_baja),
+    Defect("D62", "consistency", "consistencia", "HIGH",
+           "El stage IFRS-9 mejora de un mes al siguiente sin que exista una "
+           "cura (CURE_FLAG=0): regresión de stage injustificada.",
+           ("STAGE_IFRS9", "CURE_FLAG", "SEQ"),
+           "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e "
+           "JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD "
+           "AND p.SEQ = e.SEQ - 1 "
+           "WHERE e.STAGE_IFRS9 < p.STAGE_IFRS9 AND e.CURE_FLAG = 0",
+           (lambda r: r), "IFRS 9 B5.5.12",
+           target_table="evolucion_mensual", panel_mutate=_pd62_regresion_stage),
+    Defect("D63", "consistency", "consistencia", "MED",
+           "Los días de impago (DPDS) disminuyen de un mes al siguiente sin "
+           "cura: sólo una cura puede reducir la mora acumulada.",
+           ("DPDS", "CURE_FLAG", "SEQ"),
+           "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e "
+           "JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD "
+           "AND p.SEQ = e.SEQ - 1 "
+           "WHERE e.DPDS < p.DPDS AND e.CURE_FLAG = 0",
+           (lambda r: r), "CRR Art. 178",
+           target_table="evolucion_mensual", panel_mutate=_pd63_dpd_baja),
+    # ── "weird data": cross-domain business-rule violations ──────────────────
+    Defect("D64", "conformity", "consistencia", "HIGH",
+           "Tarjeta de crédito (producto revolving no garantizado) con "
+           "colateral asignado: las tarjetas no admiten garantía real.",
+           ("PRODUCTO", "COLATERAL_TIPO"),
+           "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados "
+           "WHERE PRODUCTO = 'TARJETA' AND COLATERAL_TIPO <> 'NINGUNA'",
+           _d64_colateral_en_tarjeta, "CRR Art. 194"),
+    Defect("D65", "conformity", "consistencia", "HIGH",
+           "Préstamo hipotecario (HIPOTECA_LN) sin colateral HIPOTECA: un "
+           "producto hipotecario debe estar garantizado por la hipoteca.",
+           ("PRODUCTO", "COLATERAL_TIPO"),
+           "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados "
+           "WHERE PRODUCTO = 'HIPOTECA_LN' AND COLATERAL_TIPO <> 'HIPOTECA'",
+           _d65_hipoteca_sin_garantia, "CRR Art. 194"),
+    Defect("D66", "conformity", "consistencia", "MED",
+           "Adjudicación/ejecución sobre una exposición sin colateral: no se "
+           "puede adjudicar una garantía inexistente.",
+           ("ADJUDICACION_FLAG", "COLATERAL_TIPO"),
+           "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados "
+           "WHERE ADJUDICACION_FLAG = '1' AND COLATERAL_TIPO = 'NINGUNA'",
+           _d66_adjudicacion_sin_colateral, "CRR Art. 199"),
     # ── decoys: single-column range, must score r_coherence = 0 ──────────────
     Defect("DA", "validity", "rango", "MED",
            "EAD_TOTAL <= 0 en un ciclo activo (control de rango, no coherencia).",

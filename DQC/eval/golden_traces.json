@@ -553,6 +553,90 @@
           "campos_entrada": ["FECHA_VENTA_COLATERAL", "FECHA_ADJUDICACION"]
         }
       ]
+    },
+    {
+      "trace_id": "G19",
+      "dimension": "consistency",
+      "difficulty": "hard",
+      "request": "Sobre la evolución mensual de los ciclos (evolucion_mensual): controla que la recuperación acumulada no decrezca, que en default (stage 3) la PD sea 1, y que el stage no mejore sin cura.",
+      "variable": "STAGE_IFRS9",
+      "expects": {
+        "defects": ["D58", "D61", "D62"],
+        "must_cite": ["CRR Art. 178"],
+        "forbid_single_column": true,
+        "note": "Panel/temporal trace: needs self-joins over the monthly series (SEQ = SEQ-1). A single-snapshot generator cannot answer this."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_PANEL_RECUP_MONOTONA_001",
+          "descripcion": "La recuperación acumulada de un ciclo no puede decrecer mes a mes.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD AND p.SEQ = e.SEQ - 1 WHERE e.RECUPERACION_ACUMULADA < p.RECUPERACION_ACUMULADA",
+          "referencia_regulatoria": "EBA GL 2017/16 §135",
+          "campos_entrada": ["RECUPERACION_ACUMULADA", "SEQ"]
+        },
+        {
+          "dqc_id": "DQC_PANEL_STAGE3_PD_002",
+          "descripcion": "En cualquier mes en default (stage 3) la PD debe ser 1.0.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT DISTINCT ID_CONTR_CICLO_LGD FROM evolucion_mensual WHERE STAGE_IFRS9 = 3 AND PD_ESTIMADA < 1.0",
+          "referencia_regulatoria": "CRR Art. 178",
+          "campos_entrada": ["STAGE_IFRS9", "PD_ESTIMADA"]
+        },
+        {
+          "dqc_id": "DQC_PANEL_STAGE_REGRESION_003",
+          "descripcion": "El stage no puede mejorar de un mes al siguiente sin una cura.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD AND p.SEQ = e.SEQ - 1 WHERE e.STAGE_IFRS9 < p.STAGE_IFRS9 AND e.CURE_FLAG = 0",
+          "referencia_regulatoria": "IFRS 9 B5.5.12",
+          "campos_entrada": ["STAGE_IFRS9", "CURE_FLAG", "SEQ"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G20",
+      "dimension": "conformity",
+      "difficulty": "hard",
+      "request": "Detecta datos absurdos de negocio: tarjetas de crédito con colateral, préstamos hipotecarios sin hipoteca, y adjudicaciones sobre exposiciones sin garantía.",
+      "variable": "COLATERAL_TIPO",
+      "expects": {
+        "defects": ["D64", "D65", "D66"],
+        "must_cite": ["CRR Art. 194"],
+        "forbid_single_column": true,
+        "note": "Weird cross-domain trace: needs product/collateral/segment business knowledge, not a range check."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_WEIRD_TARJETA_COL_001",
+          "descripcion": "Una tarjeta de crédito no puede llevar colateral.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE PRODUCTO = 'TARJETA' AND COLATERAL_TIPO <> 'NINGUNA'",
+          "referencia_regulatoria": "CRR Art. 194",
+          "campos_entrada": ["PRODUCTO", "COLATERAL_TIPO"]
+        },
+        {
+          "dqc_id": "DQC_WEIRD_HIPOTECA_SIN_GAR_002",
+          "descripcion": "Un préstamo hipotecario debe estar garantizado por una hipoteca.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE PRODUCTO = 'HIPOTECA_LN' AND COLATERAL_TIPO <> 'HIPOTECA'",
+          "referencia_regulatoria": "CRR Art. 194",
+          "campos_entrada": ["PRODUCTO", "COLATERAL_TIPO"]
+        },
+        {
+          "dqc_id": "DQC_WEIRD_ADJ_SIN_COL_003",
+          "descripcion": "No se puede adjudicar/ejecutar una garantía sobre una exposición sin colateral.",
+          "tipo": "referencial",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ADJUDICACION_FLAG = '1' AND COLATERAL_TIPO = 'NINGUNA'",
+          "referencia_regulatoria": "CRR Art. 199",
+          "campos_entrada": ["ADJUDICACION_FLAG", "COLATERAL_TIPO"]
+        }
+      ]
     }
   ]
 }

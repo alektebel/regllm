@@ -111,6 +111,12 @@ def _base_row(rng: random.Random, idx: int) -> dict:
     else:
         colat = rng.choices(["NINGUNA", "PRENDA"], weights=[9, 1])[0]
 
+    producto = rng.choice(PRODUCTS[seg])
+    # Business rule: credit cards are unsecured revolving lines — they never
+    # carry collateral (keeps D64 "collateral on a credit card" clean = 0).
+    if producto == "TARJETA":
+        colat = "NINGUNA"
+
     contrato = f"CONT_{idx:06d}"
     fusion = rng.random() < 0.12
     sw_fusion = 1 if fusion else 0
@@ -150,7 +156,9 @@ def _base_row(rng: random.Random, idx: int) -> dict:
     else:
         terminacion = ""
 
-    adjud = rng.random() < 0.3
+    # Foreclosure/adjudication only happens on SECURED exposures (you cannot
+    # foreclose what has no collateral) — keeps D66 clean = 0.
+    adjud = colat != "NINGUNA" and rng.random() < 0.4
     if adjud:
         adj_flag, adj_tipo = "1", rng.choice(ADJ_TIPOS)
         adj_valor = round(rng.uniform(5_000, 80_000), 2)
@@ -234,7 +242,7 @@ def _base_row(rng: random.Random, idx: int) -> dict:
         "FLAG_NC": flag_nc,
         "SEGMENTO": seg,
         "CALIBRATION_SEGMENT": f"{seg}_{rng.choice(['HIGH','MED','LOW','MICRO'])}",
-        "PRODUCTO": rng.choice(PRODUCTS[seg]),
+        "PRODUCTO": producto,
         "MES_CICLO": period,
         "ENTIDAD_ORIGEN": rng.choice(ENTIDADES),
         "OR_EAD": or_ead,
@@ -400,10 +408,91 @@ def _populate_aux(conn: sqlite3.Connection, rows: list[dict]) -> None:
     conn.commit()
 
 
+# ── monthly evolution panel ─────────────────────────────────────────────────
+# One row per (cycle, month): the temporal evolution of a defaulted cycle. This
+# is the table that forces PANEL checks — invariants that only exist *across
+# months* (monotone cumulative recovery, contiguous periods, IFRS-9 stage
+# transitions, PD=1 while in default). A single snapshot cannot express them.
+
+PANEL_TABLE = "evolucion_mensual"
+PANEL_COLS = (
+    "ID_CONTR_CICLO_LGD", "ID_CONTRATO", "SEQ", "MES_CICLO", "DPDS",
+    "STAGE_IFRS9", "SALDO_PENDIENTE", "RECUPERACION_ACUMULADA",
+    "COSTE_TOTAL_ACUMULADO", "PD_ESTIMADA", "CURE_FLAG", "ESTADO_CICLO",
+)
+
+
+def _create_panel(conn: sqlite3.Connection) -> None:
+    types = {"SEQ": "INTEGER", "MES_CICLO": "INTEGER", "DPDS": "INTEGER",
+             "STAGE_IFRS9": "INTEGER", "CURE_FLAG": "INTEGER",
+             "SALDO_PENDIENTE": "REAL", "RECUPERACION_ACUMULADA": "REAL",
+             "COSTE_TOTAL_ACUMULADO": "REAL", "PD_ESTIMADA": "REAL"}
+    defs = ", ".join(f'"{c}" {types.get(c, "TEXT")}' for c in PANEL_COLS)
+    conn.execute(f'CREATE TABLE {PANEL_TABLE} ({defs})')
+
+
+def _gen_series(rng: random.Random, pk: str, contrato: str,
+                start_period: int, ead0: float) -> list[dict]:
+    """A guideline-compliant monthly evolution for one defaulted cycle.
+
+    Invariants (all hold by construction):
+      * months contiguous (no gaps), unique per (cycle, month);
+      * DPD non-decreasing while in default; only resets when CURE_FLAG=1;
+      * IFRS-9 stage never improves unless CURE_FLAG=1;
+      * PD = 1.0 while STAGE=3 (in default) — CRR Art. 178 / IFRS 9;
+      * cumulative recovery and cost non-decreasing; balance non-increasing.
+    """
+    n = rng.randint(3, 6)
+    cures = rng.random() < 0.3
+    dpd0 = rng.choice([90, 100, 120])
+    saldo = ead0
+    recup = 0.0
+    coste = round(rng.uniform(0, 200), 2)
+    rows: list[dict] = []
+    mes = start_period
+    for seq in range(1, n + 1):
+        last = seq == n
+        if cures and last:                       # cured on the final month
+            dpd_v, stage, cure, estado, pd_v = 0, 1, 1, "CERRADO", round(
+                rng.uniform(0.05, 0.30), 4)
+        else:
+            dpd_v, stage, cure, estado, pd_v = (
+                dpd0 + 30 * (seq - 1), 3, 0, "ESTIMACION", 1.0)
+        recup += round(rng.uniform(0, 0.05) * ead0, 2)     # non-decreasing
+        coste += round(rng.uniform(0, 0.01) * ead0, 2)     # non-decreasing
+        saldo = max(0.0, saldo - round(rng.uniform(0, 0.05) * ead0, 2))
+        rows.append({
+            "ID_CONTR_CICLO_LGD": pk, "ID_CONTRATO": contrato, "SEQ": seq,
+            "MES_CICLO": mes, "DPDS": dpd_v, "STAGE_IFRS9": stage,
+            "SALDO_PENDIENTE": round(saldo, 2),
+            "RECUPERACION_ACUMULADA": round(recup, 2),
+            "COSTE_TOTAL_ACUMULADO": round(coste, 2), "PD_ESTIMADA": pd_v,
+            "CURE_FLAG": cure, "ESTADO_CICLO": estado,
+        })
+        mes = month_shift(mes, 1)
+    return rows
+
+
+def _insert_series(conn: sqlite3.Connection, series: list[dict]) -> None:
+    ins = f'INSERT INTO {PANEL_TABLE} VALUES ({",".join("?" * len(PANEL_COLS))})'
+    conn.executemany(ins, [[r.get(c) for c in PANEL_COLS] for r in series])
+
+
+def _populate_panel(conn: sqlite3.Connection, rows: list[dict],
+                    rng: random.Random) -> None:
+    """One compliant monthly series per clean cycle."""
+    for r in rows:
+        series = _gen_series(rng, r["ID_CONTR_CICLO_LGD"], r["ID_CONTRATO"],
+                             r["MES_DEFAULT"], r["EAD_TOTAL"] or 10_000.0)
+        _insert_series(conn, series)
+    conn.commit()
+
+
 def build_clean_conn(n_rows: int = 2000, seed: int = 42,
                      table: str = TABLE_NAME) -> sqlite3.Connection:
-    """Build an in-memory clean DB (final table + source tables) with all
-    single-table AND cross-table invariants satisfied by construction."""
+    """Build an in-memory clean DB (final table + source tables + monthly
+    panel) with all single-table, cross-table AND temporal invariants
+    satisfied by construction."""
     rng = random.Random(seed)
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -415,6 +504,8 @@ def build_clean_conn(n_rows: int = 2000, seed: int = 42,
     if table == TABLE_NAME:
         _create_aux(conn)
         _populate_aux(conn, rows)
+        _create_panel(conn)
+        _populate_panel(conn, rows, rng)
     conn.commit()
     return conn
 
@@ -441,6 +532,21 @@ def plant_defect(conn: sqlite3.Connection, defect: Defect, *,
     placeholders = ", ".join(["?"] * len(COLUMNS))
     ins = f'INSERT INTO "{table}" VALUES ({placeholders})'
     planted: list[str] = []
+
+    if defect.target_table == PANEL_TABLE:
+        # Panel defect: generate a fresh compliant monthly series, break one
+        # temporal invariant, tag it with a dirty cycle key, and insert the
+        # whole series into the panel. Attribution is by ID_CONTR_CICLO_LGD.
+        for i in range(k):
+            rng = random.Random(seed + 4241 + 17 * i)
+            pk = f"__DIRTY_{defect.defect_id}_{i}__"
+            series = _gen_series(rng, pk, f"CONT_{defect.defect_id}_{i}",
+                                 202001, rng.uniform(20_000, 500_000))
+            series = defect.panel_mutate(series, rng)
+            _insert_series(conn, series)
+            planted.append(pk)
+        conn.commit()
+        return planted
 
     if defect.plants_duplicate_pk:
         rows = conn.execute(

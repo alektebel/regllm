@@ -32,7 +32,7 @@ SAS pipeline (7 layers) ──► CICLOS_CALIBRADOS schema ──► data_dictio
 |---|---|
 | `sas/ciclos_calibrados_pipeline.sas` | 7-layer PD+LGD pipeline (L0 sources → L7 ECL/RWA), corrective fixes, documents planted defects D01–D25. |
 | `data_dictionary.md` | Final-table schema (66 fields) + per-field description, lineage layer, regulatory ref. **The single source of truth for the coverage matrix.** |
-| `defect_catalog.py` | 58 ground-truth defects across 8 DQ dimensions (incl. 6 cross-table + 4 date-interrelation), each with an `oracle_sql`, a `mutate(row)` and a `regulation_ref`. |
+| `defect_catalog.py` | 67 ground-truth defects across 8 DQ dimensions (incl. 6 cross-table, 4 date, 6 panel/temporal, 3 weird cross-domain), each with an `oracle_sql`, a `mutate(row)` and a `regulation_ref`. |
 | `generate_db.py` | Clean SQLite — the final table **plus 3 source tables** (`contratos`, `basilea_mensual`, `colaterales`) — with all single-table AND cross-table invariants true by construction; k-row traps per defect; **mixed DB** with every defect planted at once. |
 | `source_tables.md` | Schema of the 3 source tables + the cross-table reconciliation map. |
 | `eval_harness.py` | Self-test, mixed-DB coverage, agent-targeted scoring, per-dimension + per-article deficiency report, `--fail-under` CI gate. |

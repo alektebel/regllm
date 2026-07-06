@@ -176,6 +176,42 @@ def test_referential_integrity_orphan_only_caught_by_d48():
     assert not (set(planted) & {r[PK_COLUMN] for r in recon})
 
 
+def test_monthly_panel_present_and_clean():
+    conn = build_clean_conn(ROWS, SEED)
+    n = conn.execute("SELECT COUNT(*) FROM evolucion_mensual").fetchone()[0]
+    assert n > ROWS, "panel should have several months per cycle"
+    # every panel (temporal) oracle is clean on the clean DB
+    for d in DEFECTS:
+        if d.target_table == "evolucion_mensual":
+            _, rows = _safe_run(conn, d.oracle_sql)
+            assert rows == [], f"{d.defect_id} fires on clean panel"
+
+
+def test_panel_defect_series_planted_and_caught():
+    for did in ("D58", "D59", "D60", "D61", "D62", "D63"):
+        d = DEFECTS_BY_ID[did]
+        assert d.target_table == "evolucion_mensual"
+        trap, planted = build_trap(d, ROWS, SEED, k=2)
+        # the dirty series lands in the panel, not the reporting table
+        n = trap.execute(
+            "SELECT COUNT(DISTINCT ID_CONTR_CICLO_LGD) FROM evolucion_mensual "
+            "WHERE ID_CONTR_CICLO_LGD LIKE '\\_\\_DIRTY%' ESCAPE '\\'"
+        ).fetchone()[0]
+        assert n == 2, did
+        _, rows = _safe_run(trap, d.oracle_sql)
+        assert set(planted) <= {r[PK_COLUMN] for r in rows}, did
+
+
+def test_weird_cross_domain_defects_catch_and_clean():
+    conn = build_clean_conn(ROWS, SEED)
+    for did in ("D64", "D65", "D66"):
+        d = DEFECTS_BY_ID[did]
+        assert len(_safe_run(conn, d.oracle_sql)[1]) == 0, f"{did} not clean"
+        trap, planted = build_trap(d, ROWS, SEED, k=2)
+        _, rows = _safe_run(trap, d.oracle_sql)
+        assert set(planted) <= {r[PK_COLUMN] for r in rows}, did
+
+
 def test_date_interrelation_defect_catches():
     for did in ("D54", "D55", "D56", "D57"):
         d = DEFECTS_BY_ID[did]

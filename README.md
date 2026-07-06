@@ -7,7 +7,7 @@ Two related applications for IRB / IFRS 9 regulatory data pipelines:
    known, grounded in the EBA GL/2017/16 PD & LGD guidelines via a regulation
    knowledge graph. Ships with an Angular chat UI, an AWS (ECS Fargate +
    Bedrock) deployment, and a mutation-testing **eval harness**
-   (`DQC/eval/`) that scores generated checks against 58 ground-truth
+   (`DQC/eval/`) that scores generated checks against 67 ground-truth
    defects across 8 data-quality dimensions. See
    [`DQC/eval/README.md`](DQC/eval/README.md) and
    [`docs/EVALUATION.md`](docs/EVALUATION.md).
