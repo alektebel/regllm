@@ -69,6 +69,7 @@ unsloth_compiled_cache/
 data/embeddings/
 data/sessions/
 data/uploads/
+data/dq/
 data/eval_results*.json
 autoresearch/mlflow.db
 

@@ -9,8 +9,9 @@ Two related applications for IRB / IFRS 9 regulatory data pipelines:
    Bedrock) deployment, and a mutation-testing **eval harness**
    (`DQC/eval/`) that scores generated checks against 67 ground-truth
    defects across 8 data-quality dimensions. See
-   [`DQC/eval/README.md`](DQC/eval/README.md) and
-   [`docs/EVALUATION.md`](docs/EVALUATION.md).
+   [`DQC/eval/README.md`](DQC/eval/README.md),
+   [`docs/EVALUATION.md`](docs/EVALUATION.md), and
+   [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the production image.
 2. **SAS Field-Diff Explainer** — *why is the value of this field different
    in V3 versus V2 of the same table?* — answered with a differentiable AST,
    Shapley values, and a change-log GraphRAG grounded by a local LLM.
