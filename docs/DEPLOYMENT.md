@@ -9,8 +9,16 @@ document explains the backend's dependency footprint and how it's kept slim.
 
 | File | Used by | Contents |
 |---|---|---|
-| `requirements.txt` | local full-stack dev, `pytest`, CI's main `test` job | Superset: adds `torch`, `kuzu`, `chromadb`, `scikit-learn`, `umap-learn`, `pandas`, `openpyxl` |
+| `requirements.txt` | local full-stack dev, `pytest`, CI's main `test` job | Superset: adds `torch`, `kuzu`, `chromadb`, `scikit-learn`, `umap-learn`, `pandas`, `openpyxl`, and (commented, opt-in) `llama-cpp-python` |
 | `requirements-dqc.txt` | the production Docker image (`Dockerfile`) | `fastapi`, `uvicorn`, `pydantic`, `python-multipart`, `networkx`, `httpx`, `pyyaml`, `boto3` |
+
+`llama-cpp-python` (the standalone GGUF backend, see README's "Local LLM
+integration") is opt-in everywhere, including full dev: it's a compiled
+dependency, lazily imported, and only touched when `REGLLM_LLM=gguf` /
+`REGLLM_EMBED_BACKEND=gguf` is explicitly configured with a real weight
+file. Uncomment it in `requirements.txt` (and add it to
+`requirements-dqc.txt` too) if your deployment should run fully local with
+no Ollama/Bedrock dependency at all.
 
 The codebase is one FastAPI app (`api/main.py`) whose **mounted router set**
 is controlled by `REGLLM_ROUTERS` (default `all`; the Dockerfile bakes in
@@ -80,6 +88,33 @@ curl -X POST http://localhost:8000/dqc/generate \
      -H 'Content-Type: application/json' \
      -d '{"message": "Genera DQCs para PD_ESTIMADA"}'
 ```
+
+## The regulation RAG index is also slim-compatible
+
+`api/routers/dqc.py` now also queries an embedding-based semantic index over
+the EBA GL/2017/16 PD & LGD guidelines (`search_regulation_semantic` — see
+[`docs/REGULATION_RAG.md`](REGULATION_RAG.md) for the full design). Like the
+rest of the DQC path, this stays dependency-free in the slim image:
+`src/knowledge/regulation_chunker.py` and
+`src/knowledge/regulation_vector_store.py` are pure stdlib (no numpy, no
+chromadb — cosine similarity over a few hundred chunks is trivial in plain
+Python), and `tests/test_dqc_slim_imports.py` exercises exactly this code
+path (build a tiny index, search it) inside the same subprocess check that
+guards the rest of the image.
+
+The index itself (`data/regulation/embeddings/pd_lgd_chunks.json`) is a
+**generated artifact** — gitignored, like the DQC eval harness's `.db`
+files — built with:
+
+```bash
+python scripts/build_regulation_embeddings.py
+```
+
+If it hasn't been built, `search_regulation_semantic` degrades gracefully
+(`{"available": false, "hint": "..."}`) rather than failing the request —
+`/dqc/generate` keeps working on the graph-based regulation search and
+context RAG alone, same as any other missing-context degrade in this
+codebase.
 
 ## What's still needed for production (see `docs/EVALUATION.md`)
 

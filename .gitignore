@@ -70,6 +70,10 @@ data/embeddings/
 data/sessions/
 data/uploads/
 data/dq/
+# Regulation RAG embedding index (generated — rebuild via
+# scripts/build_regulation_embeddings.py; depends on the embedding
+# backend/model chosen, so it isn't portable across configurations)
+data/regulation/embeddings/
 data/eval_results*.json
 autoresearch/mlflow.db
 

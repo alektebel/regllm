@@ -2,21 +2,34 @@
 # Models are loaded locally via Ollama from GGUF files.
 # Set model to an Ollama tag ("qwen3:30b-a3b") or a local GGUF path
 # ("/home/user/models/qwen3-30b-a3b.gguf") — GGUF files are auto-registered in Ollama.
+#
+# For a standalone GGUF backend (no Ollama server — loads the weight file
+# directly in-process via llama-cpp-python), set backend: "gguf" and
+# gguf_model_path below instead. See docs/DEPLOYMENT.md.
 
 # Chat/reasoning LLM — maintains the knowledge graph, runs agentic Q&A
 llm:
   model: "regllm-4b-sft"   # SFT tool-calling (~85.8% eval); base: qwen3:4b
-  backend: "auto"            # auto | ollama | litert | stub
+  backend: "auto"            # auto | ollama | litert | gguf | bedrock | stub
   ollama_url: "http://localhost:11434"
   litert_url: "http://localhost:9379/v1"
   litert_model: "gemma4-12b,gpu"
+  # gguf_model_path: "/home/user/models/qwen3-8b-instruct.Q4_K_M.gguf"
+  # gguf_n_ctx: 8192
+  # gguf_n_gpu_layers: 0     # >0 to offload layers to GPU
   timeout: 300
 
-# Embedding model — encodes regulation text into the vector store
+# Embedding model — encodes regulation text into the vector store.
+# Used both by the ChromaDB-backed knowledge-graph RAG (src/knowledge/
+# vector_store.py) and the dependency-free regulation RAG
+# (src/knowledge/regulation_vector_store.py, scripts/build_regulation_embeddings.py).
 embedding:
   model: "nomic-embed-text"  # local GGUF via Ollama
   dim: 768
+  backend: "auto"             # auto | ollama | gguf | bedrock | stub
   ollama_url: "http://localhost:11434"
+  # gguf_model_path: "/home/user/models/nomic-embed-text-v1.5.Q8_0.gguf"
+  # bedrock_embed_model_id: "amazon.titan-embed-text-v2:0"
 
 # Knowledge graph persistence paths
 knowledge:

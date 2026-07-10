@@ -24,6 +24,7 @@ from src.agent.tools import (
     _t_get_sas_formula,
     _t_search_docs,
     _t_search_regulation,
+    _t_search_regulation_semantic,
     _t_trace_dependencies,
 )
 from src.knowledge import get_client
@@ -149,7 +150,7 @@ class RAGSource(BaseModel):
     document: str = ""
     heading: str = ""
     snippet: str = ""
-    source_type: str = ""  # "regulation" | "definition" | "docs"
+    source_type: str = ""  # "regulation" | "regulation_semantic" | "definition" | "docs"
 
 
 class DQCResponse(BaseModel):
@@ -364,12 +365,24 @@ def _extract_variable(message: str) -> str | None:
 
 
 def _gather_context(variable: str, session_id: str) -> dict[str, Any]:
+    """Gather grounding context along two RAG channels:
+
+    - **context RAG** (SAS lineage/formula/backtrace + ``docs`` BM25 over
+      ``data/docs/**/*.md``): what the field *is* and where it comes from.
+    - **regulation RAG**, in two complementary forms: ``regulation`` (graph
+      traversal — precise but only covers fields already linked into the
+      regulation knowledge graph) and ``regulation_semantic`` (embedding
+      search over the chunked EBA GL/2017/16 PD & LGD guidelines — lower
+      precision, much higher recall, works for any field or free-form
+      question, no graph-linking step required).
+    """
     ctx: dict[str, Any] = {}
     for label, fn in [
         ("formula", lambda: _t_get_sas_formula(variable, session_id)),
         ("dependencies", lambda: _t_trace_dependencies(variable, session_id, max_depth=3)),
         ("definition", lambda: _t_get_field_definition(variable)),
         ("regulation", lambda: _t_search_regulation(variable, k=3)),
+        ("regulation_semantic", lambda: _t_search_regulation_semantic(variable, k=5)),
         ("backtrace", lambda: _t_backtrace_sas_field(variable, session_id)),
         ("docs", lambda: _t_search_docs(variable, k=3)),
     ]:
@@ -398,6 +411,20 @@ def _extract_sources(ctx: dict[str, Any]) -> list[RAGSource]:
             heading=ev.get("heading", ""),
             snippet=ev.get("snippet", "")[:300],
             source_type="regulation",
+        ))
+
+    # Regulation — semantic (embedding) hits over the chunked EBA GL/2017/16
+    reg_sem = ctx.get("regulation_semantic", {})
+    for hit in reg_sem.get("hits", []) if isinstance(reg_sem, dict) else []:
+        key = f"semantic:{hit.get('chunk_id', '')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(RAGSource(
+            document=hit.get("citation", hit.get("source_doc", "")),
+            heading=f"{hit.get('section', '')} {hit.get('subsection', '')}".strip(),
+            snippet=hit.get("text", "")[:300],
+            source_type="regulation_semantic",
         ))
 
     # Field definition

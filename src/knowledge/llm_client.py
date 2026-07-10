@@ -9,19 +9,36 @@ Auto-detects an available OpenAI-compatible local backend:
    (Qwen, Gemma, Llama, Phi, …). The default model
    ``qwen2.5:14b-instruct-q4_K_M`` is a great drop-in for structured JSON RAG
    verdicts and is small enough to run on a single 24 GB GPU.
-3. **Amazon Bedrock** — managed LLM backend via the Converse API. Set
+3. **GGUF (standalone, via `llama-cpp-python`)** — loads a ``.gguf`` weight
+   file directly **in-process**, no Ollama server required. Set
+   ``GGUF_MODEL_PATH=/path/to/model.gguf`` (and optionally
+   ``REGLLM_LLM=gguf`` to force it). This is distinct from pointing
+   ``OLLAMA_MODEL`` at a ``.gguf`` path (still supported — that path
+   auto-registers the file *into a running Ollama server* via
+   ``ollama create``). The standalone backend needs nothing but the weight
+   file and the optional ``llama-cpp-python`` dependency, which makes it the
+   right choice for a fully self-contained, single-process deployment (e.g.
+   an air-gapped bank environment with no sidecar model server).
+4. **Amazon Bedrock** — managed LLM backend via the Converse API. Set
    ``REGLLM_LLM=bedrock`` and let the IAM task role handle auth.
-4. **Stub** mode: when ``REGLLM_LLM=stub`` or no backend reachable, returns a
+5. **Stub** mode: when ``REGLLM_LLM=stub`` or no backend reachable, returns a
    deterministic JSON-shaped placeholder so unit tests and the frontend keep
    working without any model installed.
 
 Configuration via environment variables (with sensible defaults):
 
-- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``bedrock`` | ``stub``
+- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``gguf`` | ``bedrock`` | ``stub``
 - ``OLLAMA_URL``             default ``http://localhost:11434``
 - ``OLLAMA_MODEL``           Ollama tag or path to ``.gguf`` file
 - ``LITERT_URL``             default ``http://localhost:9379/v1``
 - ``LITERT_MODEL``           default ``gemma4-12b,gpu``
+- ``GGUF_MODEL_PATH``        path to a ``.gguf`` chat model — enables the standalone backend
+- ``GGUF_N_CTX``             context window, default ``8192``
+- ``GGUF_N_GPU_LAYERS``      layers to offload to GPU, default ``0`` (CPU-only)
+- ``GGUF_N_THREADS``         CPU threads, default: let ``llama.cpp`` choose
+- ``GGUF_CHAT_FORMAT``       override the chat template ``llama.cpp`` infers
+  from the GGUF's metadata (rarely needed — set only if a model's built-in
+  template isn't recognised, e.g. ``"chatml"``, ``"qwen"``, ``"gemma"``)
 - ``BEDROCK_MODEL_ID``       default ``eu.amazon.nova-micro-v1:0``
 - ``BEDROCK_REGION``         default ``eu-west-1``
 - ``REGLLM_LLM_TIMEOUT``     request timeout in seconds, default ``120``
@@ -51,6 +68,11 @@ try:
 except ImportError:  # boto3 not installed — bedrock backend unavailable
     _boto3 = None
 
+try:
+    from llama_cpp import Llama as _Llama
+except ImportError:  # llama-cpp-python not installed — gguf backend unavailable
+    _Llama = None
+
 
 def _load_yaml_config() -> dict[str, Any]:
     """Load config.yaml from the project root (best-effort)."""
@@ -78,7 +100,7 @@ _DEFAULT_TIMEOUT = float(os.getenv("REGLLM_LLM_TIMEOUT", "120"))
 @dataclass
 class ChatResponse:
     text: str
-    backend: str                       # "litert" | "ollama" | "bedrock" | "stub"
+    backend: str                       # "litert" | "ollama" | "gguf" | "bedrock" | "stub"
     model: str
     raw: dict[str, Any] | None = None
     tool_calls: list[dict[str, Any]] | None = None  # populated by ``chat_tools``
@@ -139,6 +161,24 @@ class LocalLLMClient:
             or "eu-west-1"
         )
         self._bedrock_client = None
+        # Standalone GGUF (llama-cpp-python) — see module docstring. Distinct
+        # from OLLAMA_MODEL=*.gguf, which registers the file into a running
+        # Ollama server instead of loading it in-process.
+        self.gguf_model_path = (
+            os.getenv("GGUF_MODEL_PATH") or _LLM_CFG.get("gguf_model_path") or ""
+        )
+        self.gguf_n_ctx = int(
+            os.getenv("GGUF_N_CTX") or _LLM_CFG.get("gguf_n_ctx") or 8192
+        )
+        self.gguf_n_gpu_layers = int(
+            os.getenv("GGUF_N_GPU_LAYERS") or _LLM_CFG.get("gguf_n_gpu_layers") or 0
+        )
+        _threads = os.getenv("GGUF_N_THREADS") or _LLM_CFG.get("gguf_n_threads")
+        self.gguf_n_threads = int(_threads) if _threads else None
+        self.gguf_chat_format = (
+            os.getenv("GGUF_CHAT_FORMAT") or _LLM_CFG.get("gguf_chat_format") or None
+        )
+        self._gguf_llama: Any = None
         self.prefer = prefer or os.getenv("REGLLM_LLM") or _LLM_CFG.get("backend") or "auto"
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
@@ -221,6 +261,22 @@ class LocalLLMClient:
                 "installed models. Falling back to stub.",
                 self.ollama_model, self.ollama_model,
             )
+        if self.prefer in ("auto", "gguf") and self._probe_gguf():
+            self._backend = "gguf"
+            return "gguf"
+        if self.prefer == "gguf":
+            # User explicitly asked for gguf but the weight file or the
+            # llama-cpp-python dependency is missing.
+            if _Llama is None:
+                logger.warning(
+                    "REGLLM_LLM=gguf but llama-cpp-python is not installed "
+                    "(pip install llama-cpp-python); falling back to stub"
+                )
+            else:
+                logger.warning(
+                    "REGLLM_LLM=gguf but GGUF_MODEL_PATH=%r does not point to "
+                    "a file; falling back to stub", self.gguf_model_path,
+                )
         if self.prefer == "ollama":
             # User explicitly asked for ollama but it's unreachable
             logger.warning("REGLLM_LLM=ollama but Ollama unreachable; falling back to stub")
@@ -256,6 +312,19 @@ class LocalLLMClient:
             return any(t.split(":", 1)[0] == bare for t in tags)
         except Exception:
             return False
+
+    def _probe_gguf(self) -> bool:
+        """Cheap availability check — does NOT load the model.
+
+        Loading a multi-GB GGUF file is expensive (seconds, significant
+        memory), so ``detect_backend()`` only verifies the dependency is
+        importable and the weight file exists; the actual ``Llama`` instance
+        is constructed lazily on first real chat call, in
+        :meth:`_get_gguf_llama`.
+        """
+        if _Llama is None or not self.gguf_model_path:
+            return False
+        return Path(self.gguf_model_path).expanduser().is_file()
 
     # ── Bedrock ───────────────────────────────────────────────────────────
 
@@ -310,6 +379,123 @@ class LocalLLMClient:
             raw=response,
         )
 
+    # ── GGUF (standalone, llama-cpp-python) ─────────────────────────────────
+
+    def _get_gguf_llama(self):
+        """Lazily construct (and cache) the in-process ``Llama`` instance.
+
+        Loading is deferred to first use so ``detect_backend()`` stays cheap
+        and a process that never actually calls the GGUF backend never pays
+        the multi-GB load cost.
+        """
+        if self._gguf_llama is None:
+            logger.info(
+                "Loading GGUF model %s (n_ctx=%d, n_gpu_layers=%d) …",
+                self.gguf_model_path, self.gguf_n_ctx, self.gguf_n_gpu_layers,
+            )
+            kwargs: dict[str, Any] = {
+                "model_path": str(Path(self.gguf_model_path).expanduser()),
+                "n_ctx": self.gguf_n_ctx,
+                "n_gpu_layers": self.gguf_n_gpu_layers,
+                "verbose": False,
+            }
+            if self.gguf_n_threads:
+                kwargs["n_threads"] = self.gguf_n_threads
+            if self.gguf_chat_format:
+                kwargs["chat_format"] = self.gguf_chat_format
+            self._gguf_llama = _Llama(**kwargs)
+        return self._gguf_llama
+
+    def _chat_gguf(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool,
+    ) -> ChatResponse:
+        llama = self._get_gguf_llama()
+        kwargs: dict[str, Any] = {
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if json_mode:
+            # Grammar-constrained JSON generation — llama.cpp guarantees
+            # syntactically valid JSON output when this is honoured by the
+            # loaded chat handler (all built-in handlers support it).
+            kwargs["response_format"] = {"type": "json_object"}
+        result = llama.create_chat_completion(**kwargs)
+        text = _strip_think_tags(
+            (result.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        )
+        return ChatResponse(
+            text=text, backend="gguf",
+            model=Path(self.gguf_model_path).name, raw=result,
+        )
+
+    def _chat_json_stream_gguf(
+        self, system: str, user: str, temperature: float, max_tokens: int,
+    ):
+        llama = self._get_gguf_llama()
+        msgs = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        stream = llama.create_chat_completion(
+            messages=msgs, temperature=temperature, max_tokens=max_tokens,
+            response_format={"type": "json_object"}, stream=True,
+        )
+        full_text = ""
+        for chunk in stream:
+            delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+            token = delta.get("content") or ""
+            if not token:
+                continue
+            full_text += token
+            yield token
+        yield _safe_json(_strip_think_tags(full_text))
+
+    def _chat_tools_gguf(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+    ) -> ChatResponse:
+        """Best-effort tool-calling — quality depends on the GGUF model's
+        chat template and whether ``llama-cpp-python`` recognises it as a
+        function-calling-capable handler. Falls back to a plain text answer
+        (no ``tool_calls``) if the response doesn't carry any, which the
+        agent loop already treats as a normal final answer."""
+        llama = self._get_gguf_llama()
+        result = llama.create_chat_completion(
+            messages=messages, tools=tools, temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        choice = (result.get("choices") or [{}])[0]
+        msg = choice.get("message", {}) or {}
+        text = _strip_think_tags(msg.get("content") or "")
+        raw_calls = msg.get("tool_calls") or []
+        calls = []
+        for c in raw_calls:
+            fn = (c.get("function") or {})
+            args = fn.get("arguments")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {"_raw": args}
+            calls.append({
+                "id": c.get("id", f"call_{len(calls)}"),
+                "name": fn.get("name", ""),
+                "arguments": args or {},
+            })
+        return ChatResponse(
+            text=text, backend="gguf",
+            model=Path(self.gguf_model_path).name,
+            raw=result, tool_calls=calls or None,
+        )
+
     # ── Chat ──────────────────────────────────────────────────────────────
 
     def chat(
@@ -326,6 +512,8 @@ class LocalLLMClient:
             return self._chat_litert(messages, temperature, max_tokens, json_mode)
         if backend == "ollama":
             return self._chat_ollama(messages, temperature, max_tokens, json_mode)
+        if backend == "gguf":
+            return self._chat_gguf(messages, temperature, max_tokens, json_mode)
         if backend == "bedrock":
             return self._chat_bedrock(messages, temperature, max_tokens, json_mode)
         return self._chat_stub(messages, json_mode)
@@ -434,10 +622,13 @@ class LocalLLMClient:
 
         Yields ``str`` tokens as they arrive. The last yield is a
         ``dict`` with the parsed JSON result (or an error dict).
-        Only implemented for Ollama; other backends fall back to
+        Implemented for Ollama and GGUF; other backends fall back to
         non-streaming and yield the full result at once.
         """
         backend = self.detect_backend()
+        if backend == "gguf":
+            yield from self._chat_json_stream_gguf(system, user, temperature, max_tokens)
+            return
         if backend != "ollama":
             result = self.chat_json(system, user, temperature=temperature, max_tokens=max_tokens)
             yield result
@@ -530,6 +721,8 @@ class LocalLLMClient:
             return self._chat_tools_openai(messages, tools, temperature, max_tokens)
         if backend == "ollama":
             return self._chat_tools_ollama(messages, tools, temperature, max_tokens)
+        if backend == "gguf":
+            return self._chat_tools_gguf(messages, tools, temperature, max_tokens)
         if backend == "bedrock":
             raise NotImplementedError("Bedrock tool-calling not yet implemented")
         return self._chat_tools_stub(messages, tools)

@@ -351,6 +351,41 @@ def _t_search_regulation(query: str, k: int = 3) -> dict[str, Any]:
         return {"error": str(e), "query": query}
 
 
+def _t_search_regulation_semantic(query: str, k: int = 5) -> dict[str, Any]:
+    """Embedding-based semantic search over the chunked EBA GL/2017/16
+    PD & LGD guidelines (see ``src/knowledge/regulation_vector_store.py``).
+
+    Complements ``search_regulation`` (graph traversal keyed on a field
+    already being linked to a regulatory section by prior LLM extraction):
+    this searches ANY natural-language query against paragraph-level
+    semantic similarity, so it also surfaces guidance for fields that were
+    never linked into the regulation graph, or for free-form questions
+    ("suelo de LGD para hipotecas") rather than exact field names.
+    """
+    from src.knowledge.embeddings import get_embedding_service
+    from src.knowledge.regulation_vector_store import get_default_store
+
+    store = get_default_store()
+    if store is None:
+        return {
+            "query": query, "available": False, "hits": [],
+            "hint": (
+                "No regulation embedding index found. Build one with "
+                "`python scripts/build_regulation_embeddings.py`."
+            ),
+        }
+    try:
+        hits = store.search_text(query, get_embedding_service(), k=k)
+    except Exception as e:
+        logger.warning("semantic regulation tool failed: %s", e)
+        return {"query": query, "available": False, "hits": [], "error": str(e)}
+    return {
+        "query": query, "available": True,
+        "hits": [h.to_dict() for h in hits],
+        "index_size": store.size,
+    }
+
+
 def _t_search_changelog(query: str, k: int = 3) -> dict[str, Any]:
     try:
         from src.knowledge import GraphRAG, collect_evidence, field_subgraph, linearise_subgraph
@@ -715,6 +750,28 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
             "required": ["query"],
         },
         fn=_t_search_regulation,
+    ),
+    "search_regulation_semantic": ToolSpec(
+        name="search_regulation_semantic",
+        description=(
+            "Semantic (embedding-based) search over the chunked EBA GL/2017/16 "
+            "PD & LGD estimation guidelines — 221 paragraphs, ~275 retrieval "
+            "chunks. Unlike search_regulation (graph traversal, needs the "
+            "field to already be linked to a regulatory section), this "
+            "matches ANY natural-language query or field name against "
+            "paragraph-level semantic similarity — better recall, works for "
+            "fields never linked into the regulation graph, and returns the "
+            "exact paragraph number for citation."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Field name or natural-language regulatory question, e.g. 'suelo de LGD para hipotecas' or 'MOC_CAT_A'."},
+                "k": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
+        },
+        fn=_t_search_regulation_semantic,
     ),
     "enrich_fields": ToolSpec(
         name="enrich_fields",

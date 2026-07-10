@@ -450,7 +450,7 @@ of:
 ## Local LLM integration
 
 Any chat-tuned model served by an OpenAI-compatible local endpoint
-works. Two backends are auto-detected (in order):
+works. Backends are auto-detected in this order:
 
 1. **LiteRT-LM** — Google's official local serving stack, used for
    **Gemma 4 12B** if you go that route. Server lives on
@@ -468,8 +468,25 @@ works. Two backends are auto-detected (in order):
    `OLLAMA_MODEL=<tag>` (e.g. `gemma2:9b`, `llama3.1:8b-instruct`,
    `qwen2.5:7b`, …). The client probes for the model on startup and
    falls back to stub mode if the configured tag isn't pulled.
+3. **Standalone GGUF** (`llama-cpp-python`) — loads a `.gguf` weight file
+   **directly in the API process**, no Ollama server needed. Distinct from
+   pointing `OLLAMA_MODEL` at a `.gguf` path (that auto-registers the file
+   *into a running Ollama server* instead). Use this for a single
+   self-contained process with no sidecar model server — e.g. an
+   air-gapped deployment:
+   ```bash
+   pip install llama-cpp-python   # not installed by default, see requirements.txt
+   export REGLLM_LLM=gguf
+   export GGUF_MODEL_PATH=/models/qwen3-8b-instruct.Q4_K_M.gguf
+   ```
+   The model loads lazily on first real chat call (not during startup
+   probing), so `detect_backend()` stays cheap even when this is
+   configured. `GGUF_N_CTX`, `GGUF_N_GPU_LAYERS`, `GGUF_N_THREADS` and
+   `GGUF_CHAT_FORMAT` tune it further — see `.env.example`.
+4. **Amazon Bedrock** — set `REGLLM_LLM=bedrock` (used by the AWS DQC
+   deployment; see `docs/DEPLOYMENT.md`).
 
-If neither backend is reachable, the client falls back to *stub mode*,
+If nothing is reachable/configured, the client falls back to *stub mode*,
 which returns a deterministic JSON-shaped placeholder. The rest of the
 pipeline (gradient + Shapley + GraphRAG retrieval) keeps working.
 
@@ -478,14 +495,38 @@ The active backend and model are visible in the top-right pill of the
 
 Configuration via env vars:
 
-| Variable             | Default                              |
-|----------------------|--------------------------------------|
-| `REGLLM_LLM`         | `auto` (`litert` \| `ollama` \| `stub`) |
-| `OLLAMA_URL`         | `http://localhost:11434`             |
-| `OLLAMA_MODEL`       | `qwen2.5:14b-instruct-q4_K_M`        |
-| `LITERT_URL`         | `http://localhost:9379/v1`           |
-| `LITERT_MODEL`       | `gemma4-12b,gpu`                     |
-| `REGLLM_LLM_TIMEOUT` | `120` (seconds)                      |
+| Variable             | Default                                          |
+|----------------------|---------------------------------------------------|
+| `REGLLM_LLM`         | `auto` (`litert` \| `ollama` \| `gguf` \| `bedrock` \| `stub`) |
+| `OLLAMA_URL`         | `http://localhost:11434`                         |
+| `OLLAMA_MODEL`       | `qwen2.5:14b-instruct-q4_K_M`                    |
+| `LITERT_URL`         | `http://localhost:9379/v1`                       |
+| `LITERT_MODEL`       | `gemma4-12b,gpu`                                 |
+| `GGUF_MODEL_PATH`    | unset — required to enable the standalone GGUF backend |
+| `GGUF_N_CTX`         | `8192`                                           |
+| `GGUF_N_GPU_LAYERS`  | `0` (CPU-only)                                   |
+| `BEDROCK_MODEL_ID`   | `eu.amazon.nova-micro-v1:0`                      |
+| `REGLLM_LLM_TIMEOUT` | `120` (seconds)                                  |
+
+### Two RAG channels: context RAG and regulation RAG
+
+The DQC generator (`api/routers/dqc.py`) grounds every generated check in
+**two independent retrieval channels** — see
+[`docs/REGULATION_RAG.md`](docs/REGULATION_RAG.md) for the full design:
+
+- **Context RAG** — what a field *is*: SAS lineage/formula lookup + BM25
+  search over `data/docs/**/*.md` (`src/agent/docs_index.py`).
+- **Regulation RAG** — what the guidelines *require*, in two complementary
+  forms: graph traversal (`search_regulation`, precise but only covers
+  fields already linked into the regulation knowledge graph) and
+  **embedding-based semantic search** (`search_regulation_semantic`, new)
+  over the EBA GL/2017/16 PD & LGD guidelines, chunked at paragraph
+  granularity (`src/knowledge/regulation_chunker.py`) and embedded via the
+  same multi-backend client (Ollama/GGUF/Bedrock —
+  `src/knowledge/embeddings.py`). Build the index once:
+  ```bash
+  python scripts/build_regulation_embeddings.py
+  ```
 
 ---
 
