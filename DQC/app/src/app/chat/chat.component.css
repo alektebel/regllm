@@ -161,6 +161,41 @@
   border-color: #6c7bbf;
 }
 
+/* ── Simple mode bar ── */
+.simple-mode-bar {
+  padding: 8px 20px;
+  border-top: 1px solid #2a2a40;
+  background: #13131f;
+  font-size: 12px;
+}
+.simple-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #999;
+  cursor: pointer;
+}
+.simple-mode-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.simple-mode-fields input {
+  padding: 6px 10px;
+  border: 1px solid #2a2a40;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+  background: #0f0f1a;
+  color: #fff;
+}
+.simple-mode-fields input[type="number"] { width: 220px; }
+.simple-mode-fields input[type="text"] { flex: 1; }
+.simple-mode-fields input:focus { border-color: #6c7bbf; }
+.simple-mode-fields input:disabled { opacity: 0.4; }
+.simple-mode-or { color: #555; }
+
 /* ── Input bar ── */
 .input-bar {
   display: flex;
@@ -170,7 +205,8 @@
   background: #161625;
 }
 
-.input-bar input {
+.input-bar input,
+.input-bar textarea {
   flex: 1;
   padding: 10px 14px;
   border: 1px solid #2a2a40;
@@ -179,9 +215,15 @@
   outline: none;
   background: #0f0f1a;
   color: #fff;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 40px;
+  max-height: 160px;
 }
-.input-bar input::placeholder { color: #555; }
-.input-bar input:focus { border-color: #6c7bbf; }
+.input-bar input::placeholder,
+.input-bar textarea::placeholder { color: #555; white-space: pre-line; }
+.input-bar input:focus,
+.input-bar textarea:focus { border-color: #6c7bbf; }
 
 .input-bar button {
   padding: 10px 20px;

@@ -27,6 +27,15 @@ export interface DqcResponse {
   sources: RAGSource[];
 }
 
+// Simple mode: natural-language expressions + at most one article, no RAG —
+// see POST /dqc/generate/simple.
+export interface SimpleDqcResponse {
+  dqcs: DqcItem[];
+  article_citation: string;
+  article_text_used: string;
+  context_summary: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;

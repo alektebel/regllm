@@ -160,6 +160,29 @@ class DQCResponse(BaseModel):
     sources: list[RAGSource] = []
 
 
+class SimpleDQCRequest(BaseModel):
+    """Lighter-weight generation: skip the SAS-lineage / graph / semantic RAG
+    context gathering entirely, and ground the model in ONE regulatory
+    article the caller supplies directly (by paragraph number from the
+    ingested EBA GL/2017/16 corpus, or by pasting the text). Built for
+    local experimentation with a self-hosted model (e.g. REGLLM_LLM=gguf):
+    a short, single-article prompt is far more tractable for a small local
+    model than the full multi-source RAG context the main /generate
+    endpoint assembles, and needs no embedding index to be built first.
+    """
+    expressions: str          # one or more NL data-quality rules, free text
+    article_paragraph: int | None = None  # pull §N from data/regulation/eba_gl_2017_16_articles.json
+    article_text: str | None = None       # or supply the article text directly
+    session_id: str = "default"
+
+
+class SimpleDQCResponse(BaseModel):
+    dqcs: list[DQCItem]
+    article_citation: str = ""
+    article_text_used: str = ""
+    context_summary: str = ""
+
+
 # ── System prompt ───────────────────────────────────────────────────────────
 
 DQC_SYSTEM_PROMPT = """\
@@ -219,6 +242,49 @@ Responde con JSON: {"dqcs": [...]}. Cada objeto DQC:
 }
 
 Genera entre 5 y 12 DQCs por campo, cubriendo el máximo de dimensiones. \
+Responde SOLO con JSON válido.
+"""
+
+# Leaner prompt for /dqc/generate/simple — no RAG context, just the caller's
+# expressions plus (at most) one article. Deliberately short: a small local
+# model has a much better shot at this than at the full multi-source prompt.
+SIMPLE_DQC_SYSTEM_PROMPT = """\
+Eres un experto en calidad de datos para reporting regulatorio bancario IRB.
+
+Se te da:
+1. Una o varias expresiones en lenguaje natural, cada una describiendo una \
+regla de calidad de datos que debe cumplirse (p.ej. "la PD nunca debe superar \
+el 100%", "toda hipoteca debe tener colateral tipo HIPOTECA").
+2. Opcionalmente, el texto de UN ÚNICO artículo o párrafo regulatorio que \
+puede (o no) fundamentar esas reglas.
+
+Para CADA expresión, genera al menos un DQC (control de calidad de datos) \
+que la implemente como una consulta SQL:
+- La tabla es `mylib.ciclos_recuperacion`.
+- Usa nombres de campo en MAYÚSCULAS, tal como aparecen en la expresión o se \
+  infieran razonablemente de ella (p.ej. "la PD" → PD_ESTIMADA).
+- Si se proporcionó un artículo y fundamenta la regla, cita EXACTAMENTE su \
+  referencia en `referencia_regulatoria`. Si no se proporcionó artículo, o no \
+  fundamenta la regla, escribe "Sin referencia regulatoria disponible" — \
+  NO inventes artículos ni cites ninguno distinto del proporcionado.
+- No omitas ninguna expresión: genera al menos un DQC por cada una.
+
+Responde con JSON: {"dqcs": [...]}. Cada objeto DQC:
+{
+  "dqc_id": "DQC_<CAMPO>_<NNN>",
+  "variable": "<campo principal>",
+  "descripcion": "<qué verifica — sé específico>",
+  "tipo": "formula|consistencia|referencial|rango|completitud",
+  "severidad": "bloqueante|advertencia|informativo",
+  "regla_sql": "<SQL sobre mylib.ciclos_recuperacion>",
+  "condicion_error": "<cuándo falla>",
+  "campos_entrada": ["campo1", "campo2", "..."],
+  "referencia_regulatoria": "<cita exacta o 'Sin referencia regulatoria disponible'>",
+  "umbral": "<valor si aplica>",
+  "periodicidad": "diaria|mensual|trimestral",
+  "justificacion": "<por qué, citando el artículo si aplica>"
+}
+
 Responde SOLO con JSON válido.
 """
 
@@ -540,6 +606,97 @@ def generate_dqc(req: DQCRequest) -> DQCResponse:
         dqcs=dqcs,
         context_summary=f"Se generaron {len(dqcs)} DQCs para {variable} usando contexto SAS + regulación.",
         sources=sources,
+    )
+
+
+# ── Simple generation (no RAG — natural-language expressions + one article) ─
+
+_EBA_GL_PATH = "data/regulation/eba_gl_2017_16_articles.json"
+
+
+def _load_article_by_paragraph(n: int) -> tuple[str, str] | None:
+    """Return (citation, text) for paragraph ``n`` of the ingested EBA
+    GL/2017/16 corpus, or None if not found / the corpus is missing."""
+    try:
+        with open(_EBA_GL_PATH, encoding="utf-8") as f:
+            records = json.load(f)
+    except Exception:
+        return None
+    for rec in records:
+        if rec.get("paragraph") == n:
+            return f"EBA GL 2017/16 §{n}", rec.get("text", "")
+    return None
+
+
+@router.post("/generate/simple", response_model=SimpleDQCResponse)
+def generate_dqc_simple(req: SimpleDQCRequest) -> SimpleDQCResponse:
+    """Turn a batch of natural-language DQC expressions into SQL checks,
+    grounded in at most one caller-supplied regulatory article — no
+    SAS-lineage/graph/semantic RAG context gathering. See
+    ``SimpleDQCRequest`` for why this exists."""
+    article_citation = ""
+    article_text = ""
+    if req.article_text:
+        article_text = req.article_text.strip()
+        article_citation = "Artículo proporcionado por el usuario"
+    elif req.article_paragraph is not None:
+        found = _load_article_by_paragraph(req.article_paragraph)
+        if found is None:
+            return SimpleDQCResponse(
+                dqcs=[],
+                context_summary=(
+                    f"No se encontró el párrafo {req.article_paragraph} en "
+                    f"{_EBA_GL_PATH}."
+                ),
+            )
+        article_citation, article_text = found
+
+    user_prompt = (
+        "Expresiones de calidad de datos (lenguaje natural, una o varias):\n"
+        f"{req.expressions.strip()}\n\n"
+    )
+    if article_text:
+        user_prompt += f"Artículo regulatorio ({article_citation}):\n{article_text}\n"
+    else:
+        user_prompt += (
+            "No se proporcionó ningún artículo regulatorio. Indica "
+            "'Sin referencia regulatoria disponible' en cada DQC.\n"
+        )
+
+    try:
+        result = get_client().chat_json(
+            system=SIMPLE_DQC_SYSTEM_PROMPT, user=user_prompt, max_tokens=4096,
+        )
+    except Exception as exc:
+        logger.error("Simple DQC LLM call failed: %s", exc)
+        return SimpleDQCResponse(
+            dqcs=[], article_citation=article_citation, article_text_used=article_text,
+            context_summary=f"Error al generar DQCs: {exc}",
+        )
+
+    raw_dqcs = _extract_dqc_list(result)
+    dqcs: list[DQCItem] = []
+    for d in raw_dqcs:
+        cleaned = {}
+        for k, v in d.items():
+            if k not in DQCItem.model_fields or v is None:
+                continue
+            field_type = DQCItem.model_fields[k].annotation
+            if field_type is str and not isinstance(v, str):
+                v = str(v)
+            cleaned[k] = v
+        dqcs.append(DQCItem(**cleaned))
+
+    try:
+        saved_ids = _persist_dqc_items(dqcs)
+        logger.info("persisted %d/%d simple DQCs as pending", len(saved_ids), len(dqcs))
+    except Exception as exc:
+        logger.warning("Simple DQC persist failed: %s", exc)
+
+    n_expr = len([e for e in req.expressions.splitlines() if e.strip()]) or 1
+    return SimpleDQCResponse(
+        dqcs=dqcs, article_citation=article_citation, article_text_used=article_text,
+        context_summary=f"Se generaron {len(dqcs)} DQCs a partir de {n_expr} expresión(es).",
     )
 
 

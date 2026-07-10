@@ -47,15 +47,44 @@
     }
   </div>
 
+  <div class="simple-mode-bar">
+    <label class="simple-mode-toggle">
+      <input type="checkbox" [(ngModel)]="simpleMode" name="simpleMode" />
+      Modo simple: expresiones en lenguaje natural + un único artículo (sin RAG)
+    </label>
+
+    @if (simpleMode) {
+      <div class="simple-mode-fields">
+        <input
+          type="number"
+          [(ngModel)]="articleParagraph"
+          name="articleParagraph"
+          placeholder="Párrafo EBA GL 2017/16 (p.ej. 73)"
+          [disabled]="isLoading"
+        />
+        <span class="simple-mode-or">o</span>
+        <input
+          type="text"
+          [(ngModel)]="articleText"
+          name="articleText"
+          placeholder="…o pega aquí el texto del artículo"
+          [disabled]="isLoading || !!articleParagraph"
+        />
+      </div>
+    }
+  </div>
+
   <form class="input-bar" (ngSubmit)="send()">
-    <input
-      type="text"
+    <textarea
       [(ngModel)]="userMessage"
       name="message"
-      placeholder="Ej: Crea DQC para comprobar que PD_ESTIMADA esta correctamente construida"
+      rows="1"
+      [placeholder]="simpleMode
+        ? 'Una expresión por línea, p.ej.:\nLa PD nunca debe superar el 100%.\nToda hipoteca debe tener colateral HIPOTECA.'
+        : 'Ej: Crea DQC para comprobar que PD_ESTIMADA esta correctamente construida'"
       [disabled]="isLoading"
-      autocomplete="off"
-    />
+      (keydown.enter)="$event.preventDefault(); send()"
+    ></textarea>
     <button type="submit" [disabled]="isLoading || !userMessage.trim()">Enviar</button>
   </form>
 </div>

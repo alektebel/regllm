@@ -528,6 +528,44 @@ The DQC generator (`api/routers/dqc.py`) grounds every generated check in
   python scripts/build_regulation_embeddings.py
   ```
 
+### Run the DQC app locally against your own GGUF model
+
+The fastest local loop — no Docker, no Ollama server, your own `.gguf`
+weights loaded directly in the API process:
+
+```bash
+# 1. Backend deps (+ the optional standalone GGUF backend)
+pip install -r requirements.txt
+pip install llama-cpp-python
+
+# 2. Point at your model and start the API
+export REGLLM_LLM=gguf
+export GGUF_MODEL_PATH=/path/to/your-model.gguf   # adjust this line only
+uvicorn api.main:app --reload --port 8000
+
+# 3. In a second terminal — the Angular app, unmodified
+cd DQC/app
+npm install
+npm start                # http://localhost:4200, proxies /api -> :8000
+```
+
+`npm start` runs `ng serve --proxy-config proxy.conf.json`, which forwards
+`/api/*` to `http://localhost:8000` — the backend's default port, matching
+step 2 above with no further configuration.
+
+**For getting DQCs right with a small local model**, use **"Modo simple"**
+in the chat panel instead of the default free-text mode: it skips the full
+multi-source RAG context (SAS lineage + regulation graph + semantic search
++ docs — a lot for a small model to parse) and sends just your natural-
+language expressions plus **one** regulatory article — either a paragraph
+number from the ingested EBA GL/2017/16 corpus (e.g. `73`) or pasted text
+directly. One request can describe several rules (one per line); the model
+returns one DQC per rule, citing that single article or "Sin referencia
+regulatoria disponible" if it doesn't apply. This is
+`POST /dqc/generate/simple` (`api/routers/dqc.py::generate_dqc_simple`) —
+see `tests/test_dqc_simple_endpoint.py` for exact request/response shapes
+if you'd rather script it than use the UI.
+
 ---
 
 ## Method notes
