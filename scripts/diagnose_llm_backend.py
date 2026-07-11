@@ -13,6 +13,11 @@ interpreter (a very common cause of "it's not detecting it" on Windows is
 `pip install llama-cpp-python` landing in a different Python than the one
 `uvicorn` runs from).
 
+Primarily focused on the standalone GGUF backend (the numbered [1]-[7]
+checks), with a shorter [B1]-[B4] section at the end covering the same
+class of problem for Amazon Bedrock (boto3 installed?, credentials visible
+to this process?, model/region resolved?).
+
     python scripts/diagnose_llm_backend.py
 """
 
@@ -118,6 +123,47 @@ def main() -> None:
         print("\nGGUF backend correctly detected. If /health still shows something")
         print("else, restart uvicorn — it may be running with stale env vars from")
         print("before you set them.")
+
+    print()
+    _check_bedrock(client)
+
+
+def _check_bedrock(client: "LocalLLMClient") -> None:
+    """Bedrock has the same class of 'why isn't it detecting it' failure
+    modes as GGUF (dependency missing, credentials not visible to this
+    process, wrong region/model), so this mirrors the same numbered-check
+    approach. Runs even if you're not using Bedrock — it's cheap and makes
+    no network calls."""
+    from src.knowledge.llm_client import _boto3
+
+    print("=" * 60)
+    print("Bonus: Amazon Bedrock backend (REGLLM_LLM=bedrock)")
+    print("=" * 60)
+    print(f"[B1] boto3 importable : {_bool_str(_boto3 is not None)}")
+    if _boto3 is None:
+        print("      Fix: pip install boto3")
+        return
+    print(f"[B2] bedrock_model_id (BEDROCK_MODEL_ID / config.yaml) = {client.bedrock_model_id!r}")
+    print(f"[B3] bedrock_region   (BEDROCK_REGION / config.yaml)   = {client.bedrock_region!r}")
+    try:
+        creds = _boto3.Session().get_credentials()
+        if creds is None:
+            print("[B4] AWS credentials visible to this process : NO  <-- problem")
+            print("      Fix: set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, run `aws configure`,")
+            print("      or (in ECS/EC2) attach an IAM role/instance profile with")
+            print("      bedrock:InvokeModel on the model ARN.")
+        else:
+            frozen = creds.get_frozen_credentials()
+            masked = (frozen.access_key or "")[:4] + "…" if frozen.access_key else "?"
+            print(f"[B4] AWS credentials visible to this process : YES "
+                  f"(access key {masked}, source: {creds.method})")
+    except Exception as e:
+        print(f"[B4] AWS credentials visible to this process : could not check ({e})")
+    print()
+    print("Note: 'auto' mode never picks Bedrock — it only tries")
+    print("litert -> ollama -> gguf -> stub, in that order. Set REGLLM_LLM=bedrock")
+    print("explicitly to use it (this is by design: Bedrock is a paid managed")
+    print("service, so it should never be silently auto-selected).")
 
 
 if __name__ == "__main__":

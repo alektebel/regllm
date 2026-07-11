@@ -116,6 +116,34 @@ If it hasn't been built, `search_regulation_semantic` degrades gracefully
 context RAG alone, same as any other missing-context degrade in this
 codebase.
 
+## Choosing a production LLM backend: Bedrock vs standalone GGUF
+
+The slim image (`requirements-dqc.txt`) already ships `boto3`, so **Amazon
+Bedrock is the zero-extra-dependency choice** for the deployed ECS
+task — no weight file to bake into the image or mount, no GPU, no Ollama
+sidecar. It's what `DQC/terraform/` and `DQC/cdk/` provision IAM for by
+default. Set:
+
+```bash
+REGLLM_LLM=bedrock
+BEDROCK_MODEL_ID=eu.amazon.nova-micro-v1:0   # default; any Converse-API model works
+BEDROCK_REGION=eu-west-1
+```
+
+and give the ECS task role `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream`
+on the model ARN (already wired in the Terraform/CDK IAM policy). Auth uses
+the standard AWS credential chain — nothing else to configure. All three
+LLM-client surfaces (`chat`, `chat_json_stream` streaming, and
+`chat_tools`/tool-calling for the SAS-lineage agent) are implemented for
+Bedrock via the Converse API (`src/knowledge/llm_client.py`).
+
+The standalone **GGUF** backend (`REGLLM_LLM=gguf`) is the right choice
+instead when the deployment must be fully air-gapped (no AWS egress at
+all): it needs `llama-cpp-python` (opt-in, compiled — see the note above)
+and a weight file baked into the image or mounted at `GGUF_MODEL_PATH`, but
+then has zero external network dependency at inference time. See the
+README's "Local LLM integration" section for the full GGUF setup.
+
 ## What's still needed for production (see `docs/EVALUATION.md`)
 
 The slim image addresses image size, cold-start time, build time, and

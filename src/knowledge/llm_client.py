@@ -336,6 +336,57 @@ class LocalLLMClient:
             )
         return self._bedrock_client
 
+    @staticmethod
+    def _bedrock_convert_messages(
+        messages: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+        """Convert OpenAI/Ollama-shaped chat history into Bedrock Converse
+        ``system`` + ``messages`` blocks, including the ``tool_calls``
+        (assistant) and ``tool`` (tool-result) turns the agent loop appends
+        to conversation history."""
+        system_parts: list[dict[str, str]] = []
+        converse_msgs: list[dict[str, Any]] = []
+        for m in messages:
+            role = m["role"]
+            if role == "system":
+                system_parts.append({"text": m["content"]})
+            elif role == "tool":
+                converse_msgs.append({
+                    "role": "user",
+                    "content": [{
+                        "toolResult": {
+                            "toolUseId": m.get("tool_call_id", ""),
+                            "content": [{"text": m.get("content", "")}],
+                        }
+                    }],
+                })
+            elif role == "assistant" and m.get("tool_calls"):
+                blocks: list[dict[str, Any]] = []
+                if m.get("content"):
+                    blocks.append({"text": m["content"]})
+                for c in m["tool_calls"]:
+                    fn = c.get("function", c)
+                    args = fn.get("arguments")
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+                    blocks.append({
+                        "toolUse": {
+                            "toolUseId": c.get("id", ""),
+                            "name": fn.get("name", ""),
+                            "input": args or {},
+                        }
+                    })
+                converse_msgs.append({"role": "assistant", "content": blocks})
+            else:
+                converse_msgs.append({
+                    "role": role,
+                    "content": [{"text": m.get("content", "")}],
+                })
+        return system_parts, converse_msgs
+
     def _chat_bedrock(
         self,
         messages: list[dict[str, str]],
@@ -344,17 +395,7 @@ class LocalLLMClient:
         json_mode: bool,
     ) -> ChatResponse:
         client = self._get_bedrock_client()
-
-        system_parts: list[dict[str, str]] = []
-        converse_msgs: list[dict[str, Any]] = []
-        for m in messages:
-            if m["role"] == "system":
-                system_parts.append({"text": m["content"]})
-            else:
-                converse_msgs.append({
-                    "role": m["role"],
-                    "content": [{"text": m["content"]}],
-                })
+        system_parts, converse_msgs = self._bedrock_convert_messages(messages)
 
         if json_mode and system_parts:
             system_parts[0]["text"] += "\n\nRespond ONLY with valid JSON."
@@ -377,6 +418,68 @@ class LocalLLMClient:
             backend="bedrock",
             model=self.bedrock_model_id,
             raw=response,
+        )
+
+    def _chat_json_stream_bedrock(
+        self, system: str, user: str, temperature: float, max_tokens: int,
+    ):
+        client = self._get_bedrock_client()
+        kwargs: dict[str, Any] = {
+            "modelId": self.bedrock_model_id,
+            "messages": [{"role": "user", "content": [{"text": user}]}],
+            "inferenceConfig": {"temperature": temperature, "maxTokens": max_tokens},
+            "system": [{"text": system + "\n\nRespond ONLY with valid JSON."}],
+        }
+        response = client.converse_stream(**kwargs)
+        full_text = ""
+        for event in response["stream"]:
+            delta = (event.get("contentBlockDelta") or {}).get("delta") or {}
+            token = delta.get("text")
+            if not token:
+                continue
+            full_text += token
+            yield token
+        yield _safe_json(full_text)
+
+    def _chat_tools_bedrock(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+    ) -> ChatResponse:
+        client = self._get_bedrock_client()
+        system_parts, converse_msgs = self._bedrock_convert_messages(messages)
+
+        kwargs: dict[str, Any] = {
+            "modelId": self.bedrock_model_id,
+            "messages": converse_msgs,
+            "inferenceConfig": {"temperature": temperature, "maxTokens": max_tokens},
+            "toolConfig": {"tools": [_bedrock_tool_spec(t) for t in tools]},
+        }
+        if system_parts:
+            kwargs["system"] = system_parts
+
+        response = client.converse(**kwargs)
+        blocks = response["output"]["message"]["content"]
+        text_parts: list[str] = []
+        calls: list[dict[str, Any]] = []
+        for block in blocks:
+            if "text" in block:
+                text_parts.append(block["text"])
+            elif "toolUse" in block:
+                tu = block["toolUse"]
+                calls.append({
+                    "id": tu.get("toolUseId", f"call_{len(calls)}"),
+                    "name": tu.get("name", ""),
+                    "arguments": tu.get("input") or {},
+                })
+        return ChatResponse(
+            text="".join(text_parts),
+            backend="bedrock",
+            model=self.bedrock_model_id,
+            raw=response,
+            tool_calls=calls or None,
         )
 
     # ── GGUF (standalone, llama-cpp-python) ─────────────────────────────────
@@ -622,12 +725,15 @@ class LocalLLMClient:
 
         Yields ``str`` tokens as they arrive. The last yield is a
         ``dict`` with the parsed JSON result (or an error dict).
-        Implemented for Ollama and GGUF; other backends fall back to
-        non-streaming and yield the full result at once.
+        Implemented for Ollama, GGUF and Bedrock; other backends (LiteRT,
+        stub) fall back to non-streaming and yield the full result at once.
         """
         backend = self.detect_backend()
         if backend == "gguf":
             yield from self._chat_json_stream_gguf(system, user, temperature, max_tokens)
+            return
+        if backend == "bedrock":
+            yield from self._chat_json_stream_bedrock(system, user, temperature, max_tokens)
             return
         if backend != "ollama":
             result = self.chat_json(system, user, temperature=temperature, max_tokens=max_tokens)
@@ -724,7 +830,7 @@ class LocalLLMClient:
         if backend == "gguf":
             return self._chat_tools_gguf(messages, tools, temperature, max_tokens)
         if backend == "bedrock":
-            raise NotImplementedError("Bedrock tool-calling not yet implemented")
+            return self._chat_tools_bedrock(messages, tools, temperature, max_tokens)
         return self._chat_tools_stub(messages, tools)
 
     def _chat_tools_ollama(
@@ -873,6 +979,21 @@ def _strip_think_tags(text: str) -> str:
     """Remove <think>...</think> blocks from model output (qwen3, deepseek-r1)."""
     import re
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+def _bedrock_tool_spec(tool: dict[str, Any]) -> dict[str, Any]:
+    """Convert one OpenAI/Ollama-format tool schema (as produced by
+    ``ToolSpec.schema()``) into a Bedrock Converse ``toolConfig`` entry."""
+    fn = tool.get("function", tool)
+    return {
+        "toolSpec": {
+            "name": fn.get("name", ""),
+            "description": fn.get("description", ""),
+            "inputSchema": {
+                "json": fn.get("parameters") or {"type": "object", "properties": {}},
+            },
+        }
+    }
 
 
 def _inject_spanish(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
