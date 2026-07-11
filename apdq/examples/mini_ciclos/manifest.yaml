@@ -1,0 +1,181 @@
+# APDQ binding manifest — mini_ciclos
+#
+# A compact IRB PD/LGD reporting schema in the style of the DQC eval
+# database (DQC/eval): a contract master and a calibrated default-cycle
+# fact table, with an authoritative exposure surface (basilea_mensual), a
+# collateral surface, and general-ledger control totals. Demonstrates all
+# generic defect classes on the domain this repo targets.
+
+apdq_manifest: 1
+name: mini_ciclos
+
+tables:
+  - name: contratos
+    primary_key: ID_CONTRATO
+    rows: 120
+    waivers:
+      control: "master table reconciled contract-by-contract downstream; totals control lives on the fact table (signed: mvp-example)"
+    columns:
+      - name: ID_CONTRATO
+        concept: contract_id
+        role: source
+        domain: {type: text, unique: true}
+        waivers: {reconcile: "system of record for its own identifier (signed: mvp-example)"}
+      - name: ID_CLIENTE
+        concept: client_id
+        role: source
+        domain: {type: text}
+        waivers: {reconcile: "client master out of MVP scope (signed: mvp-example)"}
+      - name: SEGMENTO
+        concept: exposure_segment
+        role: source
+        domain: {type: text, values: [CORP, SME, RETAIL_HIP, RETAIL_CONS]}
+        regulation_refs: ["GL/2017/16 §21"]
+        waivers: {reconcile: "authoritative segmentation source (signed: mvp-example)"}
+      - name: FECHA_ALTA
+        concept: origination_date
+        role: source
+        domain: {type: yyyymm, min: 200001, max: 202312}
+        waivers: {reconcile: "origination system out of MVP scope (signed: mvp-example)"}
+
+  - name: ciclos_calibrados
+    primary_key: ID_CONTR_CICLO_LGD
+    rows: 400
+    control:
+      surface: gl_totales
+      checks:
+        - {kind: count}
+        - {kind: sum, column: EAD_TOTAL}
+    foreign_keys:
+      - {column: ID_CONTRATO, ref_table: contratos, ref_column: ID_CONTRATO}
+    date_orderings:
+      - [MES_DEFAULT, MES_CIERRE_CICLO]
+    constraints:
+      - id: stage3_dpd
+        expr: "STAGE_IFRS9 != 3 or DPDS >= 90"
+        description: "stage 3 (default) requires at least 90 days past due"
+        regulation_refs: ["GL/2017/16 §101"]
+        plant: {STAGE_IFRS9: 3, DPDS: 5}
+      - id: colateral_valorado
+        expr: "COLATERAL_TIPO = 'NINGUNA' or VALOR_COLATERAL > 0"
+        description: "secured cycles must carry a positive collateral value"
+        regulation_refs: ["GL/2017/16 §127"]
+        plant: {COLATERAL_TIPO: HIPOTECA, VALOR_COLATERAL: 0}
+    columns:
+      - name: ID_CONTR_CICLO_LGD
+        concept: cycle_id
+        role: source
+        domain: {type: text, unique: true}
+        waivers: {reconcile: "system of record for its own identifier (signed: mvp-example)"}
+      - name: ID_CONTRATO
+        concept: contract_id
+        role: source
+        domain: {type: text}
+        waivers: {reconcile: "covered by referential integrity to contratos (signed: mvp-example)"}
+      - name: MES_DEFAULT
+        concept: default_date
+        role: source
+        domain: {type: yyyymm, min: 201501, max: 202412}
+        regulation_refs: ["GL/2017/16 §101"]
+        waivers: {reconcile: "default register out of MVP scope (signed: mvp-example)"}
+      - name: MES_CIERRE_CICLO
+        concept: cycle_close_date
+        role: source
+        domain: {type: yyyymm, min: 201501, max: 202412, nullable: true}
+        waivers: {reconcile: "closure derived from workout system, out of MVP scope (signed: mvp-example)"}
+      - name: STAGE_IFRS9
+        concept: ifrs9_stage
+        role: source
+        domain: {type: int, values: [1, 2, 3]}
+        regulation_refs: ["Anejo IX"]
+        waivers: {reconcile: "accounting stage source, out of MVP scope (signed: mvp-example)"}
+      - name: DPDS
+        concept: days_past_due
+        role: source
+        domain: {type: int, min: 0, max: 365}
+        waivers: {reconcile: "servicing system out of MVP scope (signed: mvp-example)"}
+      - name: PD_ESTIMADA
+        concept: pd_estimate
+        role: source
+        domain: {type: real, min: 0.001, max: 0.95}
+        regulation_refs: ["GL/2017/16 §161"]
+        waivers: {reconcile: "model output, verified by reperformance downstream (signed: mvp-example)"}
+      - name: PD_SUELO
+        concept: pd_floor
+        role: source
+        domain: {type: real, min: 0.0003, max: 0.03}
+        waivers: {reconcile: "regulatory parameter table out of MVP scope (signed: mvp-example)"}
+      - name: PD_FINAL
+        concept: pd_final
+        role: derived
+        formula: "max(PD_ESTIMADA, PD_SUELO)"
+        regulation_refs: ["GL/2017/16 §161"]
+      - name: LGD_ESTIMADA
+        concept: lgd_estimate
+        role: source
+        domain: {type: real, min: 0.01, max: 0.9}
+        regulation_refs: ["GL/2017/16 §127"]
+        waivers: {reconcile: "model output, verified by reperformance downstream (signed: mvp-example)"}
+      - name: LGD_SUELO
+        concept: lgd_floor
+        role: source
+        domain: {type: real, min: 0.0, max: 0.25}
+        waivers: {reconcile: "regulatory parameter table out of MVP scope (signed: mvp-example)"}
+      - name: MOC
+        concept: margin_of_conservatism
+        role: source
+        domain: {type: real, min: 0.0, max: 0.1}
+        regulation_refs: ["GL/2017/16 §43"]
+        waivers: {reconcile: "model governance artifact out of MVP scope (signed: mvp-example)"}
+      - name: LGD_FINAL
+        concept: lgd_final
+        role: derived
+        formula: "max(LGD_ESTIMADA + MOC, LGD_SUELO)"
+        regulation_refs: ["GL/2017/16 §127", "GL/2017/16 §43"]
+      - name: EAD_BALANCE
+        concept: ead_on_balance
+        role: source
+        domain: {type: real, min: 0, max: 1000000}
+        waivers: {reconcile: "component reconciled via EAD_TOTAL against basilea_mensual (signed: mvp-example)"}
+      - name: CCF_ESTIMADO
+        concept: ccf
+        role: source
+        domain: {type: real, min: 0, max: 1}
+        waivers: {reconcile: "model output out of MVP scope (signed: mvp-example)"}
+      - name: OR_DISBLE
+        concept: undrawn_amount
+        role: source
+        domain: {type: real, min: 0, max: 500000}
+        reconcile:
+          - {surface: basilea_mensual, column: OR_DISBLE_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: EAD_FUERA_BALANCE
+        concept: ead_off_balance
+        role: derived
+        formula: "CCF_ESTIMADO * OR_DISBLE"
+      - name: EAD_TOTAL
+        concept: exposure_at_default
+        role: derived
+        formula: "EAD_BALANCE + EAD_FUERA_BALANCE"
+        regulation_refs: ["GL/2017/16 §140"]
+      - name: COLATERAL_TIPO
+        concept: collateral_type
+        role: source
+        domain: {type: text, values: [HIPOTECA, PRENDA, NINGUNA]}
+        waivers: {reconcile: "collateral typing source, out of MVP scope (signed: mvp-example)"}
+      - name: VALOR_COLATERAL
+        concept: collateral_value
+        role: source
+        domain: {type: real, min: 0, max: 800000, nullable: true}
+        regulation_refs: ["GL/2017/16 §127"]
+        reconcile:
+          - {surface: colaterales, column: VALOR_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: ECL
+        concept: expected_credit_loss
+        role: derived
+        formula: "PD_FINAL * LGD_FINAL * EAD_TOTAL"
+        regulation_refs: ["Anejo IX"]
+      - name: PROVISION
+        concept: provision_amount
+        role: derived
+        formula: "ECL"
+        regulation_refs: ["Anejo IX"]
