@@ -1,6 +1,6 @@
 # RegLLM
 
-Two related applications for IRB / IFRS 9 regulatory data pipelines:
+Related applications for IRB / IFRS 9 regulatory data pipelines:
 
 1. **DQC Generator** (`DQC/`, `api/routers/dqc.py`) — generates structured
    data-quality checks (SQL) for a database whose schema and dictionary are
@@ -16,6 +16,13 @@ Two related applications for IRB / IFRS 9 regulatory data pipelines:
    in V3 versus V2 of the same table?* — answered with a differentiable AST,
    Shapley values, and a change-log GraphRAG grounded by a local LLM.
    Documented in the rest of this README.
+3. **APDQ** (`apdq/`) — reference implementation (MVP) of the
+   *auditor-parity* data-quality standard: a binding manifest drives a
+   clean-by-construction synthetic twin, per-class mutation generators +
+   oracles, a lineage-obligation completeness check, and a certification
+   run emitting a machine-verifiable audit pack. See
+   [`apdq/README.md`](apdq/README.md) and
+   [`docs/AUDITOR_PARITY_STANDARD.md`](docs/AUDITOR_PARITY_STANDARD.md).
 
 The FastAPI backend serves both: the router set is selected with
 `REGLLM_ROUTERS` (`all` by default; the AWS DQC deployment sets

@@ -1,0 +1,100 @@
+# APDQ requirement register — EBA GL/2017/16 (excerpt, MVP example)
+#
+# One row per ATOMIC testable obligation. text_sha256 pins the row to
+# the regulation paragraph it was extracted from (apdq.register.text_hash
+# of the normalized excerpt): amend the text and the pin goes stale,
+# reopening the row for review. status=signed requires signed_by.
+
+apdq_register: 1
+regulation: EBA GL/2017/16 (ES)
+version: '2017-11-20'
+
+requirements:
+  - id: GL16-014-01
+    section: '4.2.1'
+    paragraph: '14'
+    obligation: >-
+      Los datos utilizados en la estimación deberán ser completos, sin exclusiones injustificadas de observaciones.
+    text_sha256: e05f5c32fe12f5002ab6577406ffb9f03dfd1dce57adc1fecf2318c11cdbb619
+    concepts: [cycle_id, contract_id]
+    defect_classes: [1, 8]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: Los datos utilizados en la estimación deberán ser completos,...'
+  - id: GL16-015-01
+    section: '4.2.1'
+    paragraph: '15'
+    obligation: >-
+      Las entidades garantizarán la exactitud, integridad y consistencia de los datos empleados en la estimación de los parámetros.
+    text_sha256: ec11b1d1f2649c7a00566f1cd4633aa9678c426ceacced909551eb475a8fa27a
+    concepts: [exposure_at_default, pd_final, lgd_final]
+    defect_classes: [2, 6, 7]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: Las entidades garantizarán la exactitud, integridad y consis...'
+  - id: GL16-021-01
+    section: '4.3'
+    paragraph: '21'
+    obligation: >-
+      La asignación de exposiciones a los segmentos de calibración será coherente con la definición de cada segmento.
+    text_sha256: 90320627cb1a6d8a394e276a0697644d789b7dac0104b2925dced2a7d9690fed
+    concepts: [exposure_segment]
+    defect_classes: [2, 5]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: La asignación de exposiciones a los segmentos de calibración...'
+  - id: GL16-043-01
+    section: '4.4.3'
+    paragraph: '43'
+    obligation: >-
+      El margen de cautela (MoC) se cuantificará y documentará por categorías de deficiencia identificadas.
+    text_sha256: a6242e8f0924e63d8be5f08eff7a15e5b746571cabbd733f345cb39709bf7df0
+    concepts: [margin_of_conservatism, lgd_final]
+    defect_classes: [6]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: El margen de cautela (MoC) se cuantificará y documentará por...'
+  - id: GL16-101-01
+    section: '5.3.1'
+    paragraph: '101'
+    obligation: >-
+      La identificación del momento de default y la duración del ciclo de impago se registrarán de forma consistente.
+    text_sha256: 0cba824b317d206be32e369cf4ae00d6a48f5e7f80c9ddff38f6b41f70d5ac9a
+    concepts: [default_date, cycle_close_date, ifrs9_stage, days_past_due]
+    defect_classes: [5, 9]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: La identificación del momento de default y la duración del c...'
+  - id: GL16-127-01
+    section: '6.3.1'
+    paragraph: '127'
+    obligation: >-
+      Las garantías consideradas en la estimación de LGD estarán valoradas y documentadas.
+    text_sha256: 271efaa9ac820f133c54be710191739eef8bfb88808579e9bc9a176ecf48b056
+    concepts: [collateral_type, collateral_value]
+    defect_classes: [1, 5, 7]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: Las garantías consideradas en la estimación de LGD estarán v...'
+  - id: GL16-140-01
+    section: '6.3.2'
+    paragraph: '140'
+    obligation: >-
+      La exposición en el momento del default incluirá los importes dispuestos y los importes fuera de balance convertidos.
+    text_sha256: defb134cf1395051fb995836392dcd3aa382b4243a6c270923fa9ce2e77f7f18
+    concepts: [exposure_at_default, ead_on_balance, ead_off_balance, ccf, undrawn_amount]
+    defect_classes: [6, 7]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: La exposición en el momento del default incluirá los importe...'
+  - id: GL16-161-01
+    section: '8.2'
+    paragraph: '161'
+    obligation: >-
+      Los parámetros finales aplicados no serán inferiores a los suelos regulatorios correspondientes.
+    text_sha256: 443e17419e5f7f7bb399d9920cc878b5d07aca7ecaa4ba93c63cd77fb417d74e
+    concepts: [pd_final, pd_floor, lgd_final, lgd_floor]
+    defect_classes: [6]
+    status: signed
+    signed_by: mvp-example
+    notes: 'excerpt: Los parámetros finales aplicados no serán inferiores a los s...'
