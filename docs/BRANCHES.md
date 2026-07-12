@@ -1,23 +1,37 @@
 # Branch Map
 
-Audit of every branch on `origin` (snapshot 2026-07-12), grouped by
-feature, with ahead/behind counts against `origin/main` and a
-recommended action. Recommendations are documented here rather than
-executed — deleting or rewriting remote branches is the repo owner's
-call.
+Audit of every branch on `origin` (updated 2026-07-12 after the merge),
+grouped by feature, with a recommended action per branch. Actions beyond
+creating branches and merging to `main` (which the owner requested) are
+documented rather than executed.
 
-## Feature: APDQ / data-quality standard (this line of work)
+## MERGED: APDQ / data-quality standard → `main`
+
+The whole data-quality line — research memos, the APDQ standard spec,
+handbook, setup runbook, and the full `apdq/` implementation with tests
+— was fast-forwarded into **`main`** (commit `dfc197e`, 68 tests green).
+
+Now-redundant branches whose content is fully contained in `main`
+(**delete via the GitHub UI** — this environment's git proxy does not
+support remote branch deletion):
+
+- `claude/data-quality-research-15s3by` (the old integration branch)
+- `claude/feature/dq-research-docs`, `claude/feature/apdq-mvp`
+  (pre-merge review splits)
+- `feature/sas-embeddings-explorer` (a briefly-created duplicate name
+  for the embedding-visualizer line; superseded below)
+
+## Feature: SAS field-diff explainer
 
 | Branch | State | Content |
 |---|---|---|
-| `claude/data-quality-research-15s3by` | **integration branch** for this feature line | Research memos (industry SOTA, Spanish-bank niche), the APDQ standard spec + MVP roadmap, and the full `apdq/` implementation with tests. |
-| `claude/feature/dq-research-docs` | split from the above | Docs only: the four research/spec commits, for reviewing the strategy documents independently of code. |
-| `claude/feature/apdq-mvp` | split from the above | Implementation only: the `apdq/` package + tests + gap-fill work, cherry-picked onto `main`, for a code-only PR. |
+| `feature/sas-diff-explainer` | working branch, currently equal to `main` | The home for future SAS compiler / field-diff work. The compiler itself (`src/sas_logic_tree.py` etc.) is in `main`; the unmerged `.sas/.egp` upload commit (`955dec8`) lives on the embedding-visualizer line and conflicts with `main`'s newer agent router — rebase it here when picking that work up. |
 
-Recommended merge order: `dq-research-docs` first (docs, zero risk),
-then `apdq-mvp` (self-contained new package; only shared file touched is
-`README.md`). The integration branch can then be deleted or kept as the
-running workspace.
+## Feature: embedding-space visualizer
+
+| Branch | State | Content |
+|---|---|---|
+| `feature/embedding-visualizer` | preserved, unmerged (5 commits, base 27 behind `main`) | Spreadsheet-driven embedding visualizer with evolving-register support, `.sas/.egp` upload to the diff page, no-Docker Windows launcher, two robustness fixes. Same line as `claude/embedding-space-visualizer-j99u00` (which can be deleted as a duplicate name). Rebase onto `main` before continuing. |
 
 ## Feature: DQC product slimming & persistence
 
@@ -26,12 +40,6 @@ running workspace.
 | `feat/dqc-slim-setup` | 10 / 11 | 2026-07-07 | Pluggable checks store (local SQLite or DynamoDB), CDK DynamoDB table, DQC-focused README + Windows/AWS setup docs, and a "slim repo to the DQC product" commit. **Unmerged feature work** — but the slimming commit deletes non-DQC code, so merging it into `main` would remove the SAS differ and APDQ. Recommendation: cherry-pick the persistence + docs commits (`9cb5d83`, `874fe23`, `8556534`, `36e2420`) into `main`; keep the slimming commit only if a separate slim distribution repo is actually wanted. |
 | `dqc-slim` | 0 / 5 | 2026-07-07 | Fully merged into `main`. **Delete.** |
 | `feat/dqc-copy-all-button` | 5 / 11 | 2026-07-06 | Mixed bag: "copy all" UI button, Gemini backend + SAS prompts + batch tests, self-contained CDK deploy, two frontend fixes. **Unmerged.** Recommendation: rebase onto `main` and split into UI (`e18f0bd`, `ad8a8da`, `dc7a73f`) vs backend/deploy (`594bc88`, `14a3087`) PRs — they are independent concerns. |
-
-## Feature: embedding-space visualizer (SAS differ side)
-
-| Branch | Ahead/behind | Last commit | Content & recommendation |
-|---|---|---|---|
-| `claude/embedding-space-visualizer-j99u00` | 5 / 27 | 2026-06-30 | Spreadsheet-driven embedding visualizer with evolving-register support, .sas/.egp upload, no-Docker Windows launcher, two robustness fixes. **Unmerged, coherent feature.** Recommendation: rebase onto `main` (27 behind) and open a single PR; the five commits form one feature. |
 
 ## Merged / stale (safe to delete)
 
