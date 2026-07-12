@@ -3,6 +3,9 @@
 Executable MVP of the standard specified in
 [`docs/AUDITOR_PARITY_STANDARD.md`](../docs/AUDITOR_PARITY_STANDARD.md),
 built to the plan in [`docs/MVP_ROADMAP.md`](../docs/MVP_ROADMAP.md).
+The consolidated reference — proposal, market, regulation technicalities
+and implementation in one document — is
+[`docs/APDQ_HANDBOOK.md`](../docs/APDQ_HANDBOOK.md).
 
 One artifact — a **binding manifest** describing a reporting schema —
 drives everything: a clean-by-construction synthetic **twin**, mutation

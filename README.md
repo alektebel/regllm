@@ -20,9 +20,10 @@ Related applications for IRB / IFRS 9 regulatory data pipelines:
    *auditor-parity* data-quality standard: a binding manifest drives a
    clean-by-construction synthetic twin, per-class mutation generators +
    oracles, a lineage-obligation completeness check, and a certification
-   run emitting a machine-verifiable audit pack. See
-   [`apdq/README.md`](apdq/README.md) and
-   [`docs/AUDITOR_PARITY_STANDARD.md`](docs/AUDITOR_PARITY_STANDARD.md).
+   run emitting a machine-verifiable audit pack. **Start with
+   [`docs/APDQ_HANDBOOK.md`](docs/APDQ_HANDBOOK.md)** (the consolidated
+   reference, proposal → regulation → implementation); the full doc set
+   is indexed in [`docs/README.md`](docs/README.md).
 
 The FastAPI backend serves both: the router set is selected with
 `REGLLM_ROUTERS` (`all` by default; the AWS DQC deployment sets
