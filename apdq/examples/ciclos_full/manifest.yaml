@@ -1,0 +1,581 @@
+# APDQ binding manifest — ciclos_full
+#
+# Full-width binding of the DQC eval schema (DQC/eval/generate_db.py):
+# the CICLOS_CALIBRADOS fact table at production width, its contract
+# master, an authoritative monthly-exposure surface (basilea), a
+# collateral surface, GL control totals, and the monthly panel. Every
+# formula transcribes generate_db.derive(); every constraint transcribes
+# a documented business rule the hand-written catalog plants defects
+# against. crosswalk.yaml maps all 67 catalog defects onto the defects
+# THIS file generates — that mapping is gap-plan item 2's original gate.
+#
+# Waiver anchors: `*sor` = system of record for the fact, `*model` =
+# model output verified by reperformance downstream, `*oos` = source
+# system out of MVP scope (each is a signed statement, shown on the
+# audit pack's face).
+
+apdq_manifest: 1
+name: ciclos_full
+
+tables:
+  # ── contract master ──────────────────────────────────────────────────
+  - name: contratos
+    primary_key: ID_CONTRATO
+    rows: 150
+    waivers:
+      control: "master reconciled contract-by-contract via the fact table's snapshot surface (signed: apdq-example)"
+    columns:
+      - name: ID_CONTRATO
+        concept: contract_id
+        role: source
+        domain: {type: text, unique: true}
+        waivers: &sor {reconcile: "system of record for this fact (signed: apdq-example)"}
+      - name: ID_CLIENTE
+        concept: client_id
+        role: source
+        domain: {type: text}
+        waivers: *sor
+      - name: SEGMENTO
+        concept: exposure_segment
+        role: source
+        domain: {type: text, values: [CORP, SME, RETAIL_HIP, RETAIL_CONS]}
+        waivers: *sor
+      - name: TIPO_PERSONA
+        concept: legal_nature
+        role: derived
+        formula: "if(SEGMENTO = 'CORP' or SEGMENTO = 'SME', 'J', 'F')"
+      - name: PRODUCTO
+        concept: product_type
+        role: source
+        domain: {type: text, values: [HIPOTECA_VIVIENDA, PRESTAMO_CONSUMO, TARJETA, LINEA_CREDITO, PRESTAMO_EMPRESA]}
+        waivers: *sor
+      - name: ENTIDAD_ORIGEN
+        concept: originating_entity
+        role: source
+        domain: {type: text, values: [BANCO_A, BANCO_B, CAJA_C]}
+        waivers: *sor
+      - name: FECHA_ALTA_CONTRATO
+        concept: origination_date
+        role: source
+        domain: {type: date, min: "2018-01-01", max: "2023-12-28"}
+        waivers: *sor
+
+  # ── calibrated default cycles (the reporting fact table) ─────────────
+  - name: ciclos_calibrados
+    primary_key: ID_CONTR_CICLO_LGD
+    rows: 400
+    control:
+      surface: gl_totales
+      checks:
+        - {kind: count}
+        - {kind: sum, column: EAD_TOTAL}
+        - {kind: sum, column: ECL}
+    foreign_keys:
+      - {column: ID_CONTRATO, ref_table: contratos, ref_column: ID_CONTRATO}
+    date_orderings:
+      # monotone domains along each chain (loader-enforced)
+      - [FECHA_ALTA_CONTRATO, FECHA_DEFAULT, FECHA_ADJUDICACION, FECHA_CIERRE_CICLO]
+      - [FECHA_ADJUDICACION, FECHA_VENTA_COLATERAL]
+    constraints:
+      - id: grade_pd_monotone
+        expr: "if(RATING_GRADO <= 8, PD_ESTIMADA <= 0.06, PD_ESTIMADA >= 0.01)"
+        description: "worse rating grades must not carry lower PDs (2-band version; full 4-band monotonicity is a documented refinement)"
+        regulation_refs: ["GL/2017/16 §161"]
+        plant: {RATING_GRADO: 2, PD_ESTIMADA: 0.15}
+      - id: retail_hip_secured
+        expr: "SEGMENTO != 'RETAIL_HIP' or COLATERAL_TIPO = 'HIPOTECA'"
+        description: "retail-mortgage segment requires mortgage collateral"
+        regulation_refs: ["GL/2017/16 §21"]
+        plant: {SEGMENTO: RETAIL_HIP, COLATERAL_TIPO: NINGUNA}
+      - id: tarjeta_sin_colateral
+        expr: "PRODUCTO != 'TARJETA' or COLATERAL_TIPO = 'NINGUNA'"
+        description: "credit cards are unsecured revolving lines"
+        plant: {PRODUCTO: TARJETA, COLATERAL_TIPO: PRENDA}
+      - id: hipoteca_producto_garantia
+        expr: "PRODUCTO != 'HIPOTECA_VIVIENDA' or COLATERAL_TIPO = 'HIPOTECA'"
+        description: "a mortgage product must carry its mortgage"
+        plant: {PRODUCTO: HIPOTECA_VIVIENDA, COLATERAL_TIPO: NINGUNA}
+      - id: adjudicacion_asegurada
+        expr: "isnull(FECHA_ADJUDICACION) or COLATERAL_TIPO != 'NINGUNA'"
+        description: "you cannot foreclose what has no collateral"
+        plant: {FECHA_ADJUDICACION: "2024-03-03", COLATERAL_TIPO: NINGUNA,
+                FECHA_DEFAULT: "2024-01-15", FECHA_CIERRE_CICLO: "2024-11-11",
+                FECHA_VENTA_COLATERAL: null}
+      - id: venta_requiere_adjudicacion
+        expr: "isnull(FECHA_VENTA_COLATERAL) or not isnull(FECHA_ADJUDICACION)"
+        description: "a collateral sale requires a prior foreclosure"
+        plant: {FECHA_VENTA_COLATERAL: "2024-05-05", FECHA_ADJUDICACION: null}
+      - id: cierre_con_terminacion
+        expr: "TERMINACION = '' or not isnull(FECHA_CIERRE_CICLO)"
+        description: "a terminated cycle carries its closure date"
+        plant: {TERMINACION: LIQUIDACION, FECHA_CIERRE_CICLO: null}
+      - id: abierto_sin_cierre
+        expr: "TERMINACION != '' or isnull(FECHA_CIERRE_CICLO)"
+        description: "a running cycle has no closure date"
+        plant: {TERMINACION: "", FECHA_CIERRE_CICLO: "2024-06-30",
+                FECHA_ADJUDICACION: null, FECHA_VENTA_COLATERAL: null}
+      - id: recup_vs_ead
+        expr: "RECUPERACION_ACUMULADA <= 1.5 * EAD_TOTAL"
+        description: "cumulative recoveries beyond 150% of EAD are implausible"
+        regulation_refs: ["GL/2017/16 §135"]
+        plant: {RECUPERACION_ACUMULADA: 5000000}
+      - id: descuento_positivo
+        expr: "RECUPERACION_ACUMULADA = 0 or TASA_DESCUENTO > 0"
+        description: "recoveries must be discounted"
+        regulation_refs: ["GL/2017/16 §135"]
+        plant: {RECUPERACION_ACUMULADA: 50000, TASA_DESCUENTO: 0}
+      - id: colateral_valorado
+        expr: "COLATERAL_TIPO = 'NINGUNA' or VALOR_COLATERAL > 0"
+        description: "secured cycles carry a positive (post-haircut) collateral value"
+        regulation_refs: ["GL/2017/16 §127"]
+        plant: {COLATERAL_TIPO: HIPOTECA, VALOR_COLATERAL: 0}
+      - id: valoracion_reciente
+        expr: "isnull(MES_VALORACION_COLATERAL) or MES_CICLO - MES_VALORACION_COLATERAL <= 100"
+        description: "collateral valuations older than ~12 months are stale (YYYYMM approximation of the day-precision rule)"
+        regulation_refs: ["CRR Art. 208.3"]
+        plant: {MES_VALORACION_COLATERAL: 202001, COLATERAL_TIPO: HIPOTECA}
+    columns:
+      # identity
+      - name: ID_CONTR_CICLO_LGD
+        concept: cycle_id
+        role: source
+        domain: {type: text, unique: true}
+        waivers: *sor
+      - name: ID_CONTRATO
+        concept: contract_id
+        role: source
+        domain: {type: text}
+        waivers: {reconcile: "covered by referential integrity to contratos (signed: apdq-example)"}
+      - name: ID_CLIENTE
+        concept: client_id
+        role: source
+        domain: {type: text}
+        reconcile:
+          - {surface: contratos_snapshot, column: ID_CLIENTE_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: TIPO_PERSONA
+        concept: legal_nature
+        role: derived
+        formula: "if(SEGMENTO = 'CORP' or SEGMENTO = 'SME', 'J', 'F')"
+      - name: SW_FUSION
+        concept: merger_flag
+        role: source
+        domain: {type: int, values: [0, 1]}
+        waivers: *sor
+      - name: ID_FUSION_FINAL
+        concept: merger_group_id
+        role: derived
+        formula: "null()"
+        when: "SW_FUSION = 0"
+        domain: {type: text}
+      # lifecycle dates (day precision is the source; months derive)
+      - name: FECHA_ALTA_CONTRATO
+        concept: origination_date
+        role: source
+        domain: {type: date, min: "2018-01-01", max: "2023-12-28"}
+        reconcile:
+          - {surface: contratos_snapshot, column: FECHA_ALTA_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: FECHA_DEFAULT
+        concept: default_date
+        role: source
+        domain: {type: date, min: "2024-01-01", max: "2024-06-28"}
+        regulation_refs: ["GL/2017/16 §101"]
+        waivers: *sor
+      - name: FECHA_ADJUDICACION
+        concept: foreclosure_date
+        role: source
+        domain: {type: date, min: "2024-01-02", max: "2024-09-28", nullable: true, null_rate: 0.6}
+        waivers: *sor
+      - name: FECHA_CIERRE_CICLO
+        concept: cycle_close_date
+        role: source
+        domain: {type: date, min: "2024-02-01", max: "2024-12-28", nullable: true, null_rate: 0.5}
+        waivers: *sor
+      - name: FECHA_VENTA_COLATERAL
+        concept: cycle_close_date
+        role: source
+        domain: {type: date, min: "2024-01-02", max: "2024-12-28", nullable: true, null_rate: 0.7}
+        waivers: *sor
+      - name: MES_DEFAULT
+        concept: default_date
+        role: derived
+        formula: "yyyymm(FECHA_DEFAULT)"
+        regulation_refs: ["GL/2017/16 §101"]
+      - name: MES_CIERRE_CICLO
+        concept: cycle_close_date
+        role: derived
+        formula: "if(isnull(FECHA_CIERRE_CICLO), null(), yyyymm(FECHA_CIERRE_CICLO))"
+      - name: MES_CICLO
+        concept: reporting_period
+        role: derived
+        formula: "MES_DEFAULT"
+      - name: MES_VALORACION_COLATERAL
+        concept: collateral_valuation_date
+        role: derived
+        formula: "null()"
+        when: "COLATERAL_TIPO = 'NINGUNA'"
+        domain: {type: yyyymm, min: 202401, max: 202412}
+        regulation_refs: ["CRR Art. 208.3"]
+      # currency
+      - name: DIVISA
+        concept: currency
+        role: source
+        domain: {type: text, values: [EUR, USD, GBP]}
+        waivers: *sor
+      - name: TIPO_CAMBIO
+        concept: fx_rate
+        role: derived
+        formula: "1"
+        when: "DIVISA = 'EUR'"
+        domain: {type: real, min: 0.5, max: 2.0}
+      # governance
+      - name: VENTANA_OBSERVACION_YEARS
+        concept: observation_window
+        role: source
+        domain: {type: int, min: 3, max: 9}
+        regulation_refs: ["GL/2017/16 §50"]
+        waivers: &model {reconcile: "model-governance artifact, reperformed downstream (signed: apdq-example)"}
+      - name: FLAG_NC
+        concept: nonconformity_flag
+        role: derived
+        formula: "if(VENTANA_OBSERVACION_YEARS < 5, 1, 0)"
+        regulation_refs: ["GL/2017/16 §50"]
+      # classification
+      - name: SEGMENTO
+        concept: exposure_segment
+        role: source
+        domain: {type: text, values: [CORP, SME, RETAIL_HIP, RETAIL_CONS]}
+        regulation_refs: ["GL/2017/16 §21"]
+        reconcile:
+          - {surface: contratos_snapshot, column: SEGMENTO_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: CALIBRATION_SEGMENT
+        concept: calibration_segment
+        role: source
+        domain: {type: text}
+        regulation_refs: ["GL/2017/16 §21"]
+        waivers: *model
+      - name: PRODUCTO
+        concept: product_type
+        role: source
+        domain: {type: text, values: [HIPOTECA_VIVIENDA, PRESTAMO_CONSUMO, TARJETA, LINEA_CREDITO, PRESTAMO_EMPRESA]}
+        reconcile:
+          - {surface: contratos_snapshot, column: PRODUCTO_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: ENTIDAD_ORIGEN
+        concept: originating_entity
+        role: source
+        domain: {type: text, values: [BANCO_A, BANCO_B, CAJA_C]}
+        waivers: *sor
+      # exposure (authoritative surface: basilea monthly)
+      - name: OR_DISPTO
+        concept: drawn_amount
+        role: source
+        domain: {type: real, min: 8000, max: 1200000}
+        reconcile:
+          - {surface: basilea_mensual, column: OR_DISPTO_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: OR_DISBLE
+        concept: undrawn_amount
+        role: source
+        domain: {type: real, min: 0, max: 60000}
+        reconcile:
+          - {surface: basilea_mensual, column: OR_DISBLE_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: OR_EAD
+        concept: exposure_at_default
+        role: derived
+        formula: "OR_DISPTO + OR_DISBLE"
+        reconcile:
+          - {surface: basilea_mensual, column: OR_EAD_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: SALDO_PENDIENTE
+        concept: drawn_amount
+        role: derived
+        formula: "OR_DISPTO"
+      # collateral
+      - name: COLATERAL_TIPO
+        concept: collateral_type
+        role: source
+        domain: {type: text, values: [HIPOTECA, PRENDA, NINGUNA]}
+        regulation_refs: ["GL/2017/16 §127"]
+        waivers: *sor
+      - name: VALOR_COLATERAL_INICIAL
+        concept: collateral_value
+        role: derived
+        formula: "0"
+        when: "COLATERAL_TIPO = 'NINGUNA'"
+        domain: {type: real, min: 10000, max: 500000}
+        regulation_refs: ["GL/2017/16 §127"]
+        reconcile:
+          - {surface: colaterales_src, column: VALOR_SRC, join_column: ID_CONTR_CICLO_LGD}
+      - name: HAIRCUT
+        concept: haircut
+        role: derived
+        formula: "0"
+        when: "COLATERAL_TIPO = 'NINGUNA'"
+        domain: {type: real, min: 0.02, max: 0.15}
+      - name: VALOR_COLATERAL
+        concept: collateral_value
+        role: derived
+        formula: "round(VALOR_COLATERAL_INICIAL * (1 - HAIRCUT), 2)"
+      - name: LTV
+        concept: ltv
+        role: derived
+        formula: "if(VALOR_COLATERAL > 0, round(EAD_BALANCE / VALOR_COLATERAL, 6), 0)"
+      # rating & risk parameters
+      - name: RATING_GRADO
+        concept: rating_grade
+        role: source
+        domain: {type: int, min: 1, max: 16}
+        waivers: *model
+      - name: PD_ESTIMADA
+        concept: pd_estimate
+        role: source
+        domain: {type: real, min: 0.001, max: 0.18}
+        regulation_refs: ["GL/2017/16 §161"]
+        waivers: *model
+      - name: PD_SUELO
+        concept: pd_floor
+        role: derived
+        formula: "if(SEGMENTO = 'RETAIL_HIP', 0.0005, 0.0003)"
+      - name: PD_FINAL
+        concept: pd_final
+        role: derived
+        formula: "max(PD_ESTIMADA, PD_SUELO)"
+        regulation_refs: ["GL/2017/16 §161"]
+      - name: PD_DOWNTURN
+        concept: downturn_pd
+        role: derived
+        formula: "min(1, 1.5 * PD_ESTIMADA)"
+      - name: LGD_ESTIMADA
+        concept: lgd_estimate
+        role: source
+        domain: {type: real, min: 0.05, max: 0.92}
+        regulation_refs: ["GL/2017/16 §127"]
+        waivers: *model
+      - name: LGD_SUELO
+        concept: lgd_floor
+        role: derived
+        formula: "if(COLATERAL_TIPO = 'HIPOTECA', 0.30, if(SEGMENTO = 'CORP', 0.45, 0))"
+      - name: MOC_CAT_A
+        concept: moc_component
+        role: derived
+        formula: "0.02 * LGD_ESTIMADA"
+        regulation_refs: ["GL/2017/16 §43"]
+      - name: MOC_CAT_B
+        concept: moc_component
+        role: derived
+        formula: "0.02 * LGD_ESTIMADA"
+        regulation_refs: ["GL/2017/16 §43"]
+      - name: MOC_CAT_C
+        concept: moc_component
+        role: derived
+        formula: "0.01 * LGD_ESTIMADA"
+        regulation_refs: ["GL/2017/16 §44"]
+      - name: MOC
+        concept: margin_of_conservatism
+        role: derived
+        formula: "MOC_CAT_A + MOC_CAT_B + MOC_CAT_C"
+        regulation_refs: ["GL/2017/16 §43"]
+      - name: LGD_CON_MOC
+        concept: lgd_final
+        role: derived
+        formula: "LGD_ESTIMADA + MOC"
+      - name: LGD_FINAL
+        concept: lgd_final
+        role: derived
+        formula: "max(LGD_CON_MOC, LGD_SUELO)"
+        regulation_refs: ["GL/2017/16 §127"]
+      - name: LGD_DOWNTURN
+        concept: downturn_lgd
+        role: derived
+        formula: "min(1, 1.15 * LGD_ESTIMADA)"
+        regulation_refs: ["CRR Art. 181.1(b)"]
+      - name: LGD_REALIZADA
+        concept: lgd_realized
+        role: derived
+        formula: "max(0, min(1, 1 - (RECUPERACION_ACUMULADA - COSTE_TOTAL_ACUMULADO) / EAD_TOTAL))"
+        when: "ESTADO_CICLO = 'CERRADO'"
+        domain: {type: real, min: 0, max: 0.95}
+        regulation_refs: ["GL/2017/16 §135"]
+      # arrears & staging
+      - name: DPDS
+        concept: days_past_due
+        role: source
+        domain: {type: int, min: 0, max: 400}
+        waivers: *sor
+      - name: STAGE_IFRS9
+        concept: ifrs9_stage
+        role: derived
+        formula: "if(DPDS < 30, 1, if(DPDS < 90, 2, 3))"
+        regulation_refs: ["Anejo IX"]
+      - name: CAUSA_DEFAULT
+        concept: default_cause
+        role: derived
+        formula: "'90_DIAS_VENCIDO'"
+        when: "DPDS >= 90"
+        domain: {type: text, values: [UNLIKELY_TO_PAY, REESTRUCTURACION, CONTAGIO]}
+        regulation_refs: ["CRR Art. 178"]
+      # cycle state
+      - name: TERMINACION
+        concept: cycle_outcome
+        role: source
+        domain: {type: text, values: ["", CURA, LIQUIDACION, VENTA_CARTERA, FALLIDO]}
+        waivers: *sor
+      - name: ESTADO_CICLO
+        concept: cycle_status
+        role: derived
+        formula: "if(TERMINACION = '', 'ESTIMACION', 'CERRADO')"
+      - name: CURE_FLAG
+        concept: cure_flag
+        role: derived
+        formula: "if(TERMINACION = 'CURA', 1, 0)"
+        regulation_refs: ["GL/2017/16 §101"]
+      # foreclosure
+      - name: ADJUDICACION_FLAG
+        concept: foreclosure_flag
+        role: derived
+        formula: "if(isnull(FECHA_ADJUDICACION), '0', '1')"
+      - name: ADJUDICACION_TIPO
+        concept: foreclosure_type
+        role: derived
+        formula: "''"
+        when: "isnull(FECHA_ADJUDICACION)"
+        domain: {type: text, values: [INMUEBLE_RESIDENCIAL, INMUEBLE_COMERCIAL, VEHICULO]}
+      - name: ADJUDICACION_VALOR
+        concept: foreclosure_value
+        role: derived
+        formula: "0"
+        when: "isnull(FECHA_ADJUDICACION)"
+        domain: {type: real, min: 5000, max: 80000}
+      # recoveries
+      - name: RECUPERACION_ACUMULADA
+        concept: recovery_cumulative
+        role: source
+        domain: {type: real, min: 0, max: 300000}
+        regulation_refs: ["GL/2017/16 §135"]
+        waivers: *sor
+      - name: COSTE_TOTAL_ACUMULADO
+        concept: recovery_cost
+        role: source
+        domain: {type: real, min: 0, max: 50000}
+        waivers: *sor
+      - name: TASA_DESCUENTO
+        concept: discount_rate
+        role: source
+        domain: {type: real, min: 0, max: 0.10}
+        waivers: *model
+      # pricing
+      - name: TIPO_INTERES_ORIGINAL
+        concept: interest_rate
+        role: source
+        domain: {type: real, min: 0.005, max: 0.12}
+        waivers: *sor
+      - name: TIPO_INTERES_ACTUAL
+        concept: interest_rate
+        role: source
+        domain: {type: real, min: 0.005, max: 0.15}
+        waivers: *sor
+      - name: INTERESES_ACUMULADOS
+        concept: accrued_interest
+        role: source
+        domain: {type: real, min: 0, max: 8000}
+        waivers: *sor
+      # EAD block
+      - name: CCF_ESTIMADO
+        concept: ccf
+        role: derived
+        formula: "0.75"
+      - name: EAD_BALANCE
+        concept: ead_on_balance
+        role: derived
+        formula: "OR_DISPTO"
+      - name: EAD_FUERA_BALANCE
+        concept: ead_off_balance
+        role: derived
+        formula: "CCF_ESTIMADO * OR_DISBLE"
+        regulation_refs: ["GL/2017/16 §140"]
+      - name: EAD_TOTAL
+        concept: exposure_at_default
+        role: derived
+        formula: "EAD_BALANCE + EAD_FUERA_BALANCE"
+        regulation_refs: ["GL/2017/16 §140"]
+      - name: EAD
+        concept: exposure_at_default
+        role: derived
+        formula: "EAD_TOTAL"
+      - name: EAD_TOTAL_EUR
+        concept: exposure_eur
+        role: derived
+        formula: "round(EAD_TOTAL * TIPO_CAMBIO, 2)"
+      # outputs
+      - name: K_IRB
+        concept: capital_requirement
+        role: derived
+        formula: "sqrt(PD_FINAL) * 0.06 + PD_FINAL * 0.5"
+      - name: M_VENCIMIENTO
+        concept: maturity
+        role: derived
+        formula: "if(SEGMENTO = 'CORP', 3, 2.5)"
+      - name: RWA
+        concept: rwa
+        role: derived
+        formula: "EAD_TOTAL * LGD_FINAL * 12.5 * K_IRB"
+      - name: ECL
+        concept: expected_credit_loss
+        role: derived
+        formula: "PD_FINAL * LGD_FINAL * EAD_TOTAL"
+        regulation_refs: ["Anejo IX"]
+      - name: PROVISION
+        concept: provision_amount
+        role: derived
+        formula: "ECL"
+        regulation_refs: ["Anejo IX"]
+
+  # ── monthly panel (class 10) ─────────────────────────────────────────
+  - name: ciclos_panel
+    primary_key: ID_PANEL
+    rows: 240
+    panel:
+      series_key: ID_CONTR_CICLO_LGD
+      period_column: MES
+      periods: 8
+      cumulative_columns: [RECUPERACION_ACUM, DPD_MES]
+    foreign_keys:
+      - {column: ID_CONTR_CICLO_LGD, ref_table: ciclos_calibrados, ref_column: ID_CONTR_CICLO_LGD}
+    waivers:
+      control: "panel population is controlled by the fact table's totals; per-series completeness is the panel gap oracle (signed: apdq-example)"
+    columns:
+      - name: ID_PANEL
+        concept: cycle_id
+        role: source
+        domain: {type: text, unique: true}
+        waivers: *sor
+      - name: ID_CONTR_CICLO_LGD
+        concept: cycle_id
+        role: source
+        domain: {type: text}
+        waivers: {reconcile: "covered by referential integrity to ciclos_calibrados (signed: apdq-example)"}
+      - name: MES
+        concept: reporting_period
+        role: source
+        domain: {type: yyyymm, min: 202301, max: 202412}
+        waivers: *sor
+      - name: RECUPERACION_ACUM
+        concept: recovery_cumulative
+        role: source
+        domain: {type: real, min: 0, max: 200000}
+        regulation_refs: ["GL/2017/16 §135"]
+        waivers: *sor
+      - name: DPD_MES
+        concept: days_past_due
+        role: source
+        domain: {type: int, min: 0, max: 400}
+        waivers: *sor
+      - name: STAGE_MES
+        concept: ifrs9_stage
+        role: derived
+        formula: "if(DPD_MES < 30, 1, if(DPD_MES < 90, 2, 3))"
+        regulation_refs: ["Anejo IX"]
+      - name: PD_MES
+        concept: pd_final
+        role: derived
+        formula: "1"
+        when: "DPD_MES >= 90"
+        domain: {type: real, min: 0.001, max: 0.98}
+        regulation_refs: ["GL/2017/16 §101"]

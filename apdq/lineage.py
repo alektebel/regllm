@@ -43,7 +43,12 @@ def check_obligations(manifest: Manifest) -> list[Obligation]:
                 # load_manifest already refuses derived columns without a
                 # parseable formula, so this is always ok for a loaded
                 # manifest — recorded so the pack shows it affirmatively.
-                out.append(Obligation(node, "formula", "ok", col.formula))
+                detail = col.formula + (f" where {col.when}" if col.when else "")
+                out.append(Obligation(node, "formula", "ok", detail))
+                if col.when and col.domain:
+                    out.append(Obligation(
+                        node, "domain", "ok",
+                        f"free branch: {_domain_summary(col)}"))
             else:
                 out.append(Obligation(
                     node, "domain",

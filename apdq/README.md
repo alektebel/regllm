@@ -67,14 +67,17 @@ defect (recall), per class and per node.
 | 7 | reconciliation mismatch | generic (per declared surface) |
 | 8 | population (control totals) | generic (missing + fabricated rows vs count/sum ties) |
 | 9 | temporal ordering | generic (per declared date chain) |
-| 10 | panel inconsistency | **schema-specific only** (`DQC/eval` D58–D63); generic support is expansion E2 |
+| 10 | panel inconsistency | generic (`panel:` block → period-gap, duplicate-period, decreasing-cumulative oracles per declared cumulative column) |
 | 11 | distributional | **advisory by design** — never counts toward certification (expansion E6) |
 | 12 | semantic drift | served by the SAS AST differ (`src/sas_logic_tree.py`); integration is expansion E5 |
 
 Mixed-run note: class-6 oracles legitimately fire on other classes'
 planted rows — upstream corruption propagating into a recomputation
 mismatch is the completeness argument working, so they are exempt from
-the *overbroad* smell (which still applies to every other class).
+the *overbroad* smell (which still applies to every other class). A
+temporal (class 9) oracle listed as overbroad on a schema with date
+domains is usually the same phenomenon: a date planted beyond its domain
+is also out of order.
 
 ## Manifest format (reference)
 
@@ -108,12 +111,46 @@ tables:
         role: derived
         formula: "PD * LGD * EAD"  # expr.py grammar; undocumented = refused
         regulation_refs: ["Anejo IX"]
+      - name: LGD_REALIZADA        # CONDITIONALLY derived: formula binds
+        concept: lgd_realized      # only where `when` holds; elsewhere the
+        role: derived              # value is free and sampled from domain
+        formula: "max(0, min(1, 1 - (RECUP - COSTE) / EAD))"
+        when: "ESTADO = 'CERRADO'"
+        domain: {type: real, min: 0, max: 0.95}
+      - name: FECHA_CIERRE         # dates are ISO strings; nullable columns
+        concept: cycle_close_date  # can declare their twin null frequency
+        role: source
+        domain: {type: date, min: "2024-02-01", max: "2024-12-28",
+                 nullable: true, null_rate: 0.5}
+        waivers: {reconcile: "workout system out of scope (signed: J.Doe)"}
       - name: MODEL_ONLY           # gaps must be signed, never silent
         concept: pd_estimate
         role: source
         domain: {type: real, min: 0, max: 1}
         waivers: {reconcile: "model output, reperformed downstream (signed: J.Doe)"}
+
+  - name: monthly_panel            # class 10 — snapshot semantics
+    primary_key: ID_PANEL
+    rows: 240                      # ≈ rows/periods distinct series
+    panel:
+      series_key: FACT_ID          # FK ⇒ series keys drawn from the parent
+      period_column: MES           # consecutive months in the twin
+      periods: 8
+      cumulative_columns: [RECUP_ACUM]   # non-decreasing within a series
+    ...
 ```
+
+Language notes: formulas support `isnull(X)` / `null()` (conditional
+completeness: "a closed cycle must carry a closure date") and
+`yyyymm(D)` (date↔period consistency, `MES = yyyymm(FECHA)` as a
+derivation instead of an unsatisfiable sampling constraint). Two loader
+rules protect the clean-twin guarantee: `date_orderings` domains must be
+monotone along each chain (the twin sorts values into compliance, and
+non-monotone domains would let the sort push a value out of range), and
+`reconcile.join_column` must be the table's primary key (surfaces are
+auto-mirrored per row; joining real external tables on other keys is
+expansion E10). Constraint auto-violation searches single columns and
+pairs; anything wider needs a `plant:` hint.
 
 Register rows (see `examples/mini_ciclos/register.yaml`): one atomic
 obligation per row, `text_sha256` pinned via `register.text_hash`
@@ -130,11 +167,10 @@ product"; each names the seam in this codebase.
   generated BIRD input layer; `manifest.py` already resolves any
   vocabulary via `concepts_file:`. Add a concept-level crosswalk table
   (ours → BIRD id) so existing manifests migrate mechanically.
-- **E2 — Generic panel class (10).** Manifest gains a `panel:` block per
-  table (`series_key`, `period_column`, `monotonic_columns`); `twin.py`
-  generates monthly series per entity; `defects.py` adds gap/duplicate-
-  period/decreasing-cumulative generators (the schema-specific templates
-  are D58–D63 in `DQC/eval/defect_catalog.py`).
+- **E2 — Generic panel class (10). ✅ DONE** (`panel:` block; see the
+  format reference above and `examples/ciclos_full`). Remaining
+  refinement: an `allow_decrease_when:` clause so cure events can
+  legitimately reset DPD/stage (the D62/D63 note in `crosswalk.yaml`).
 - **E3 — Dialect compilers.** `expr.to_sql` is the single SQL emission
   point; add `dialect=` (Teradata/Oracle/Spark) there and in the oracle
   string templates in `defects.py`. Certification still runs on the
@@ -170,16 +206,32 @@ product"; each names the seam in this codebase.
   manifest + twin + mutation corpus) that *other* implementations must
   pass — `examples/` is the seed of it.
 
-## Honest status (what this MVP does not yet do)
+## Catalog parity (the gap-plan item 2 gate)
 
-- The `DQC/eval` 67-defect catalog is **not yet regenerated** from a
-  manifest (gap-plan item 1's full gate): `mini_ciclos` mirrors that
-  schema's shape at reduced width (26 columns vs 66; classes, not
-  instances). Writing the full-width manifest is pilot work, not new
-  code — but it hasn't been done and the catalogs haven't been diffed.
-- Constraint auto-violation search is single-column; multi-column
-  violations need `plant:` hints (by design — hints are reviewable).
-- Reconciliation surfaces are auto-mirrored into the twin; binding a
-  *real* second system's extract as the surface is E10 territory.
-- SQLite only (E3), same-row formulas only (E4), and the class 10/11/12
+`examples/ciclos_full/manifest.yaml` binds the DQC eval schema at
+production width (contract master + 60-column fact table + monthly
+panel + basilea/colaterales surfaces + GL control totals) and certifies:
+**168 generated defects across all ten generic classes, specificity and
+recall 100%**. `examples/ciclos_full/crosswalk.yaml` maps every one of
+the 67 hand-written catalog entries (D01–D66 + decoys) onto a generated
+defect or an explicit documented exception, and
+`tests/test_apdq.py::test_crosswalk_is_total` enforces that the mapping
+stays total. Current tally: **58 mapped, 7 partial (documented
+simplification), 3 excluded with reasons** (D44 needs a string-prefix
+predicate; DA/DB are decoys, whose honesty role the overbroad-oracle
+check plays here).
+
+## Honest status (what this implementation does not yet do)
+
+- Three crosswalk `partial`s simplify the original rule (2-band PD
+  monotonicity, YYYYMM-granular staleness, cure-unconditional panel
+  monotonicity) and D44 is excluded — each with the fix named in
+  `crosswalk.yaml`.
+- Constraint auto-violation search covers single columns and pairs;
+  wider violations need `plant:` hints (by design — hints are
+  reviewable).
+- Reconciliation surfaces are auto-mirrored per row and keyed by the
+  fact table's primary key; binding a *real* second system's extract as
+  the surface (true cross-register joins) is E10 territory.
+- SQLite only (E3), same-row formulas only (E4), and the class 11/12
   caveats in the table above.

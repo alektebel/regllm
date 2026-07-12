@@ -9,10 +9,16 @@ SQL to build the recomputation oracle. Supported:
 * ``+ - * /``, unary ``-``, parentheses
 * comparisons ``= != < <= > >=``, boolean ``and or not``
 * functions ``min max abs sqrt round if`` (``if(cond, then, else)``)
+* NULL handling: ``null()`` (the NULL literal), ``isnull(X)`` (true when
+  X is missing — the only comparison that never propagates NULL)
+* ``yyyymm(D)`` — the YYYYMM integer of an ISO date string, for
+  date↔period consistency invariants
 
 NULL semantics mirror SQL: arithmetic with a NULL input yields NULL, and
 a NULL comparison is falsy — so recomputation oracles silently skip rows
-with missing inputs (missing inputs are the completeness class's job).
+with missing inputs (missing inputs are the completeness class's job);
+``isnull``/``null`` exist precisely for *conditional* completeness rules
+("a closed cycle must carry a closure date").
 """
 
 from __future__ import annotations
@@ -38,7 +44,8 @@ _TOKEN_RE = re.compile(
 )
 
 _KEYWORDS = {"and", "or", "not"}
-_FUNCTIONS = {"min", "max", "abs", "sqrt", "round", "if"}
+_FUNCTIONS = {"min", "max", "abs", "sqrt", "round", "if",
+              "isnull", "null", "yyyymm"}
 
 
 def _tokenize(text: str) -> list[tuple[str, str]]:
@@ -181,7 +188,8 @@ class _Parser:
 
 
 _ARITY = {"abs": (1, 1), "sqrt": (1, 1), "round": (1, 2),
-          "min": (2, 99), "max": (2, 99), "if": (3, 3)}
+          "min": (2, 99), "max": (2, 99), "if": (3, 3),
+          "isnull": (1, 1), "null": (0, 0), "yyyymm": (1, 1)}
 
 
 def _check_arity(fname: str, n: int, text: str) -> None:
@@ -265,9 +273,19 @@ def eval_row(node: Node, row: dict) -> object:
             cond = eval_row(node.children[0], row)
             branch = node.children[1] if _truthy(cond) else node.children[2]
             return eval_row(branch, row)
+        if fname == "null":
+            return None
+        if fname == "isnull":
+            return eval_row(node.children[0], row) is None
         args = [eval_row(c, row) for c in node.children]
         if any(a is None for a in args):
             return None
+        if fname == "yyyymm":
+            text = str(args[0])
+            try:
+                return int(text[:4]) * 100 + int(text[5:7])
+            except (ValueError, IndexError):
+                return None
         if fname == "abs":
             return abs(args[0])
         if fname == "sqrt":
@@ -310,6 +328,13 @@ def to_sql(node: Node, qualifier: str = "") -> str:
         if fname == "if":
             c, t, e = (to_sql(ch, qualifier) for ch in node.children)
             return f"(CASE WHEN {c} THEN {t} ELSE {e} END)"
+        if fname == "null":
+            return "NULL"
+        if fname == "isnull":
+            return f"({to_sql(node.children[0], qualifier)} IS NULL)"
+        if fname == "yyyymm":
+            return (f"CAST(STRFTIME('%Y%m', "
+                    f"{to_sql(node.children[0], qualifier)}) AS INTEGER)")
         args = ", ".join(to_sql(ch, qualifier) for ch in node.children)
         sql_name = {"sqrt": "APDQ_SQRT"}.get(fname, fname.upper())
         return f"{sql_name}({args})"
