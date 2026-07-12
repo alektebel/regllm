@@ -100,11 +100,32 @@ def _pick_clean(twin: Twin, table: Table, rng: random.Random,
 
 
 def _rederive(row: dict, table: Table) -> dict:
+    """Recompute derivations; conditionally-derived columns keep their
+    free-branch value where the condition does not hold."""
     for col in derivation_order(table):
+        if col.when_ast is not None:
+            cond = expr.eval_row(col.when_ast, row)
+            if cond is None or not cond:
+                continue
         row[col.name] = expr.eval_row(col.formula_ast, row)
         if isinstance(row[col.name], float):
             row[col.name] = round(row[col.name], 6)
     return row
+
+
+def _formula_is_text(table: Table, ast) -> bool:
+    """Whether a formula produces text (equality oracle) rather than a
+    number (tolerance oracle). Handles the shapes manifests use: string
+    literals, text-column passthroughs, if() over either."""
+    if ast.kind == "str":
+        return True
+    if ast.kind == "col":
+        col = table.column(str(ast.value))
+        return bool(col.domain and col.domain.type in ("text", "date"))
+    if ast.kind == "func" and ast.value == "if":
+        return (_formula_is_text(table, ast.children[1])
+                or _formula_is_text(table, ast.children[2]))
+    return False
 
 
 def _plant_rows(twin: Twin, table: Table, tag: str, k: int,
@@ -132,8 +153,24 @@ def _sql_literal(value: object) -> str:
 
 # ── class 1: missing value ───────────────────────────────────────────────────
 
+def _when_false(col: Column):
+    """Predicate: the column's `when` condition strictly evaluates false
+    (SQL's NOT(when) excludes NULL conditions, so planting must too)."""
+    def pred(row: dict) -> bool:
+        val = expr.eval_row(col.when_ast, row)
+        return val is not None and not val
+    return pred
+
+
+def _free_branch_guard(col: Column) -> str:
+    """SQL guard for a when-column's free branch."""
+    return f"NOT {expr.to_sql(col.when_ast)} AND "
+
+
 def _gen_missing(table: Table, col: Column) -> GeneratedDefect:
     is_pk = col.name == table.primary_key
+    guard = _free_branch_guard(col) if col.when_ast is not None else ""
+    predicate = _when_false(col) if col.when_ast is not None else None
 
     def plant(twin: Twin, rng: random.Random, k: int) -> list:
         if is_pk:
@@ -148,14 +185,15 @@ def _gen_missing(table: Table, col: Column) -> GeneratedDefect:
         def mutate(row: dict) -> dict:
             row[col.name] = None
             return row
-        return _plant_rows(twin, table, f"C01_{col.name}", k, rng, mutate)
+        return _plant_rows(twin, table, f"C01_{col.name}", k, rng, mutate,
+                           predicate=predicate)
 
     return GeneratedDefect(
         defect_id=f"C01:{table.name}.{col.name}",
         dq_class=1, table=table.name, columns=(col.name,),
         description=f"{col.name} ({col.concept}) is mandatory but missing",
         oracle_sql=(f"SELECT {table.primary_key} FROM {table.name} "
-                    f"WHERE {col.name} IS NULL"),
+                    f"WHERE {guard}{col.name} IS NULL"),
         plant=plant, aggregate=is_pk,
         regulation_refs=col.regulation_refs)
 
@@ -169,9 +207,9 @@ def _domain_predicate_sql(col: Column) -> str:
         return f"{col.name} NOT IN ({vals})"
     clauses = []
     if dom.min is not None:
-        clauses.append(f"{col.name} < {dom.min}")
+        clauses.append(f"{col.name} < {_sql_literal(dom.min)}")
     if dom.max is not None:
-        clauses.append(f"{col.name} > {dom.max}")
+        clauses.append(f"{col.name} > {_sql_literal(dom.max)}")
     return " OR ".join(clauses)
 
 
@@ -182,6 +220,8 @@ def _violating_value(col: Column, rng: random.Random) -> object:
             numeric = [v for v in dom.values if isinstance(v, (int, float))]
             return (max(numeric) + 7) if numeric else -1
         return "APDQ_INVALID"
+    if dom.type == "date":
+        return "9999-01-01" if dom.max is not None else "1000-01-01"
     if dom.max is not None:
         return dom.max + (abs(dom.max) or 1) * 0.5 + 3
     if dom.min is not None:
@@ -190,18 +230,22 @@ def _violating_value(col: Column, rng: random.Random) -> object:
 
 
 def _gen_domain(table: Table, col: Column) -> GeneratedDefect:
+    guard = _free_branch_guard(col) if col.when_ast is not None else ""
+    predicate = _when_false(col) if col.when_ast is not None else None
+
     def plant(twin: Twin, rng: random.Random, k: int) -> list:
         def mutate(row: dict) -> dict:
             row[col.name] = _violating_value(col, rng)
             return row
-        return _plant_rows(twin, table, f"C02_{col.name}", k, rng, mutate)
+        return _plant_rows(twin, table, f"C02_{col.name}", k, rng, mutate,
+                           predicate=predicate)
 
     return GeneratedDefect(
         defect_id=f"C02:{table.name}.{col.name}",
         dq_class=2, table=table.name, columns=(col.name,),
         description=f"{col.name} ({col.concept}) outside its declared domain",
         oracle_sql=(f"SELECT {table.primary_key} FROM {table.name} "
-                    f"WHERE {col.name} IS NOT NULL "
+                    f"WHERE {guard}{col.name} IS NOT NULL "
                     f"AND ({_domain_predicate_sql(col)})"),
         plant=plant, regulation_refs=col.regulation_refs)
 
@@ -255,26 +299,38 @@ def _violate_constraint(row: dict, table: Table, constraint: Constraint,
     if constraint.plant:
         row.update(constraint.plant)
         return row
-    # automated search: single-column candidate values, sources re-derived
+
+    def try_assignment(assign: dict) -> dict | None:
+        trial = dict(row)
+        trial.update(assign)
+        if any(table.column(n).role == "source" for n in assign):
+            trial = _rederive(trial, table)
+            trial.update(assign)      # re-derivation must not undo it
+        val = expr.eval_row(constraint.ast, trial)
+        return trial if (val is not None and not val) else None
+
     refs = sorted(expr.columns(constraint.ast))
+    # single-column candidates first, then pairs (bounded search)
     for name in refs:
-        col = table.column(name)
-        for candidate in _candidates(col, rng):
-            trial = dict(row)
-            trial[name] = candidate
-            if col.role == "source":
-                trial = _rederive(trial, table)
-                trial[name] = candidate   # re-derivation must not undo it
-            val = expr.eval_row(constraint.ast, trial)
-            if val is not None and not val:
-                return trial
+        for candidate in _candidates(table.column(name), rng):
+            found = try_assignment({name: candidate})
+            if found is not None:
+                return found
+    for i, name_a in enumerate(refs):
+        for name_b in refs[i + 1:]:
+            for cand_a in _candidates(table.column(name_a), rng):
+                for cand_b in _candidates(table.column(name_b), rng):
+                    found = try_assignment({name_a: cand_a, name_b: cand_b})
+                    if found is not None:
+                        return found
     raise PlantingError(
-        f"{table.name}: cannot auto-violate constraint {constraint.id!r}; "
-        f"add a 'plant:' hint with explicit violating values")
+        f"{table.name}: cannot auto-violate constraint {constraint.id!r} "
+        f"(single columns and pairs searched); add a 'plant:' hint with "
+        f"explicit violating values")
 
 
 def _candidates(col: Column, rng: random.Random) -> list:
-    if col.role == "derived" or col.domain is None:
+    if col.domain is None:
         return [0, 1, -1, 999999.0, 0.0001]
     dom = col.domain
     if dom.values is not None:
@@ -310,26 +366,50 @@ def _gen_constraint(table: Table, constraint: Constraint) -> GeneratedDefect:
 
 def _gen_derivation(table: Table, col: Column) -> GeneratedDefect:
     formula_sql = expr.to_sql(col.formula_ast)
+    is_text = _formula_is_text(table, col.formula_ast)
+    guard = (f"{expr.to_sql(col.when_ast)} AND "
+             if col.when_ast is not None else "")
+
+    if is_text:
+        # exact, null-safe equality for text-valued formulas
+        mismatch = f"({col.name} IS NOT ({formula_sql}))"
+    else:
+        # null-aware numeric mismatch: a NULL where the formula yields a
+        # value (or vice versa) is a defect too, not a silent skip
+        null_flip = (
+            f"(CASE WHEN {col.name} IS NULL THEN 1 ELSE 0 END) <> "
+            f"(CASE WHEN ({formula_sql}) IS NULL THEN 1 ELSE 0 END)")
+        mismatch = (f"({null_flip} OR "
+                    f"COALESCE(ABS({col.name} - ({formula_sql})), 0) > {EPS})")
 
     def plant(twin: Twin, rng: random.Random, k: int) -> list:
+        def in_scope(row: dict) -> bool:
+            if col.when_ast is not None:
+                cond = expr.eval_row(col.when_ast, row)
+                if cond is None or not cond:
+                    return False
+            return True
+
         def mutate(row: dict) -> dict:
             correct = expr.eval_row(col.formula_ast, row)
-            base = float(correct) if correct is not None else 0.0
-            row[col.name] = round(base * 1.5 + 1000.0, 6)
+            if is_text:
+                row[col.name] = "APDQ_DRIFT"
+            elif correct is None:
+                row[col.name] = 999999.0     # value where NULL is documented
+            else:
+                row[col.name] = round(float(correct) * 1.5 + 1000.0, 6)
             return row
-        # only rows where the formula evaluates (inputs present)
-        def has_inputs(row: dict) -> bool:
-            return expr.eval_row(col.formula_ast, row) is not None
         return _plant_rows(twin, table, f"C06_{col.name}", k, rng, mutate,
-                           predicate=has_inputs)
+                           predicate=in_scope)
 
     return GeneratedDefect(
         defect_id=f"C06:{table.name}.{col.name}",
         dq_class=6, table=table.name, columns=(col.name,),
         description=(f"{col.name} ({col.concept}) deviates from its "
-                     f"documented formula: {col.formula}"),
+                     f"documented formula: {col.formula}"
+                     + (f" (where {col.when})" if col.when else "")),
         oracle_sql=(f"SELECT {table.primary_key} FROM {table.name} "
-                    f"WHERE ABS({col.name} - ({formula_sql})) > {EPS}"),
+                    f"WHERE {guard}{mismatch}"),
         plant=plant, regulation_refs=col.regulation_refs)
 
 
@@ -446,7 +526,10 @@ def _gen_temporal(table: Table, chain: tuple[str, ...],
             usable = [(a, b) for a, b in pairs
                       if row.get(a) is not None and row.get(b) is not None]
             a, b = rng.choice(usable)
-            row[a] = int(row[b]) + 100      # one year past its successor
+            if isinstance(row[b], str):     # ISO date: strictly after any b
+                row[a] = "9999-12-31"
+            else:                           # yyyymm: one year past successor
+                row[a] = int(row[b]) + 100
             return row
         return _plant_rows(twin, table, f"C09_{idx}", k, rng, mutate,
                            predicate=both_present)
@@ -458,20 +541,101 @@ def _gen_temporal(table: Table, chain: tuple[str, ...],
         oracle_sql=pair_sql, plant=plant)
 
 
+# ── class 10: panel inconsistency ────────────────────────────────────────────
+
+def _pick_series(twin: Twin, table: Table, rng: random.Random,
+                 exclude: set) -> tuple[object, list[dict]]:
+    sk = table.panel.series_key
+    per = table.panel.period_column
+    by_key: dict = {}
+    for row in twin.rows[table.name]:
+        by_key.setdefault(row[sk], []).append(row)
+    keys = [key for key, rows in by_key.items()
+            if key not in exclude and len(rows) >= 3]
+    if not keys:
+        raise PlantingError(f"{table.name}: no series left to mutate")
+    key = rng.choice(keys)
+    return key, sorted(by_key[key], key=lambda r: r[per])
+
+
+def _gen_panel(table: Table, variant: str,
+               cum_col: str | None = None) -> GeneratedDefect:
+    sk = table.panel.series_key
+    per = table.panel.period_column
+    next_month = (f"CASE WHEN a.{per} % 100 = 12 "
+                  f"THEN a.{per} + 89 ELSE a.{per} + 1 END")
+
+    if variant == "gap":
+        oracle = (
+            f"SELECT DISTINCT a.{sk} FROM {table.name} a "
+            f"WHERE a.{per} < (SELECT MAX(b.{per}) FROM {table.name} b "
+            f"WHERE b.{sk} = a.{sk}) "
+            f"AND NOT EXISTS (SELECT 1 FROM {table.name} c "
+            f"WHERE c.{sk} = a.{sk} AND c.{per} = {next_month})")
+        description = f"a month is missing from a {table.name} series"
+    elif variant == "duplicate_period":
+        oracle = (f"SELECT {sk} FROM {table.name} "
+                  f"GROUP BY {sk}, {per} HAVING COUNT(*) > 1")
+        description = f"the same month appears twice in a {table.name} series"
+    else:   # decreasing cumulative
+        oracle = (
+            f"SELECT DISTINCT a.{sk} FROM {table.name} a "
+            f"JOIN {table.name} b ON b.{sk} = a.{sk} "
+            f"AND b.{per} > a.{per} AND b.{cum_col} < a.{cum_col} - {EPS}")
+        description = (f"cumulative {cum_col} decreases within a "
+                       f"{table.name} series")
+
+    def plant(twin: Twin, rng: random.Random, k: int) -> list:
+        planted: list = []
+        used: set = set()
+        for i in range(k):
+            key, rows = _pick_series(twin, table, rng, used)
+            used.add(key)
+            middle = rows[len(rows) // 2]
+            if variant == "gap":
+                twin.conn.execute(
+                    f"DELETE FROM {table.name} WHERE {table.primary_key} = ?",
+                    (middle[table.primary_key],))
+            elif variant == "duplicate_period":
+                dup = dict(middle)
+                dup[table.primary_key] = _fresh_pk(
+                    twin, table, f"C10_DUP", len(used) * 10 + i)
+                _insert_row(twin, table, dup)
+            else:
+                first = rows[0]
+                twin.conn.execute(
+                    f"UPDATE {table.name} SET {cum_col} = ? "
+                    f"WHERE {table.primary_key} = ?",
+                    (float(first[cum_col]) - 1000.0,
+                     middle[table.primary_key]))
+            planted.append(key)
+        twin.conn.commit()
+        return planted
+
+    suffix = cum_col if cum_col else variant
+    return GeneratedDefect(
+        defect_id=f"C10:{table.name}.{suffix}",
+        dq_class=10, table=table.name,
+        columns=(sk, per) + ((cum_col,) if cum_col else ()),
+        description=description, oracle_sql=oracle, plant=plant)
+
+
 # ── entry point ──────────────────────────────────────────────────────────────
 
 def generate_defects(manifest: Manifest) -> list[GeneratedDefect]:
     out: list[GeneratedDefect] = []
     for table in manifest.tables:
         for col in table.columns:
-            if col.role == "source":
+            if col.role == "derived":
+                out.append(_gen_derivation(table, col))
+            # sources — and the free branch of when-columns — carry a
+            # domain and get completeness/validity oracles for it
+            if col.domain is not None:
                 if not col.domain.nullable:
                     out.append(_gen_missing(table, col))
                 if (col.domain.values is not None or col.domain.min is not None
                         or col.domain.max is not None):
                     out.append(_gen_domain(table, col))
-            else:
-                out.append(_gen_derivation(table, col))
             for recon in col.reconcile:
                 out.append(_gen_reconciliation(table, col, recon))
         out.append(_gen_duplicate(table))
@@ -484,6 +648,11 @@ def generate_defects(manifest: Manifest) -> list[GeneratedDefect]:
             out.append(_gen_population(table, "fabricated"))
         for idx, chain in enumerate(table.date_orderings):
             out.append(_gen_temporal(table, chain, idx))
+        if table.panel:
+            out.append(_gen_panel(table, "gap"))
+            out.append(_gen_panel(table, "duplicate_period"))
+            for cum_col in table.panel.cumulative_columns:
+                out.append(_gen_panel(table, "cumulative", cum_col))
     return out
 
 

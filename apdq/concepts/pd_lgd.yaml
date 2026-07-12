@@ -65,6 +65,19 @@ concepts:
   - {id: ltv,                    en: Loan-to-value ratio,             es: Ratio préstamo-valor (LTV)}
 
   # ── outputs ─────────────────────────────────────────────────────────
+  - {id: downturn_pd,            en: Downturn PD,                     es: PD downturn}
+  - {id: moc_component,          en: MoC category component (A/B/C),  es: Componente de MoC por categoría}
+  - {id: discount_rate,          en: Recovery discount rate,          es: Tasa de descuento}
+  - {id: accrued_interest,       en: Accrued interest,                es: Intereses acumulados}
+  - {id: originating_entity,     en: Originating entity,              es: Entidad de origen}
+  - {id: merger_flag,            en: Merger/absorption flag,          es: Indicador de fusión}
+  - {id: merger_group_id,        en: Merger group identifier,         es: Identificador de fusión}
+  - {id: calibration_segment,    en: Calibration segment,             es: Segmento de calibración}
+  - {id: default_cause,          en: Default trigger cause,           es: Causa de default,                 bird_hint: DFLT_STTS}
+  - {id: foreclosure_flag,       en: Foreclosure flag,                es: Indicador de adjudicación}
+  - {id: foreclosure_type,       en: Foreclosed asset type,           es: Tipo de adjudicación}
+  - {id: foreclosure_value,      en: Foreclosed asset value,          es: Valor de adjudicación}
+  - {id: maturity,               en: Effective maturity (M),          es: Vencimiento efectivo}
   - {id: expected_credit_loss,   en: Expected credit loss (ECL),      es: Pérdida esperada (ECL)}
   - {id: provision_amount,       en: Accounting provision,            es: Provisión contable}
   - {id: capital_requirement,    en: IRB capital requirement (K),     es: Requerimiento de capital (K)}

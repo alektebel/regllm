@@ -21,6 +21,8 @@ EXAMPLES = Path(__file__).parent.parent / "apdq" / "examples"
 MINI = EXAMPLES / "mini_ciclos" / "manifest.yaml"
 RETAIL = EXAMPLES / "retail_mortgages" / "manifest.yaml"
 REGISTER = EXAMPLES / "mini_ciclos" / "register.yaml"
+FULL = EXAMPLES / "ciclos_full" / "manifest.yaml"
+CROSSWALK = EXAMPLES / "ciclos_full" / "crosswalk.yaml"
 
 
 # ── expression language ──────────────────────────────────────────────────────
@@ -218,6 +220,96 @@ def test_second_schema_certifies_without_code_edits():
     cert = certify(load_manifest(RETAIL), seed=42, k=3)
     assert cert.certified
     assert set(cert.per_class()) == {1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+
+def test_expr_null_functions():
+    assert expr.eval_row(expr.parse("isnull(A)"), {"A": None}) is True
+    assert expr.eval_row(expr.parse("isnull(A)"), {"A": 3}) is False
+    assert expr.eval_row(expr.parse("null()"), {}) is None
+    assert expr.eval_row(expr.parse("yyyymm(D)"), {"D": "2024-06-15"}) == 202406
+    assert expr.eval_row(
+        expr.parse("if(isnull(D), null(), yyyymm(D))"), {"D": None}) is None
+
+
+def test_manifest_rejects_nonmonotone_ordering_domains(tmp_path):
+    text = BASE + (
+        "      - {name: D1, concept: default_date, role: source, "
+        "domain: {type: date, min: '2024-01-01', max: '2024-12-01'}}\n"
+        "      - {name: D2, concept: cycle_close_date, role: source, "
+        "domain: {type: date, min: '2020-01-01', max: '2020-06-01'}}\n"
+        "    date_orderings:\n"
+        "      - [D1, D2]\n")
+    with pytest.raises(ManifestError, match="monotone"):
+        load_manifest(_write(tmp_path, text))
+
+
+def test_manifest_rejects_non_pk_reconcile_join(tmp_path):
+    text = BASE + (
+        "      - {name: V, concept: exposure_at_default, role: source, "
+        "domain: {type: real, min: 0, max: 10}, "
+        "reconcile: [{surface: s, column: V_SRC, join_column: V}]}\n")
+    with pytest.raises(ManifestError, match="primary key"):
+        load_manifest(_write(tmp_path, text))
+
+
+# ── full-width schema: the catalog-parity gate ───────────────────────────────
+
+@pytest.fixture(scope="module")
+def full_manifest():
+    return load_manifest(FULL)
+
+
+@pytest.fixture(scope="module")
+def full_cert(full_manifest):
+    register = load_register(REGISTER, full_manifest.concepts)
+    return certify(full_manifest, register, seed=42, k=3)
+
+
+def test_ciclos_full_certifies(full_cert):
+    assert full_cert.certified, [
+        (r.defect_id, r.clean_rows, r.caught, r.planted, r.error)
+        for r in full_cert.defect_results
+        if not r.clean_ok or r.recall < 1.0]
+
+
+def test_ciclos_full_covers_all_ten_generic_classes(full_cert):
+    assert set(full_cert.per_class()) == set(range(1, 11))
+
+
+def test_crosswalk_is_total(full_manifest):
+    """Every hand-written catalog defect maps to a generated defect or
+    carries an explicit documented exception — the gap-plan item 2 gate."""
+    import yaml
+    sys_path = str(Path(__file__).parent.parent / "DQC" / "eval")
+    import sys as _sys
+    if sys_path not in _sys.path:
+        _sys.path.insert(0, sys_path)
+    from defect_catalog import DEFECTS
+
+    crosswalk = yaml.safe_load(CROSSWALK.read_text(encoding="utf-8"))["crosswalk"]
+    generated_ids = {d.defect_id for d in generate_defects(full_manifest)}
+
+    missing = [d.defect_id for d in DEFECTS if d.defect_id not in crosswalk]
+    assert not missing, f"catalog defects absent from crosswalk: {missing}"
+
+    for did, entry in crosswalk.items():
+        status = entry["status"]
+        assert status in ("mapped", "partial", "excluded"), (did, status)
+        if status in ("mapped", "partial"):
+            assert entry["apdq"] in generated_ids, (
+                f"{did} maps to {entry['apdq']}, which the manifest does "
+                f"not generate")
+        if status in ("partial", "excluded"):
+            assert entry.get("note"), f"{did}: {status} requires a note"
+
+
+def test_panel_class_present(full_manifest):
+    from apdq.defects import defects_by_class
+    by_class = defects_by_class(generate_defects(full_manifest))
+    slugs = {d.defect_id for d in by_class[10]}
+    assert {"C10:ciclos_panel.gap", "C10:ciclos_panel.duplicate_period",
+            "C10:ciclos_panel.RECUPERACION_ACUM",
+            "C10:ciclos_panel.DPD_MES"} <= slugs
 
 
 def test_certification_fails_on_broken_oracle(monkeypatch, mini_cert):

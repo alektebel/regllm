@@ -27,7 +27,7 @@ from . import expr
 CONCEPTS_DIR = Path(__file__).parent / "concepts"
 DEFAULT_VOCABULARY = CONCEPTS_DIR / "pd_lgd.yaml"
 
-DOMAIN_TYPES = ("int", "real", "text", "yyyymm")
+DOMAIN_TYPES = ("int", "real", "text", "yyyymm", "date")
 ROLES = ("source", "derived")
 FORMULA_EPS = 0.01
 
@@ -40,6 +40,7 @@ class ManifestError(ValueError):
 class Domain:
     type: str
     nullable: bool = False
+    null_rate: float = 0.05        # twin sampling rate when nullable
     unique: bool = False
     min: float | None = None
     max: float | None = None
@@ -59,9 +60,14 @@ class Column:
     concept: str
     role: str                      # source | derived
     description: str = ""
-    domain: Domain | None = None   # required for sources
+    domain: Domain | None = None   # required for sources & when-columns
     formula: str | None = None     # required for derived
     formula_ast: object = None
+    # conditional derivation: the formula binds only where `when` holds;
+    # elsewhere the value is free and sampled from `domain` (e.g. realised
+    # LGD is formula-bound for closed cycles, free while the cycle runs)
+    when: str | None = None
+    when_ast: object = None
     reconcile: tuple[Reconciliation, ...] = ()
     regulation_refs: tuple[str, ...] = ()
     waivers: dict = field(default_factory=dict)  # obligation -> signed reason
@@ -98,6 +104,17 @@ class Control:
 
 
 @dataclass(frozen=True)
+class Panel:
+    """Monthly-snapshot semantics for a table: rows are (series × period)
+    observations. Enables class 10 (panel) defects: period gaps,
+    duplicate periods, decreasing cumulative columns."""
+    series_key: str                # column identifying the series
+    period_column: str             # YYYYMM column
+    periods: int = 12              # series length in the twin
+    cumulative_columns: tuple[str, ...] = ()   # non-decreasing within series
+
+
+@dataclass(frozen=True)
 class Table:
     name: str
     primary_key: str
@@ -107,6 +124,7 @@ class Table:
     constraints: tuple[Constraint, ...] = ()
     date_orderings: tuple[tuple[str, ...], ...] = ()
     control: Control | None = None
+    panel: Panel | None = None
     waivers: dict = field(default_factory=dict)
 
     def column(self, name: str) -> Column:
@@ -153,6 +171,7 @@ def _domain(raw: dict, where: str) -> Domain:
     return Domain(
         type=dtype,
         nullable=bool(raw.get("nullable", False)),
+        null_rate=float(raw.get("null_rate", 0.05)),
         unique=bool(raw.get("unique", False)),
         min=raw.get("min"),
         max=raw.get("max"),
@@ -178,10 +197,12 @@ def _column(raw: dict, table_name: str, concepts: dict) -> Column:
     domain = None
     formula = raw.get("formula")
     formula_ast = None
+    when = raw.get("when")
+    when_ast = None
     if role == "source":
         if "domain" not in raw:
             raise ManifestError(f"{where}: source column requires a domain")
-        if formula:
+        if formula or when:
             raise ManifestError(f"{where}: source column cannot have a formula")
         domain = _domain(raw["domain"], where)
     else:
@@ -193,6 +214,20 @@ def _column(raw: dict, table_name: str, concepts: dict) -> Column:
             formula_ast = expr.parse(formula)
         except expr.ExprError as exc:
             raise ManifestError(f"{where}: bad formula: {exc}") from exc
+        if when:
+            try:
+                when_ast = expr.parse(when)
+            except expr.ExprError as exc:
+                raise ManifestError(f"{where}: bad when: {exc}") from exc
+            if "domain" not in raw:
+                raise ManifestError(
+                    f"{where}: conditionally-derived column (when:) needs a "
+                    f"domain for the unconstrained branch")
+            domain = _domain(raw["domain"], where)
+        elif "domain" in raw:
+            raise ManifestError(
+                f"{where}: a fully-derived column has no free branch to "
+                f"give a domain to (add when: or drop domain)")
 
     recons = []
     for r in raw.get("reconcile", ()):
@@ -205,6 +240,7 @@ def _column(raw: dict, table_name: str, concepts: dict) -> Column:
         name=name, concept=concept, role=role,
         description=raw.get("description", ""),
         domain=domain, formula=formula, formula_ast=formula_ast,
+        when=when, when_ast=when_ast,
         reconcile=tuple(recons),
         regulation_refs=tuple(raw.get("regulation_refs", ())),
         waivers=dict(raw.get("waivers", {})),
@@ -223,6 +259,14 @@ def _table(raw: dict, concepts: dict) -> Table:
     col_names = {c.name for c in cols}
     if pk not in col_names:
         raise ManifestError(f"table {name}: primary_key {pk!r} is not a column")
+    for col in cols:
+        for recon in col.reconcile:
+            if recon.join_column != pk:
+                raise ManifestError(
+                    f"table {name}.{col.name}: reconcile surfaces are "
+                    f"auto-mirrored per row, so join_column must be the "
+                    f"primary key ({pk!r}); joining a real external table "
+                    f"on another key is expansion E10")
 
     fks = []
     for fk in raw.get("foreign_keys", ()):
@@ -256,6 +300,7 @@ def _table(raw: dict, concepts: dict) -> Table:
         ))
 
     orderings = []
+    col_by_name = {c.name: c for c in cols}
     for chain in raw.get("date_orderings", ()):
         if len(chain) < 2:
             raise ManifestError(f"table {name}: date_ordering needs >=2 columns")
@@ -263,6 +308,20 @@ def _table(raw: dict, concepts: dict) -> Table:
             if col not in col_names:
                 raise ManifestError(
                     f"table {name}: date_ordering references unknown {col!r}")
+        # the twin sorts chain values into compliance; that assignment only
+        # stays inside each column's domain when the domains are monotone
+        # along the chain (mins and maxes non-decreasing)
+        bounds = [(col_by_name[c].domain.min, col_by_name[c].domain.max)
+                  for c in chain
+                  if col_by_name[c].domain is not None]
+        for (lo_a, hi_a), (lo_b, hi_b) in zip(bounds, bounds[1:]):
+            if (lo_a is not None and lo_b is not None and lo_b < lo_a) or \
+               (hi_a is not None and hi_b is not None and hi_b < hi_a):
+                raise ManifestError(
+                    f"table {name}: date_ordering {chain} needs monotone "
+                    f"domains (each column's min/max >= its predecessor's), "
+                    f"or the twin's ordering sort can leave a value outside "
+                    f"its column's domain")
         orderings.append(tuple(chain))
 
     control = None
@@ -283,11 +342,28 @@ def _table(raw: dict, concepts: dict) -> Table:
             checks.append(ControlCheck(kind=kind, column=chk.get("column")))
         control = Control(surface=c["surface"], checks=tuple(checks))
 
+    panel = None
+    if "panel" in raw:
+        p = raw["panel"]
+        for key in ("series_key", "period_column"):
+            if p.get(key) not in col_names:
+                raise ManifestError(
+                    f"table {name}: panel.{key} must be a declared column")
+        cumulative = tuple(p.get("cumulative_columns", ()))
+        for c in cumulative:
+            if c not in col_names:
+                raise ManifestError(
+                    f"table {name}: panel cumulative column {c!r} unknown")
+        panel = Panel(
+            series_key=p["series_key"], period_column=p["period_column"],
+            periods=int(p.get("periods", 12)),
+            cumulative_columns=cumulative)
+
     return Table(
         name=name, primary_key=pk, rows=int(raw.get("rows", 500)),
         columns=cols, foreign_keys=tuple(fks),
         constraints=tuple(constraints), date_orderings=tuple(orderings),
-        control=control, waivers=dict(raw.get("waivers", {})),
+        control=control, panel=panel, waivers=dict(raw.get("waivers", {})),
     )
 
 
@@ -301,6 +377,8 @@ def _check_dependencies(manifest: Manifest) -> None:
             if col.role != "derived":
                 continue
             refs = expr.columns(col.formula_ast)
+            if col.when_ast is not None:
+                refs = refs | expr.columns(col.when_ast)
             unknown = refs - names
             if unknown:
                 raise ManifestError(
@@ -336,7 +414,10 @@ def derivation_order(table: Table) -> list[Column]:
     while remaining:
         progressed = False
         for name in list(remaining):
-            refs = expr.columns(remaining[name].formula_ast)
+            col = remaining[name]
+            refs = expr.columns(col.formula_ast)
+            if col.when_ast is not None:
+                refs = refs | expr.columns(col.when_ast)
             if refs <= done:
                 ordered.append(remaining.pop(name))
                 done.add(name)

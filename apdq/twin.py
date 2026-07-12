@@ -22,6 +22,7 @@ from __future__ import annotations
 import random
 import sqlite3
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 from . import expr
 from .manifest import Column, Manifest, ManifestError, Table, derivation_order
@@ -43,7 +44,7 @@ class Twin:
 def _sample_source(col: Column, rng: random.Random, idx: int,
                    unique_seen: set) -> object:
     dom = col.domain
-    if dom.nullable and rng.random() < NULL_RATE:
+    if dom.nullable and rng.random() < dom.null_rate:
         return None
     if dom.values:
         return rng.choice(list(dom.values))
@@ -62,6 +63,11 @@ def _sample_source(col: Column, rng: random.Random, idx: int,
         hi = int(dom.max) if dom.max is not None else 202412
         months = _months_between(lo, hi)
         return _month_shift(lo, rng.randint(0, max(months, 0)))
+    if dom.type == "date":
+        lo = date.fromisoformat(str(dom.min) if dom.min else "2015-01-01")
+        hi = date.fromisoformat(str(dom.max) if dom.max else "2024-12-28")
+        span = max((hi - lo).days, 0)
+        return (lo + timedelta(days=rng.randint(0, span))).isoformat()
     # text
     if dom.unique:
         return f"{col.name[:4]}{idx:07d}"
@@ -103,9 +109,22 @@ def _orderings_hold(row: dict, table: Table) -> bool:
     return True
 
 
-def _derive(row: dict, ordered: list[Column]) -> dict:
+def _derive(row: dict, ordered: list[Column],
+            rng: random.Random | None = None, idx: int = 0) -> dict:
+    """Apply derivations in order. Conditionally-derived columns (when:)
+    take the formula value where the condition holds; elsewhere the value
+    is free — sampled when a rng is supplied, kept as-is otherwise (so
+    defect planting can re-derive without disturbing free branches)."""
     for col in ordered:
-        row[col.name] = expr.eval_row(col.formula_ast, row)
+        if col.when_ast is not None:
+            cond = expr.eval_row(col.when_ast, row)
+            if cond is not None and cond:
+                row[col.name] = expr.eval_row(col.formula_ast, row)
+            elif rng is not None:
+                row[col.name] = _sample_source(col, rng, idx, set())
+            # else: leave the existing free-branch value untouched
+        else:
+            row[col.name] = expr.eval_row(col.formula_ast, row)
         if isinstance(row[col.name], float):
             row[col.name] = round(row[col.name], 6)
     return row
@@ -127,13 +146,61 @@ def _make_row(table: Table, ordered_derived: list[Column],
             else:
                 row[col.name] = _sample_source(col, rng, idx, set())
         _apply_orderings(row, table)
-        row = _derive(row, ordered_derived)
+        row = _derive(row, ordered_derived, rng, idx)
         if _constraints_hold(row, table) and _orderings_hold(row, table):
             return row
     raise ManifestError(
         f"table {table.name}: could not satisfy declared constraints in "
         f"{MAX_ROW_RETRIES} samples — a constraint is (nearly) unsatisfiable "
         f"under the declared domains; tighten domains or relax the constraint")
+
+
+def _make_series(table: Table, ordered_derived: list[Column],
+                 parents: dict[str, list[dict]], parent_pk: dict[str, str],
+                 rng: random.Random, series_idx: int, row_idx: int,
+                 forced_series_key=None) -> list[dict]:
+    """One panel series: `periods` consecutive months for one series key,
+    cumulative columns non-decreasing, other sources held constant."""
+    panel = table.panel
+    base = _make_row(table, ordered_derived, parents, parent_pk,
+                     rng, row_idx)
+    if forced_series_key is not None:
+        base[panel.series_key] = forced_series_key
+    period_col = table.column(panel.period_column)
+    lo = int(period_col.domain.min or 201501)
+    hi = int(period_col.domain.max or 202412)
+    start_slack = max(_months_between(lo, hi) - panel.periods + 1, 0)
+    start = _month_shift(lo, rng.randint(0, start_slack))
+
+    cums = {c: 0.0 for c in panel.cumulative_columns}
+    increments = {}
+    for cname in panel.cumulative_columns:
+        dom = table.column(cname).domain
+        span = float(dom.max if dom and dom.max is not None else 1000.0)
+        increments[cname] = span / max(panel.periods, 1)
+
+    rows = []
+    for p in range(panel.periods):
+        row = dict(base)
+        row[table.primary_key] = f"{base[table.primary_key]}_{p:02d}"
+        row[panel.period_column] = _month_shift(start, p)
+        for cname in panel.cumulative_columns:
+            cums[cname] = round(
+                cums[cname] + rng.uniform(0, increments[cname]), 6)
+            row[cname] = cums[cname]
+        # rng passed so when-columns re-sample their free branch per
+        # period — cumulative columns move conditions across thresholds
+        row = _derive(row, ordered_derived, rng, row_idx + p)
+        if not _constraints_hold(row, table):
+            # per-period values changed by the series walk must not break
+            # declared constraints — that would poison the clean twin; the
+            # author should express the rule as a when-derivation instead
+            raise ManifestError(
+                f"table {table.name}: a constraint fails on generated panel "
+                f"rows; per-period rules must be when-derivations, not "
+                f"constraints over cumulative columns")
+        rows.append(row)
+    return rows
 
 
 # ── materialization ──────────────────────────────────────────────────────────
@@ -158,10 +225,10 @@ def _topo_tables(manifest: Manifest) -> list[Table]:
 
 
 def _sql_type(col: Column) -> str:
-    if col.role == "derived":
+    if col.domain is None:               # fully-derived: numeric by default
         return "REAL"
     return {"int": "INTEGER", "yyyymm": "INTEGER",
-            "real": "REAL", "text": "TEXT"}[col.domain.type]
+            "real": "REAL", "text": "TEXT", "date": "TEXT"}[col.domain.type]
 
 
 def create_table_sql(table: Table) -> str:
@@ -243,10 +310,32 @@ def build_twin(manifest: Manifest, seed: int = 42,
     for table in _topo_tables(manifest):
         conn.execute(create_table_sql(table))
         ordered_derived = derivation_order(table)
-        rows = [
-            _make_row(table, ordered_derived, all_rows, parent_pk, rng, idx)
-            for idx in range(table.rows)
-        ]
+        if table.panel:
+            n_series = max(table.rows // table.panel.periods, 1)
+            # series keys must be distinct or two series would merge and
+            # break the duplicate-period invariant on the clean twin
+            fk_map = {fk.column: fk for fk in table.foreign_keys}
+            if table.panel.series_key in fk_map:
+                fk = fk_map[table.panel.series_key]
+                pool = [r[fk.ref_column] for r in all_rows[fk.ref_table]]
+                if n_series > len(pool):
+                    raise ManifestError(
+                        f"{table.name}: panel needs {n_series} distinct "
+                        f"series keys but {fk.ref_table} has {len(pool)}")
+                keys = rng.sample(pool, n_series)
+            else:
+                keys = [f"SER_{s:06d}" for s in range(n_series)]
+            rows = []
+            for s in range(n_series):
+                rows.extend(_make_series(
+                    table, ordered_derived, all_rows, parent_pk, rng,
+                    s, len(rows), forced_series_key=keys[s]))
+        else:
+            rows = [
+                _make_row(table, ordered_derived, all_rows, parent_pk,
+                          rng, idx)
+                for idx in range(table.rows)
+            ]
         all_rows[table.name] = rows
         _insert_rows(conn, table.name, table.column_names, rows)
         _materialize_surfaces(conn, table, rows)
