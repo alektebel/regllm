@@ -5,6 +5,7 @@
 | Document | What it covers |
 |---|---|
 | **[`APDQ_HANDBOOK.md`](APDQ_HANDBOOK.md)** | **The consolidated reference**: proposal → market → regulation (BCBS 239/RDARR, GL/2017/16, CRR, Anejo IX, COREP/FINREP, AnaCredit/CIRBE, BIRD/IReF) → the standard → implementation reference → certification protocol → worked proof → glossary. Read this first; everything below is the deeper cut it links to. |
+| **[`../STEP_BY_STEP_SETUP.md`](../STEP_BY_STEP_SETUP.md)** | **The operational runbook**: every command and decision to go from a client's schema + existing DQC set to a certified round of tests (format / reperformance / coherence / contract-cycle behaviour) in one day. |
 | [`AUDITOR_PARITY_STANDARD.md`](AUDITOR_PARITY_STANDARD.md) | The normative design spec: the auditor-parity claim, the lineage completeness argument, the 12-class taxonomy, the two-level conformance model, the gap plan. |
 | [`MVP_ROADMAP.md`](MVP_ROADMAP.md) | Build plan with acceptance gates and current status; the larger-product sequence. |
 | [`../apdq/README.md`](../apdq/README.md) | Implementation manual: quickstart, module map, manifest format reference, defect-class status, expansions E1–E11 with their code seams, honest status. |

@@ -56,6 +56,26 @@ def cmd_lineage(args) -> int:
 def cmd_defects(args) -> int:
     manifest = _load(args.manifest)
     defects = generate_defects(manifest)
+    if getattr(args, "sql", None):
+        def comment(text: str) -> str:
+            # keep ';' out of comments so naive split-on-';' runners work
+            return "-- " + text.replace(";", ",")
+
+        lines = [
+            comment("APDQ generated data-quality check suite"),
+            comment(f"manifest: {manifest.name} · {len(defects)} checks"),
+            comment("Each query returns VIOLATING rows (empty result = pass)."),
+            comment("SQLite dialect. Aggregate checks return metric names."),
+            ""]
+        for d in defects:
+            refs = f" · {', '.join(d.regulation_refs)}" if d.regulation_refs else ""
+            lines.append(comment(f"{d.defect_id} [{d.class_slug}]{refs}"))
+            lines.append(comment(d.description))
+            lines.append(d.oracle_sql.strip() + ";")
+            lines.append("")
+        Path(args.sql).write_text("\n".join(lines), encoding="utf-8")
+        print(f"{len(defects)} checks written to {args.sql}")
+        return 0
     for d in defects:
         print(f" {d.defect_id:<45} [{d.class_slug}] {d.description}")
     print(f"\n{len(defects)} defects across "
@@ -141,11 +161,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="apdq")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    for name, fn in (("validate", cmd_validate), ("lineage", cmd_lineage),
-                     ("defects", cmd_defects)):
+    for name, fn in (("validate", cmd_validate), ("lineage", cmd_lineage)):
         p = sub.add_parser(name)
         p.add_argument("manifest")
         p.set_defaults(fn=fn)
+
+    p = sub.add_parser("defects")
+    p.add_argument("manifest")
+    p.add_argument("--sql", metavar="FILE",
+                   help="write the generated checks as a runnable .sql file")
+    p.set_defaults(fn=cmd_defects)
 
     p = sub.add_parser("twin")
     p.add_argument("manifest")
