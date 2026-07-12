@@ -3,6 +3,15 @@
 Companion to [`AUDITOR_PARITY_STANDARD.md`](AUDITOR_PARITY_STANDARD.md).
 Ordered build list with acceptance gates.
 
+> **Status (2026-07-12):** MVP items 1–7 are implemented in `apdq/`
+> (see [`apdq/README.md`](../apdq/README.md)). All gates pass: the 12
+> normative classes are generic for 1–10, `retail_mortgages` certifies
+> with zero code edits (item 3's gate), and `ciclos_full` +
+> `crosswalk.yaml` close item 2's original gate against the hand-written
+> 67-defect catalog (58 mapped / 7 partial / 3 excluded, all documented).
+> From the larger-product list below: panel support (part of #4's
+> Anejo IX prep) is done; the rest is open.
+
 ## MVP
 
 **Goal:** one real pilot. A bank (or a consultancy on behalf of one)
