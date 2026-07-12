@@ -13,37 +13,16 @@ export interface DqcItem {
   justificacion: string;
 }
 
-export interface RAGSource {
-  document: string;
-  heading: string;
-  snippet: string;
-  source_type: string;
-}
-
-export interface DqcResponse {
-  variable: string;
+export interface GenerateResponse {
   dqcs: DqcItem[];
+  dictionary_fields: number;
   context_summary: string;
-  sources: RAGSource[];
-}
-
-export interface TestsResponse {
-  total: number;
-  results: TestResult[];
-}
-
-export interface TestResult {
-  test: string;
-  variable: string;
-  dqc: DqcItem | null;
-  error: string | null;
 }
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   dqcs?: DqcItem[];
-  sources?: RAGSource[];
 }
 
 // ── Validation pipeline models (mirror api/routers/dqc.py) ─────────────
@@ -53,7 +32,7 @@ export interface CheckRecord {
   rule_id: string | null;
   name: string;
   description: string;
-  severity: string;        // HIGH | MED | LOW
+  severity: string;
   category: string;
   sql: string;
   visible: boolean;

@@ -1,0 +1,87 @@
+# APDQ mini concept vocabulary — PD/LGD estimation domain (MVP).
+#
+# Canonical business concepts, independent of any bank's column names.
+# `bird_hint` points at the closest ECB BIRD input-layer notion where one
+# exists; the full BIRD alignment is a roadmap item (see apdq/README.md).
+# Bindings in a manifest must reference concepts by `id`.
+
+vocabulary: apdq-pd-lgd-mini
+version: 1
+
+concepts:
+  # ── identity & keys ─────────────────────────────────────────────────
+  - {id: contract_id,            en: Contract identifier,             es: Identificador de contrato,        bird_hint: INSTRMNT_ID}
+  - {id: client_id,              en: Counterparty identifier,         es: Identificador de cliente,         bird_hint: PRTY_ID}
+  - {id: cycle_id,               en: Default-cycle identifier,        es: Identificador de ciclo de impago}
+  - {id: collateral_id,          en: Protection identifier,           es: Identificador de garantía,        bird_hint: PRTCTN_ID}
+
+  # ── segmentation & classification ───────────────────────────────────
+  - {id: exposure_segment,       en: Regulatory exposure segment,     es: Segmento regulatorio}
+  - {id: rating_grade,           en: Internal rating grade,           es: Grado de rating interno}
+  - {id: ifrs9_stage,            en: IFRS 9 stage,                    es: Fase IFRS 9 (stage)}
+  - {id: legal_nature,           en: Legal nature of counterparty,    es: Naturaleza jurídica}
+  - {id: product_type,           en: Product type,                    es: Tipo de producto,                 bird_hint: TYP_INSTRMNT}
+  - {id: cycle_status,           en: Default-cycle status,            es: Estado del ciclo}
+  - {id: cycle_outcome,          en: Default-cycle outcome,           es: Terminación del ciclo}
+  - {id: cure_flag,              en: Cure flag,                       es: Indicador de curación}
+  - {id: nonconformity_flag,     en: Calibration non-conformity flag, es: Indicador de no conformidad}
+
+  # ── dates & periods ─────────────────────────────────────────────────
+  - {id: reporting_period,       en: Reporting period (YYYYMM),       es: Periodo de referencia,            bird_hint: DT_RFRNC}
+  - {id: origination_date,       en: Origination date/month,          es: Fecha de alta,                    bird_hint: DT_INCPTN}
+  - {id: default_date,           en: Default entry date/month,        es: Fecha de entrada en default,      bird_hint: DT_DFLT}
+  - {id: cycle_close_date,       en: Cycle closure date/month,        es: Fecha de cierre del ciclo}
+  - {id: foreclosure_date,       en: Foreclosure date/month,          es: Fecha de adjudicación}
+  - {id: collateral_valuation_date, en: Collateral valuation date,    es: Fecha de valoración de garantía,  bird_hint: DT_PRTCTN_VL}
+  - {id: days_past_due,          en: Days past due,                   es: Días de impago,                   bird_hint: DYS_PST_D}
+  - {id: observation_window,     en: Calibration observation window,  es: Ventana de observación}
+
+  # ── exposure & balances ─────────────────────────────────────────────
+  - {id: drawn_amount,           en: Drawn balance,                   es: Saldo dispuesto,                  bird_hint: CRRYNG_AMNT}
+  - {id: undrawn_amount,         en: Undrawn committed amount,        es: Saldo disponible,                 bird_hint: OFF_BLNC_SHT_AMNT}
+  - {id: ccf,                    en: Credit conversion factor,        es: Factor de conversión (CCF)}
+  - {id: ead_on_balance,         en: On-balance EAD component,        es: EAD de balance}
+  - {id: ead_off_balance,        en: Off-balance EAD component,       es: EAD fuera de balance}
+  - {id: exposure_at_default,    en: Exposure at default (total),     es: Exposición en default (EAD)}
+  - {id: currency,               en: Currency,                        es: Divisa,                           bird_hint: CRRNCY}
+  - {id: fx_rate,                en: FX conversion rate to EUR,       es: Tipo de cambio a EUR}
+  - {id: exposure_eur,           en: EAD in EUR,                      es: EAD en euros}
+
+  # ── risk parameters ─────────────────────────────────────────────────
+  - {id: pd_estimate,            en: Estimated PD (long-run),         es: PD estimada}
+  - {id: pd_floor,               en: PD regulatory floor,             es: Suelo de PD}
+  - {id: pd_final,               en: Final PD applied,                es: PD final}
+  - {id: lgd_estimate,           en: Estimated LGD (long-run),        es: LGD estimada}
+  - {id: lgd_floor,              en: LGD regulatory floor,            es: Suelo de LGD}
+  - {id: lgd_final,              en: Final LGD applied,               es: LGD final}
+  - {id: lgd_realized,           en: Realised LGD,                    es: LGD realizada}
+  - {id: margin_of_conservatism, en: Margin of conservatism (MoC),    es: Margen de cautela (MoC)}
+  - {id: downturn_lgd,           en: Downturn LGD,                    es: LGD downturn}
+
+  # ── collateral ──────────────────────────────────────────────────────
+  - {id: collateral_type,        en: Collateral / protection type,    es: Tipo de garantía,                 bird_hint: TYP_PRTCTN}
+  - {id: collateral_value,       en: Collateral value,                es: Valor de la garantía,             bird_hint: PRTCTN_VL}
+  - {id: haircut,                en: Collateral haircut,              es: Recorte (haircut)}
+  - {id: ltv,                    en: Loan-to-value ratio,             es: Ratio préstamo-valor (LTV)}
+
+  # ── outputs ─────────────────────────────────────────────────────────
+  - {id: downturn_pd,            en: Downturn PD,                     es: PD downturn}
+  - {id: moc_component,          en: MoC category component (A/B/C),  es: Componente de MoC por categoría}
+  - {id: discount_rate,          en: Recovery discount rate,          es: Tasa de descuento}
+  - {id: accrued_interest,       en: Accrued interest,                es: Intereses acumulados}
+  - {id: originating_entity,     en: Originating entity,              es: Entidad de origen}
+  - {id: merger_flag,            en: Merger/absorption flag,          es: Indicador de fusión}
+  - {id: merger_group_id,        en: Merger group identifier,         es: Identificador de fusión}
+  - {id: calibration_segment,    en: Calibration segment,             es: Segmento de calibración}
+  - {id: default_cause,          en: Default trigger cause,           es: Causa de default,                 bird_hint: DFLT_STTS}
+  - {id: foreclosure_flag,       en: Foreclosure flag,                es: Indicador de adjudicación}
+  - {id: foreclosure_type,       en: Foreclosed asset type,           es: Tipo de adjudicación}
+  - {id: foreclosure_value,      en: Foreclosed asset value,          es: Valor de adjudicación}
+  - {id: maturity,               en: Effective maturity (M),          es: Vencimiento efectivo}
+  - {id: expected_credit_loss,   en: Expected credit loss (ECL),      es: Pérdida esperada (ECL)}
+  - {id: provision_amount,       en: Accounting provision,            es: Provisión contable}
+  - {id: capital_requirement,    en: IRB capital requirement (K),     es: Requerimiento de capital (K)}
+  - {id: rwa,                    en: Risk-weighted assets,            es: Activos ponderados por riesgo}
+  - {id: recovery_cumulative,    en: Cumulative recoveries,           es: Recuperación acumulada}
+  - {id: recovery_cost,          en: Cumulative recovery costs,       es: Costes de recuperación}
+  - {id: interest_rate,          en: Contractual interest rate,       es: Tipo de interés,                  bird_hint: ANNLSD_AGRD_RT}

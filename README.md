@@ -1,233 +1,646 @@
-# RegLLM — DQC (Data Quality Check) Generator
+# RegLLM
 
-> Generate portable **SAS/SQL data-quality checks** for IRB / IFRS 9
-> regulatory fields (COREP/FINREP), grounded in a SAS lineage graph and a
-> regulation corpus, and reviewed through a validate/reject pipeline with a
-> copy-ready dashboard query.
+Related applications for IRB / IFRS 9 regulatory data pipelines:
 
-Runs **local-first** (offline, on Ollama + SQLite) and deploys to **AWS**
-(Bedrock + DynamoDB) with a single script.
+1. **DQC Generator** (`DQC/`, `api/routers/dqc.py`) — generates structured
+   data-quality checks (SQL) for a database whose schema and dictionary are
+   known, grounded in the EBA GL/2017/16 PD & LGD guidelines via a regulation
+   knowledge graph. Ships with an Angular chat UI, an AWS (ECS Fargate +
+   Bedrock) deployment, and a mutation-testing **eval harness**
+   (`DQC/eval/`) that scores generated checks against 67 ground-truth
+   defects across 8 data-quality dimensions. See
+   [`DQC/eval/README.md`](DQC/eval/README.md),
+   [`docs/EVALUATION.md`](docs/EVALUATION.md), and
+   [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the production image.
+2. **SAS Field-Diff Explainer** — *why is the value of this field different
+   in V3 versus V2 of the same table?* — answered with a differentiable AST,
+   Shapley values, and a change-log GraphRAG grounded by a local LLM.
+   Documented in the rest of this README.
+3. **APDQ** (`apdq/`) — reference implementation (MVP) of the
+   *auditor-parity* data-quality standard: a binding manifest drives a
+   clean-by-construction synthetic twin, per-class mutation generators +
+   oracles, a lineage-obligation completeness check, and a certification
+   run emitting a machine-verifiable audit pack. **Start with
+   [`docs/APDQ_HANDBOOK.md`](docs/APDQ_HANDBOOK.md)** (the consolidated
+   reference, proposal → regulation → implementation); the full doc set
+   is indexed in [`docs/README.md`](docs/README.md).
+
+The FastAPI backend serves both: the router set is selected with
+`REGLLM_ROUTERS` (`all` by default; the AWS DQC deployment sets
+`REGLLM_ROUTERS=dqc` for a slim surface).
 
 ---
 
 ## What it does
 
-For a target regulatory variable (e.g. `LGD_ESTIMADA`, `ECL`, `PD_ESTIMADA`),
-DQC:
+Given:
 
-1. **Gathers context** — six read-only tools (`src/agent/tools.py`) pull the
-   SAS formula, the dependency lineage, the field definition, relevant
-   regulation sections, and BM25 doc hits.
-2. **Generates checks** — the context is sent to an LLM with
-   `DQC_SYSTEM_PROMPT`, which returns structured DQC objects. Each carries a
-   `regla_sql` (a SAS `DATA` step or `PROC SQL`) that flags offending rows.
-3. **Persists** — generated checks are stored as `pending` (SQLite locally,
-   DynamoDB in AWS).
-4. **Validates** — the Angular UI lets you validate / reject each check; once
-   all visible checks are resolved, a UNION-ALL **dashboard query** is
-   unlocked for one-click copy.
+- a SAS pipeline (e.g. an IRB / IFRS 9 calibration script),
+- two snapshots of the same row in two table versions (`V2` and `V3`),
+- a chosen target field (`Y`, e.g. `ECL`),
 
-```
-┌────────────────────┐     /api/dqc/*      ┌──────────────────────────┐
-│  Angular UI        │ ──────────────────▶ │  FastAPI  (api/)         │
-│  DQC/app           │ ◀──── JSON ──────── │  api/routers/dqc.py      │
-│  • Chat            │                     │   ├─ SAS lineage tools    │
-│  • Tests en lote   │                     │   ├─ Regulation graph     │
-│  • Validate / Dash │                     │   └─ LLM (Ollama/Bedrock/ │
-└────────────────────┘                     │        Gemini)           │
-                                           └───────────┬──────────────┘
-                                                       │  checks store
-                                           ┌───────────▼──────────────┐
-                                           │  SQLite (local)          │
-                                           │  DynamoDB (AWS)          │
-                                           └──────────────────────────┘
-```
+RegLLM tells you **why `Y` differs between V2 and V3**, by combining:
 
----
+1. **Path-integrated gradients** (Aumann–Shapley) — built on a
+   differentiable evaluator of the SAS AST that uses
+   `torch.tensor(..., requires_grad=True)` for every numeric input.
+2. **Shapley values** (exact for ≤ 12 differing fields, permutation
+   sampling otherwise) — handles categorical / non-smooth fields and
+   branch flips, using the eager Python evaluator as a black box.
+3. **V2-vs-V3 code diff** — the SAS pipeline itself can change between
+   versions. The UI compares the two scripts AST-to-AST, scopes the diff
+   to the target field's lineage, and decomposes the total Δ into a
+   *data Δ* and a *code Δ* component:
 
-## Repository layout
+   ```
+   ΔY_total ≈  Y(row_v3, code_v3) − Y(row_v2, code_v2)
+              = [Y(row_v3, code_v3) − Y(row_v2, code_v3)]    ← data Δ
+              + [Y(row_v2, code_v3) − Y(row_v2, code_v2)]    ← code Δ
+   ```
 
-| Path                              | Role                                                     |
-|-----------------------------------|----------------------------------------------------------|
-| `DQC/app/`                        | Angular UI (chat, batch tests, validate/dashboard)       |
-| `DQC/cdk/`                        | AWS CDK stack + one-command `deploy.sh`                  |
-| `DQC/eval/`                       | DQC eval harness (stress DBs, scoring)                    |
-| `api/main.py`                     | FastAPI entry point                                      |
-| `api/routers/dqc.py`              | The `/dqc/*` endpoints                                    |
-| `src/agent/tools.py`              | Read-only lineage / regulation / docs tools              |
-| `src/knowledge/`                  | Local LLM client + regulation/change-log GraphRAG        |
-| `training/dq/checks_store.py`     | Pluggable checks store: `SqliteStore` \| `DynamoStore`   |
-| `training/dq/checks_db.py`        | SQLite implementation of the checks table                |
-| `data/regulation/`, `data/docs/`  | Regulation corpus + doc corpus (BM25) read at runtime    |
-| `data/samples/`                   | Bundled sample SAS + `irb_schema.sql`                     |
-| `Dockerfile`, `docker-compose.yml`| API image + local `ollama` + `api` + `dqc` stack         |
+4. **GraphRAG over the database change-log** — every documented field
+   change becomes a graph node; for each suspect field we retrieve the
+   relevant subgraph and ask the local LLM whether the delta is
+   *justified by a documented release note*.
+
+Both attribution methods satisfy the *efficiency axiom*
+(`Σᵢ φᵢ ≈ Y(V3) − Y(V2)`), and any residual is reported explicitly,
+along with branch flips that may make the gradient locally undefined.
 
 ---
 
-## Setup
+## Architecture
+
+```mermaid
+flowchart LR
+    UI["Next.js<br/>diff page"] --> API["FastAPI<br/>/diff /sas /kb"]
+    API --> Compiler["SAS Compiler<br/>src/sas_logic_tree.py"]
+    Compiler --> Eval["Differentiable<br/>tensor evaluator"]
+    Eval --> Grad["Path-integrated<br/>gradient attribution"]
+    Compiler --> Shap["KernelSHAP-style<br/>Shapley attribution"]
+    Grad --> Diff["Discrepancy<br/>report"]
+    Shap --> Diff
+    Diff --> KB["Local LLM<br/>(Qwen 2.5 / Gemma 4)<br/>+ GraphRAG"]
+    KB --> Diff
+    Diff --> UI
+    Changelog["data/changelog/<br/>release notes,<br/>schema diffs"] --> Graph["NetworkX<br/>change-log graph"]
+    Graph --> KB
+```
+
+### Repository layout
+
+| Path                                | Role                                              |
+|-------------------------------------|---------------------------------------------------|
+| `src/sas_parser.py`                 | `.sas` / `.egp` → code blocks                     |
+| `src/sas_logic_tree.py`             | AST + lineage walker + reference Python evaluator |
+| `src/sas_diff/tensor_evaluator.py`  | Torch-based differentiable AST evaluator          |
+| `src/sas_diff/gradient_explainer.py`| Path-integrated (Aumann–Shapley) attribution      |
+| `src/sas_diff/shapley_explainer.py` | KernelSHAP-style Shapley attribution              |
+| `src/sas_diff/discrepancy.py`       | High-level `explain_field_diff` orchestrator      |
+| `src/knowledge/llm_client.py`       | LiteRT-LM / Ollama OpenAI-compatible client       |
+| `src/knowledge/change_log_graph.py` | Markdown + DDL → NetworkX graph                   |
+| `src/knowledge/graph_rag.py`        | Subgraph retrieval + LLM-grounded justification   |
+| `frontend/components/diff/LineageGraph.tsx` | Force-directed lineage graph (Obsidian-style)    |
+| `frontend/components/diff/AskAgent.tsx`     | Agentic Q&A panel (SSE trace + final answer)     |
+| `src/agent/`                        | Tool registry + tool-calling agent loop           |
+| `src/agent/tools.py`                | 8 tools the LLM can call (lineage, attribution …)|
+| `src/agent/code_diff.py`            | V2-vs-V3 SAS comparator scoped to a target field  |
+| `src/agent/docs_index.py`           | BM25 index over `data/docs/**/*.md`               |
+| `api/main.py`                       | FastAPI entry point                               |
+| `api/routers/{sas,diff,kb,agent}.py`| REST endpoints                                    |
+| `frontend/app/diff/page.tsx`        | Single-page diff UI (Manual / Ask tabs)           |
+| `data/samples/`                     | Bundled `sample_lgd.sas`, `cycles_v[23].csv`      |
+| `data/sas/{v2,v3}/`                 | User-supplied SAS scripts compared by the agent   |
+| `data/docs/**/*.md`                 | Markdown corpus indexed for the agent (BM25)      |
+| `data/changelog/`                   | Markdown change notes + persisted graph           |
+| `demo/sas_compiler_demo.py`         | CLI: AST, lineage, simulation, **`--diff`**       |
+| `scripts/seed_docs.py`              | Bootstrap V2/V3 SAS + docs corpus                 |
+| `tests/`                            | Pytest suite (~600 tests, ~40 s)                  |
+| `DQC/app/`                          | Angular chat UI for the DQC generator             |
+| `DQC/eval/`                         | DQC eval harness (defect catalog + trap DBs)      |
+| `DQC/cdk/`, `DQC/terraform/`        | AWS infra (ECS Fargate + ALB + Bedrock IAM)       |
+| `api/routers/dqc.py`                | DQC generation + validation endpoints             |
+| `training/dq/`                      | GRPO/RL pipeline for the DQC model                |
+| `Dockerfile`                        | API container build                               |
+| `frontend/Dockerfile`               | Next.js standalone container build                |
+| `docker/api-entrypoint.sh`          | Auto-seed data + index on first run               |
+| `docker-compose.yml`                | Full stack: ollama + api + web                    |
+| `docker-compose.host-ollama.yml`    | Override that uses a host-installed Ollama        |
+| `start.ps1` / `start.bat`           | Windows one-command launchers                     |
+| `stop.ps1`  / `stop.bat`            | Windows stop / purge scripts                      |
+| `.env.example`                      | Environment template (model tag + ports)          |
+
+---
+
+## One-shot quickstart (Docker)
+
+The whole stack — Ollama with the model, FastAPI backend, and Next.js
+frontend — runs from a single command. Works identically on **Windows**,
+**macOS** and **Linux**.
 
 ### Prerequisites
 
-- **Python 3.11+** (the API), **Node.js LTS 18/20** (the Angular UI).
-- Optional: **Docker Desktop** (one-command local stack), and an LLM —
-  local **Ollama**, a **Gemini** API key, or **AWS Bedrock** access.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) on
+  Windows / macOS, or Docker Engine + Compose on Linux.
+- ~12 GB free disk for the default 14 B Qwen model (smaller variants
+  configurable in `.env` — see below).
+- ~16 GB RAM recommended (8 GB works with the 7 B model).
+- First boot is slow because Ollama pulls ~9 GB. Subsequent boots are
+  fast.
 
-### Option A — Docker (one command)
+### Windows
 
-Starts Ollama (pulls the model on first run), the FastAPI API, and the
-Angular UI:
+```powershell
+# PowerShell (recommended)
+.\start.ps1
+```
+
+```cmd
+:: …or cmd.exe
+start.bat
+```
+
+The PowerShell launcher takes optional flags:
+
+```powershell
+.\start.ps1 -Model qwen2.5:7b-instruct-q4_K_M   # smaller model
+.\start.ps1 -Rebuild                             # force --no-cache build
+.\start.ps1 -NoBrowser                           # don't auto-open the UI
+.\stop.ps1                                       # stop containers
+.\stop.ps1 -Purge                                # also drop the ~9 GB model cache
+```
+
+### macOS / Linux
+
+```bash
+docker compose up --build
+```
+
+…or just open `http://localhost:3010/diff` after running:
 
 ```bash
 cp .env.example .env
-docker compose --profile ollama up --build
+docker compose up -d --build
 ```
 
-Open **http://localhost:4200**. The UI's nginx proxies `/api/*` to the API
-container. First boot is slow (Ollama pulls the model); later boots are fast.
+### What gets started
 
-### Option B — Manual (two terminals)
+| Service       | Port    | Image                          | Purpose                               |
+|---------------|--------:|--------------------------------|---------------------------------------|
+| `ollama`      | `11434` | `ollama/ollama:latest`         | Local LLM server                      |
+| `ollama-init` | —       | `ollama/ollama:latest`         | Pulls the model on first run, exits   |
+| `api`         | `8000`  | `regllm-api`     (this repo)   | FastAPI: `/sas`, `/diff`, `/kb`, `/agent` |
+| `web`         | `3010`  | `regllm-web`     (this repo)   | Next.js standalone UI                 |
 
-**Backend** — full walkthrough (LLM backends, checks store, env reference) in
-**[api/README.md](api/README.md)**. Note the port: the dev UI proxy targets
-`:8001`, so run uvicorn there (not the 8000 default):
+Healthchecks are wired between them: `web` only starts once `api` is
+healthy, which only starts once `ollama-init` succeeds. The first
+`docker compose up` therefore blocks on the model download — the
+PowerShell / batch launchers tail those logs for you so the progress is
+visible.
+
+`./data` is bind-mounted into the API container, so anything you drop
+into `data/sas/v3/*.sas`, `data/docs/**/*.md` or `data/changelog/*.md`
+on the host shows up immediately inside the running stack — no rebuild
+needed. Reindex on demand:
+
+```bash
+curl -X POST http://localhost:8000/agent/docs/reindex
+curl -X POST http://localhost:8000/kb/reindex
+```
+
+### Configuration
+
+Copy `.env.example` to `.env` to customise:
+
+```env
+OLLAMA_MODEL=qwen2.5:14b-instruct-q4_K_M    # default
+# OLLAMA_MODEL=qwen2.5:7b-instruct-q4_K_M   # ~4.7 GB, 8 GB RAM
+# OLLAMA_MODEL=qwen2.5:3b-instruct-q4_K_M   # ~2 GB,   4 GB RAM
+API_PORT=8000
+WEB_PORT=3010
+OLLAMA_PORT=11434
+```
+
+### Using a host-installed Ollama
+
+If you already run Ollama natively (e.g. for GPU inference on Windows
+with NVIDIA Container Toolkit, or a separate Ollama server elsewhere on
+your network), use the included override to skip the dockerised one:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host-ollama.yml up -d
+```
+
+On Linux, set `OLLAMA_HOST=0.0.0.0:11434` before `ollama serve` so the
+container can reach it.
+
+### Updating
+
+```bash
+git pull
+docker compose build --pull
+docker compose up -d
+```
+
+### What the demo UI shows
+
+Open `http://localhost:3010/diff` and try `CIC_00076` (a CORP cycle). On
+this row, V2 ECL = 66.10 and V3 ECL = 110.18, but the only V3 input
+field that differs from V2 is… none of them. The whole +44.07 swing comes
+from a code change. The UI surfaces the entire story:
+
+- **SAS pipeline panel** — three tabs:
+  - **V3 code** — the active pipeline; drives the lineage graph and the
+    autograd attribution.
+  - **V2 code** — editable; flagged with an amber "V2 ≠ V3 code" badge
+    when it differs.
+  - **Diff** — target-scoped, AST-aware diff. Each modified data step
+    expands into a side-by-side V2/V3 code panel.
+- **Lineage graph** (top-right) — every field that's read or written by a
+  step that changed between V2 and V3 is ringed in fuchsia. The legend
+  shows the colour map.
+- **Δ ECL = data Δ + code Δ bar** — a stacked bar that splits the
+  observed delta into a sky-blue *data* component and a fuchsia *code*
+  component, with the underlying `Y(row_*, code_*)` anchor values
+  printed below for full transparency.
+- **Code changes affecting ECL panel** — a list of the SAS data steps
+  that produce or read fields on the target's lineage and that differ
+  between V2 and V3, each expandable into a V2/V3 code diff.
+- **GraphRAG verdict** — the local LLM's per-field justified/unjustified
+  call, with citation snippets pulled from `data/changelog/*.md`.
+- **Ask tab** — natural-language Q&A. Type *"Why does CIC_00076 have a
+  different ECL in V3 versus V2?"* and Qwen autonomously calls the
+  attribution + code-diff + docs-search tools and writes a Markdown
+  answer with citations and graph highlights.
+
+---
+
+## Manual quickstart (without Docker)
+
+### 1. Install
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn api.main:app --port 8001 --reload
-# API docs: http://localhost:8001/docs
 ```
 
-**Frontend** — see **[DQC/app/README.md](DQC/app/README.md)** for the full
-Windows-with-npm walkthrough. In short:
+`torch` is the heaviest dependency. The CPU build is sufficient.
+
+### 2. Generate the V2/V3 sample tables
 
 ```bash
+python scripts/generate_v3.py
+# → data/samples/cycles_v2.csv  (verbatim copy of cycles_sample.csv)
+# → data/samples/cycles_v3.csv  (with mutated PD / LGD / EAD / COLATERAL_TIPO)
+```
+
+### 3. Try the CLI
+
+```bash
+python demo/sas_compiler_demo.py --diff CIC_00100 --no-ast --no-lineage --no-sim
+```
+
+Output:
+
+```
+ECL  V2 = 86.6435  V3 = 118.4624   Δ = +31.8189
+EAD              +18.47   +18.54
+PD_ESTIMADA      +14.18   +14.23
+LGD_ESTIMADA      -0.79    -0.95
+```
+
+Add `--ask-gemma` to also produce the GraphRAG verdict (stub mode if no
+local LLM backend is reachable). The flag is named for historical
+reasons but works with whichever backend the client auto-detects.
+
+### 4. Run the API
+
+```bash
+uvicorn api.main:app --reload
+# http://localhost:8000/docs
+```
+
+| Endpoint                       | Description                            |
+|--------------------------------|----------------------------------------|
+| `GET  /sas/sample`             | Built-in sample SAS                    |
+| `POST /sas/parse`              | SAS source → AST JSON                  |
+| `POST /sas/lineage`            | SAS source → field-lineage graph       |
+| `GET  /diff/sample-rows`       | Paired V2/V3 rows with target diffs    |
+| `POST /diff/explain`           | Single-row explainer + LLM verdict     |
+| `POST /diff/explain-batch`     | SSE-streamed multi-row explainer       |
+| `GET  /kb/graph`               | Current change-log graph (nodes/edges) |
+| `POST /kb/reindex`             | Re-build the graph from disk           |
+| `POST /kb/changelog/upload`    | Add `.md` / `.sql` files & re-index    |
+| `GET  /kb/llm-status`          | Active LLM backend + model name        |
+| `POST /agent/ask`              | Natural-language Q&A (**SSE** stream)  |
+| `POST /agent/sas/upload`       | Upload `.sas` files into `data/sas/{v2,v3}/` |
+| `POST /agent/docs/upload`      | Upload `.md` files into `data/docs/`   |
+| `POST /agent/docs/reindex`     | Rebuild the BM25 docs index            |
+| `GET  /agent/status`           | SAS/doc counts + active LLM backend    |
+
+### 5. Run the front-end
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:3010
+```
+
+The page at `/diff` shows the SAS code, a paired-row picker, an
+**Obsidian-style force-directed lineage graph** with V2→V3 attribution
+flow overlay (toggle to a waterfall view), branch-flip alerts, and the
+LLM justification panel.
+
+### 6. Run the tests
+
+```bash
+pytest -q
+```
+
+(197 tests; ~30 s on CPU — most of the time is the discrepancy E2E suite.)
+
+---
+
+## Agentic Q&A
+
+The `/diff` page has two modes:
+
+- **Manual** — the existing row picker, target-field selector, and
+  Explain button.
+- **Ask** — a chat-style panel where you ask a natural-language
+  question and the local LLM (Qwen 2.5 by default) autonomously calls
+  tools to answer it.
+
+### Workflow
+
+1. **Drop your SAS into a folder convention**:
+
+   ```
+   data/sas/v2/*.sas      ← old version of the pipeline
+   data/sas/v3/*.sas      ← new version
+   data/docs/**/*.md      ← free-form glossary, table dictionaries,
+                           field semantics, flux explanations
+   ```
+
+   Or use the API: `POST /agent/sas/upload?version=v3` and
+   `POST /agent/docs/upload`.
+
+2. **Bootstrap an example** (creates `data/sas/{v2,v3}/sample_lgd.sas`
+   with a contrived V3 difference, plus 7 `.md` doc sections and the
+   BM25 index):
+
+   ```bash
+   python scripts/seed_docs.py
+   ```
+
+3. **Ask a question**:
+
+   ```
+   Why does CIC_00031 have a different ECL in V3 versus V2?
+   ```
+
+   The agent will (autonomously, in this rough order):
+   - call `compute_attribution(pk, target)` to get gradient + Shapley
+     contributions;
+   - call `inspect_lineage(target, sas_version='v3')` for the data-flow
+     ancestors;
+   - call `compare_sas_versions(target=target)` to see what data steps
+     changed between V2 and V3 (scoped to the target's lineage);
+   - call `search_docs(target)` and `get_field_definition(target)` for
+     semantic context from your markdown corpus;
+   - reply with a Markdown answer plus a `lineage_highlight` sidecar
+     that lights up the relevant nodes in the graph view.
+
+   The streaming pane shows every tool invocation, its arguments and
+   its result so you can audit the chain of reasoning.
+
+### Example questions that work out of the box
+
+After running `python scripts/generate_v3.py && python scripts/seed_docs.py`:
+
+- *"Why does CIC_00031 have a different ECL in V3 versus V2?"*
+- *"Why is OR_EAD_TIT 2× the EAD for corporate cycles in V3 but missing in V2?"*
+- *"What is the floor change for LGD_ESTIMADA between V2 and V3?"*
+- *"Which cycles flipped IFRS-9 stage between V2 and V3?"*
+
+### Tool registry
+
+| Tool                          | Purpose                                          |
+|-------------------------------|--------------------------------------------------|
+| `find_row(pk, version)`       | Fetch a specific cycle's row from V2 or V3       |
+| `find_rows_by_field_value`    | Search cycles by approximate field value         |
+| `inspect_lineage`             | Data-flow ancestors of a target field            |
+| `compute_attribution`         | Gradient + Shapley + branch-flip report          |
+| `compare_sas_versions`        | V2-vs-V3 SAS diff scoped to the target           |
+| `search_docs`                 | BM25 over `data/docs/**/*.md`                    |
+| `get_field_definition`        | Semantic definition for a field                  |
+| `search_changelog`            | GraphRAG over `data/changelog/`                  |
+
+All eight tools are pure read-only Python functions defined in
+`src/agent/tools.py`; the registry exports their JSON schemas to the
+LLM in the OpenAI/Ollama "tools" format.
+
+### Streaming protocol
+
+`POST /agent/ask` returns Server-Sent Events. Each `data:` frame is one
+of:
+
+```json
+{"type": "status",      "stage": "started", "backend": "ollama", "model": "qwen2.5:14b-instruct-q4_K_M", "tools": [...]}
+{"type": "tool_call",   "iter": 0, "tool": "compute_attribution", "args": {"pk":"CIC_00031","target":"ECL"}, "id": "call_0"}
+{"type": "tool_result", "iter": 0, "tool": "compute_attribution", "id": "call_0", "result": {...}}
+{"type": "final",       "answer": "<markdown>", "lineage_highlight": ["EAD","PD_ESTIMADA"], "citations": [...]}
+{"type": "done"}
+```
+
+---
+
+## Local LLM integration
+
+Any chat-tuned model served by an OpenAI-compatible local endpoint
+works. Backends are auto-detected in this order:
+
+1. **LiteRT-LM** — Google's official local serving stack, used for
+   **Gemma 4 12B** if you go that route. Server lives on
+   `http://localhost:9379`.
+   ```bash
+   bash scripts/setup_llm.sh gemma
+   ```
+2. **Ollama** — recommended default. Server on `http://localhost:11434`,
+   model `qwen2.5:14b-instruct-q4_K_M` (~8 GB, excellent at
+   structured-JSON output and fits on a single 24 GB GPU).
+   ```bash
+   bash scripts/setup_llm.sh        # pulls the default Qwen model
+   ```
+   You can use any other Ollama model by exporting
+   `OLLAMA_MODEL=<tag>` (e.g. `gemma2:9b`, `llama3.1:8b-instruct`,
+   `qwen2.5:7b`, …). The client probes for the model on startup and
+   falls back to stub mode if the configured tag isn't pulled.
+3. **Standalone GGUF** (`llama-cpp-python`) — loads a `.gguf` weight file
+   **directly in the API process**, no Ollama server needed. Distinct from
+   pointing `OLLAMA_MODEL` at a `.gguf` path (that auto-registers the file
+   *into a running Ollama server* instead). Use this for a single
+   self-contained process with no sidecar model server — e.g. an
+   air-gapped deployment:
+   ```bash
+   pip install llama-cpp-python   # not installed by default, see requirements.txt
+   export REGLLM_LLM=gguf
+   export GGUF_MODEL_PATH=/models/qwen3-8b-instruct.Q4_K_M.gguf
+   ```
+   The model loads lazily on first real chat call (not during startup
+   probing), so `detect_backend()` stays cheap even when this is
+   configured. `GGUF_N_CTX`, `GGUF_N_GPU_LAYERS`, `GGUF_N_THREADS` and
+   `GGUF_CHAT_FORMAT` tune it further — see `.env.example`.
+4. **Amazon Bedrock** — set `REGLLM_LLM=bedrock` (used by the AWS DQC
+   deployment; see `docs/DEPLOYMENT.md`).
+
+If nothing is reachable/configured, the client falls back to *stub mode*,
+which returns a deterministic JSON-shaped placeholder. The rest of the
+pipeline (gradient + Shapley + GraphRAG retrieval) keeps working.
+
+The active backend and model are visible in the top-right pill of the
+`/diff` page (green dot = live model, grey = stub).
+
+Configuration via env vars:
+
+| Variable             | Default                                          |
+|----------------------|---------------------------------------------------|
+| `REGLLM_LLM`         | `auto` (`litert` \| `ollama` \| `gguf` \| `bedrock` \| `stub`) |
+| `OLLAMA_URL`         | `http://localhost:11434`                         |
+| `OLLAMA_MODEL`       | `qwen2.5:14b-instruct-q4_K_M`                    |
+| `LITERT_URL`         | `http://localhost:9379/v1`                       |
+| `LITERT_MODEL`       | `gemma4-12b,gpu`                                 |
+| `GGUF_MODEL_PATH`    | unset — required to enable the standalone GGUF backend |
+| `GGUF_N_CTX`         | `8192`                                           |
+| `GGUF_N_GPU_LAYERS`  | `0` (CPU-only)                                   |
+| `BEDROCK_MODEL_ID`   | `eu.amazon.nova-micro-v1:0`                      |
+| `REGLLM_LLM_TIMEOUT` | `120` (seconds)                                  |
+
+### Two RAG channels: context RAG and regulation RAG
+
+The DQC generator (`api/routers/dqc.py`) grounds every generated check in
+**two independent retrieval channels** — see
+[`docs/REGULATION_RAG.md`](docs/REGULATION_RAG.md) for the full design:
+
+- **Context RAG** — what a field *is*: SAS lineage/formula lookup + BM25
+  search over `data/docs/**/*.md` (`src/agent/docs_index.py`).
+- **Regulation RAG** — what the guidelines *require*, in two complementary
+  forms: graph traversal (`search_regulation`, precise but only covers
+  fields already linked into the regulation knowledge graph) and
+  **embedding-based semantic search** (`search_regulation_semantic`, new)
+  over the EBA GL/2017/16 PD & LGD guidelines, chunked at paragraph
+  granularity (`src/knowledge/regulation_chunker.py`) and embedded via the
+  same multi-backend client (Ollama/GGUF/Bedrock —
+  `src/knowledge/embeddings.py`). Build the index once:
+  ```bash
+  python scripts/build_regulation_embeddings.py
+  ```
+
+### Run the DQC app locally against your own GGUF model
+
+The fastest local loop — no Docker, no Ollama server, your own `.gguf`
+weights loaded directly in the API process:
+
+```bash
+# 1. Backend deps (+ the optional standalone GGUF backend)
+pip install -r requirements.txt
+pip install llama-cpp-python
+
+# 2. Point at your model and start the API
+export REGLLM_LLM=gguf
+export GGUF_MODEL_PATH=/path/to/your-model.gguf   # adjust this line only
+uvicorn api.main:app --reload --port 8000
+
+# 3. In a second terminal — the Angular app, unmodified
 cd DQC/app
 npm install
-npm start            # ng serve, proxy.conf.json → http://localhost:8001
-# open http://localhost:4200
+npm start                # http://localhost:4200, proxies /api -> :8000
 ```
 
-### LLM backends
+`npm start` runs `ng serve --proxy-config proxy.conf.json`, which forwards
+`/api/*` to `http://localhost:8000` — the backend's default port, matching
+step 2 above with no further configuration.
 
-The backend is selected by `REGLLM_LLM` (default auto-detects Ollama, else a
-deterministic stub so the pipeline still runs offline):
-
-| Backend   | Env                                                          |
-|-----------|--------------------------------------------------------------|
-| `ollama`  | `OLLAMA_URL`, `OLLAMA_MODEL` (default `qwen2.5:14b-instruct-q4_K_M`) |
-| `gemini`  | `GEMINI_API_KEY`, `GEMINI_MODEL` (default `gemini-2.5-pro`)   |
-| `bedrock` | `BEDROCK_MODEL_ID`, `BEDROCK_REGION` (IAM auth)              |
-| `stub`    | none — deterministic placeholder for offline dev             |
+**For getting DQCs right with a small local model**, use **"Modo simple"**
+in the chat panel instead of the default free-text mode: it skips the full
+multi-source RAG context (SAS lineage + regulation graph + semantic search
++ docs — a lot for a small model to parse) and sends just your natural-
+language expressions plus **one** regulatory article — either a paragraph
+number from the ingested EBA GL/2017/16 corpus (e.g. `73`) or pasted text
+directly. One request can describe several rules (one per line); the model
+returns one DQC per rule, citing that single article or "Sin referencia
+regulatoria disponible" if it doesn't apply. This is
+`POST /dqc/generate/simple` (`api/routers/dqc.py::generate_dqc_simple`) —
+see `tests/test_dqc_simple_endpoint.py` for exact request/response shapes
+if you'd rather script it than use the UI.
 
 ---
 
-## Using the app
+## Method notes
 
-- **Chat** — ask for checks on a variable; generated DQCs land in the sidebar
-  as `pending`.
-- **Tests en lote** — paste one natural-language test per line (or attach a
-  `.txt`/`.md`/`.csv`); each becomes one DQC via `POST /api/dqc/generate/tests`.
-- **Validate / Dashboard** — validate or reject each check. When no visible
-  `pending` checks remain and at least one is validated, the dashboard unlocks
-  a UNION-ALL query (every check's `sql` must `SELECT` the PK column
-  `ID_CONTR_CICLO_LGD`) with a **copy-all** button.
+### Path-integrated gradients
 
-Example batch (`.txt`, one test per line):
+For each numeric input field `xᵢ`,
 
-```
-Verifica que PD_ESTIMADA cumple los suelos regulatorios
-Comprueba que ECL = PD x LGD x EAD
-Valida que STAGE_IFRS9=3 implica PD=1.0
-```
+\[
+\varphi_i \;=\; (x_i^{V3} - x_i^{V2}) \cdot \int_0^1
+\frac{\partial Y}{\partial x_i}\Bigl(X^{V2} + t \,(X^{V3} - X^{V2})\Bigr)\, dt
+\]
 
----
+is approximated by composite Simpson's rule (`steps=33` by default —
+exact for cubics, which covers the multilinear PD·LGD·EAD pipeline). On
+purely arithmetic sub-paths the *efficiency axiom*
+`Σᵢ φᵢ = Y(V3) − Y(V2)` holds to machine precision.
 
-## Checks persistence (SQLite ↔ DynamoDB)
+When a branch flips between V2 and V3 (an `IF`/`SELECT`/`WHERE`
+predicate's truth value changes), the path integral is taken along the
+fixed-V3 branch. The flip is reported as a `BranchFlip` and the
+unexplained residual is computed.
 
-The router talks to a store abstraction (`training/dq/checks_store.py`),
-selected by `CHECKS_BACKEND`:
+### Shapley values
 
-| `CHECKS_BACKEND` | Store         | Needs                        | Used for            |
-|------------------|---------------|------------------------------|---------------------|
-| `sqlite` (default)| `SqliteStore` | nothing (writes `data/dq/checks.db`) | local dev   |
-| `dynamodb`       | `DynamoStore` | `CHECKS_TABLE` + AWS creds    | AWS deployment      |
+The eager Python evaluator (`SASLogicTree.evaluate`) is treated as a
+black-box `f: row → Y(row)`. For ≤ 12 differing fields we enumerate all
+2ⁿ coalitions for the exact Shapley computation; otherwise we fall back
+to the permutation-sampling estimator (Castro et al.).
 
-Both backends expose the same interface and return identical row shapes, so
-the endpoints are backend-agnostic (see `tests/test_checks_store.py` for the
-moto-backed parity tests). The CDK stack sets `CHECKS_BACKEND=dynamodb` and
-`CHECKS_TABLE` automatically.
+Categorical and string-valued fields are first-class citizens here.
 
----
+### GraphRAG
 
-## Deploy to AWS (Bedrock + DynamoDB)
+The change-log graph is a NetworkX `DiGraph` with node types
+`Document`, `Section`, `TableChange`, `Field` and relation labels
+`CONTAINS`, `MENTIONS_FIELD`, `JUSTIFIES`, `CHANGES_FROM_TO`,
+`HAS_COLUMN`. For each suspect field the explainer retrieves the 1–2
+hop neighbourhood, linearises it as Markdown, and asks the LLM to
+return strict JSON of the form
 
-The CDK stack (`DQC/cdk/`) is **self-contained**: it creates its own VPC
-(public subnets, no NAT gateways), ECR repos, a DynamoDB table, IAM roles,
-an ALB, and an ECS Fargate service running two sidecar containers — the
-FastAPI API (`:8000`) and nginx serving the Angular build (`:80`, proxying
-`/api/` to the API). `deploy.sh` also builds and pushes both images.
-
-**Prerequisites:** `aws` CLI (configured for the target account), `docker`,
-`node`/`npm`, Python 3.11+, and — for the default Bedrock backend —
-**Bedrock model access enabled** for the model in the target region
-(Bedrock console → *Model access*; default `eu.amazon.nova-micro-v1:0` in
-`eu-west-1`).
-
-```bash
-cd DQC/cdk
-./deploy.sh                              # Bedrock backend (default)
-# or, to use Gemini instead of Bedrock:
-export GEMINI_API_KEY="your-key"
-./deploy.sh
-```
-
-`deploy.sh` prints the ALB URL when done. Verify and use it:
-
-```bash
-curl http://<alb-dns>/api/health         # → {"status":"ok","llm_backend":"bedrock"}
-```
-
-Deployed DQCs persist to the DynamoDB table `<project>-checks` (default
-`regllm-dqc-checks`), surfaced as the `ChecksTableName` stack output.
-
-Override defaults via environment variables:
-
-| Variable          | Default                     | Effect                                |
-|-------------------|-----------------------------|---------------------------------------|
-| `AWS_REGION`      | `eu-west-1`                 | Target region                         |
-| `PROJECT`         | `regllm-dqc`                | Resource name prefix (table, cluster) |
-| `GEMINI_API_KEY`  | —                           | Set → switch LLM backend to Gemini    |
-| `BEDROCK_MODEL_ID`| `eu.amazon.nova-micro-v1:0` | Bedrock model / inference profile     |
-
-**Notes**
-
-- First deploy is slowest (VPC + ALB). Later runs update in place and only
-  rebuild changed images.
-- The Gemini key (when used) is passed via CDK context and ends up as a
-  plaintext env var on the ECS task definition. `cdk.context.json` is
-  gitignored so a cached key is never committed.
-- Redeploy code only: rebuild + push both images, then
-  `aws ecs update-service --cluster <project> --service <project> --force-new-deployment`.
-- A Terraform variant exists under `DQC/terraform/`; CDK (`deploy.sh`) is the
-  canonical path and the one wired for DynamoDB.
-
----
-
-## Tests
-
-```bash
-pip install -r requirements-dev.txt
-pytest tests/ -q          # checks-store parity (SQLite + DynamoDB via moto)
+```json
+{
+  "justified": true,
+  "confidence": 0.87,
+  "rationale": "Q1 2025 PD master-scale recalibration applied to RATING ≤ 2.",
+  "evidence": [{"document": "2025-q1-pd-recalibration.md",
+                "heading": "Affected fields",
+                "quote": "PD_ESTIMADA — multiplied by 1.15 …"}]
+}
 ```
 
 ---
 
-## Out of scope
+## Out of scope (for the diff explainer)
 
-- No DynamoDB ↔ SQLite migration (local dev and AWS keep separate stores).
-- No auth / multi-user / chat history.
-- Schema migrations are `CREATE IF NOT EXISTS` only (no Alembic).
+The **diff explainer** stays deliberately small. Not implemented for it:
+
+- chat history, auth, multi-user, JWT
+- pgvector / Postgres / Alembic
+- regulatory compliance verdict tiers — replaced by the explainer's
+  per-field "justified vs. unjustified" verdict from the local LLM.
+
+Model fine-tuning (`training/`) and the AWS deployment (`DQC/cdk`,
+`DQC/terraform`) exist for the **DQC generator** side of the repo.
+
+---
 
 ## License
 

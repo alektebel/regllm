@@ -1,0 +1,642 @@
+{
+  "_comment": "Hand-written golden traces for the DQC generator. Each trace is a realistic user request plus the EXPECTED behaviour: which planted defects the produced checks must catch, which articles they must cite, and which quality constraints they must respect. The `gold` answers are human-written reference solutions — deliberately NOT copies of the catalog oracles — and golden_eval.py --selftest proves they score 100% on their own rubric.",
+  "traces": [
+    {
+      "trace_id": "G01",
+      "dimension": "consistency",
+      "difficulty": "core",
+      "request": "Genera DQCs para comprobar que la ECL está bien calculada en ciclos_calibrados.",
+      "variable": "ECL",
+      "expects": {
+        "defects": ["D01"],
+        "must_cite": ["CRR Art. 158"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_ECL_FORMULA_001",
+          "descripcion": "ECL debe igualar PD_FINAL * LGD_FINAL * EAD_TOTAL (tolerancia 5 céntimos).",
+          "tipo": "formula",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, ECL, PD_FINAL*LGD_FINAL*EAD_TOTAL AS ECL_ESPERADA FROM ciclos_calibrados WHERE ABS(ECL - PD_FINAL*LGD_FINAL*EAD_TOTAL) > 0.05",
+          "referencia_regulatoria": "IFRS 9 / CRR Art. 158",
+          "campos_entrada": ["ECL", "PD_FINAL", "LGD_FINAL", "EAD_TOTAL"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G02",
+      "dimension": "consistency",
+      "difficulty": "core",
+      "request": "Necesito controles de calidad sobre el RWA: ¿es coherente con la fórmula de capital?",
+      "variable": "RWA",
+      "expects": {
+        "defects": ["D02"],
+        "must_cite": ["CRR Art. 153"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_RWA_FORMULA_001",
+          "descripcion": "RWA debe igualar EAD_TOTAL * LGD_FINAL * 12.5 * K_IRB.",
+          "tipo": "formula",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ABS(RWA - EAD_TOTAL * LGD_FINAL * 12.5 * K_IRB) > 1.0",
+          "referencia_regulatoria": "CRR Art. 153",
+          "campos_entrada": ["RWA", "EAD_TOTAL", "LGD_FINAL", "K_IRB"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G03",
+      "dimension": "consistency",
+      "difficulty": "core",
+      "request": "Revisa que los suelos regulatorios de la PD se aplican correctamente.",
+      "variable": "PD_FINAL",
+      "expects": {
+        "defects": ["D03", "D05"],
+        "must_cite": ["CRR Art. 160"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_PD_SUELO_001",
+          "descripcion": "La PD final nunca puede quedar por debajo de su suelo regulatorio ni de la PD estimada (el suelo es un máximo).",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, PD_FINAL, PD_SUELO, PD_ESTIMADA FROM ciclos_calibrados WHERE PD_FINAL < PD_SUELO OR PD_FINAL < PD_ESTIMADA",
+          "referencia_regulatoria": "CRR Art. 160.1",
+          "campos_entrada": ["PD_FINAL", "PD_SUELO", "PD_ESTIMADA"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G04",
+      "dimension": "consistency",
+      "difficulty": "core",
+      "request": "Controles sobre los suelos de LGD, incluido el mínimo hipotecario del 30%.",
+      "variable": "LGD_FINAL",
+      "expects": {
+        "defects": ["D04", "D15"],
+        "must_cite": ["CRR Art. 161"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_LGD_SUELO_001",
+          "descripcion": "La LGD final no puede vulnerar su suelo por colateral.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE LGD_FINAL < LGD_SUELO",
+          "referencia_regulatoria": "CRR Art. 161.1",
+          "campos_entrada": ["LGD_FINAL", "LGD_SUELO"]
+        },
+        {
+          "dqc_id": "DQC_LGD_SUELO_HIP_002",
+          "descripcion": "Toda exposición con colateral HIPOTECA debe tener un suelo LGD de al menos el 30%.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, LGD_SUELO FROM ciclos_calibrados WHERE COLATERAL_TIPO = 'HIPOTECA' AND LGD_SUELO < 0.30",
+          "referencia_regulatoria": "CRR Art. 161.1",
+          "campos_entrada": ["COLATERAL_TIPO", "LGD_SUELO"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G05",
+      "dimension": "consistency",
+      "difficulty": "hard",
+      "request": "¿Los parámetros downturn respetan que nunca pueden ser más optimistas que la estimación a largo plazo?",
+      "variable": "LGD_DOWNTURN",
+      "expects": {
+        "defects": ["D26", "D37"],
+        "must_cite": ["CRR Art. 181"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_DOWNTURN_001",
+          "descripcion": "Ni la LGD downturn ni la PD downturn pueden quedar por debajo de su estimación central.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE LGD_DOWNTURN < LGD_ESTIMADA - 0.0001 OR PD_DOWNTURN < PD_ESTIMADA - 0.000001",
+          "referencia_regulatoria": "CRR Art. 181.1(b) / EBA GL 2017/16 §345",
+          "campos_entrada": ["LGD_DOWNTURN", "LGD_ESTIMADA", "PD_DOWNTURN", "PD_ESTIMADA"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G06",
+      "dimension": "consistency",
+      "difficulty": "hard",
+      "request": "Verifica la descomposición del margen de cautela (MoC) por categorías y su aplicación a la LGD.",
+      "variable": "MOC",
+      "expects": {
+        "defects": ["D27", "D38"],
+        "must_cite": ["EBA GL 2017/16 §43"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_MOC_SUMA_001",
+          "descripcion": "El MoC total debe ser la suma exacta de sus categorías A, B y C.",
+          "tipo": "formula",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ABS(MOC - MOC_CAT_A - MOC_CAT_B - MOC_CAT_C) > 0.0001",
+          "referencia_regulatoria": "EBA GL 2017/16 §43-44",
+          "campos_entrada": ["MOC", "MOC_CAT_A", "MOC_CAT_B", "MOC_CAT_C"]
+        },
+        {
+          "dqc_id": "DQC_MOC_APLICADO_002",
+          "descripcion": "La LGD con MoC debe incorporar el margen: LGD_CON_MOC = LGD_ESTIMADA + MOC.",
+          "tipo": "formula",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ABS(LGD_CON_MOC - LGD_ESTIMADA - MOC) > 0.0001",
+          "referencia_regulatoria": "EBA GL 2017/16 §50",
+          "campos_entrada": ["LGD_CON_MOC", "LGD_ESTIMADA", "MOC"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G07",
+      "dimension": "completeness",
+      "difficulty": "core",
+      "request": "Controles de completitud: campos obligatorios que no pueden faltar en ciclos activos.",
+      "variable": "PD_ESTIMADA",
+      "expects": {
+        "defects": ["D18", "D46"],
+        "must_cite": ["EBA GL 2017/16"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_COMPLETITUD_PD_001",
+          "descripcion": "La PD estimada es obligatoria mientras el ciclo no esté cerrado.",
+          "tipo": "completitud",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, ESTADO_CICLO FROM ciclos_calibrados WHERE PD_ESTIMADA IS NULL AND ESTADO_CICLO <> 'CERRADO'",
+          "referencia_regulatoria": "BCBS 239 P4 / EBA GL 2017/16",
+          "campos_entrada": ["PD_ESTIMADA", "ESTADO_CICLO"]
+        },
+        {
+          "dqc_id": "DQC_COMPLETITUD_CLIENTE_002",
+          "descripcion": "Todo ciclo activo debe tener identificador de cliente para agregación por deudor.",
+          "tipo": "completitud",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE (ID_CLIENTE IS NULL OR ID_CLIENTE = '') AND ESTADO_CICLO <> 'CERRADO'",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["ID_CLIENTE", "ESTADO_CICLO"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G08",
+      "dimension": "validity",
+      "difficulty": "core",
+      "request": "Valida los dominios de segmento, stage IFRS9 y divisa.",
+      "variable": "SEGMENTO",
+      "expects": {
+        "defects": ["D19", "D20", "D34"],
+        "must_cite": ["CRR Art. 147"],
+        "forbid_single_column": false
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_DOMINIO_SEGMENTO_001",
+          "descripcion": "SEGMENTO debe pertenecer al dominio de clases de exposición.",
+          "tipo": "rango",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, SEGMENTO FROM ciclos_calibrados WHERE SEGMENTO NOT IN ('CORP','SME','RETAIL_HIP','RETAIL_CONS')",
+          "referencia_regulatoria": "CRR Art. 147",
+          "campos_entrada": ["SEGMENTO"]
+        },
+        {
+          "dqc_id": "DQC_DOMINIO_STAGE_002",
+          "descripcion": "STAGE_IFRS9 sólo admite los valores 1, 2 o 3.",
+          "tipo": "rango",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, STAGE_IFRS9 FROM ciclos_calibrados WHERE STAGE_IFRS9 NOT IN (1,2,3)",
+          "referencia_regulatoria": "IFRS 9",
+          "campos_entrada": ["STAGE_IFRS9"]
+        },
+        {
+          "dqc_id": "DQC_DOMINIO_DIVISA_003",
+          "descripcion": "DIVISA debe ser una moneda ISO admitida por la entidad.",
+          "tipo": "rango",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, DIVISA FROM ciclos_calibrados WHERE DIVISA NOT IN ('EUR','USD','GBP')",
+          "referencia_regulatoria": "ISO 4217 / BCBS 239 P3",
+          "campos_entrada": ["DIVISA"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G09",
+      "dimension": "accuracy",
+      "difficulty": "hard",
+      "request": "Exactitud frente a fuentes: el EAD contable frente a BASILEA y la conversión a euros.",
+      "variable": "EAD_BALANCE",
+      "expects": {
+        "defects": ["D22", "D30"],
+        "must_cite": ["BCBS 239"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_EAD_FUENTE_001",
+          "descripcion": "El EAD en balance debe cuadrar con el dispuesto BASILEA dentro de la tolerancia.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, EAD_BALANCE, OR_DISPTO FROM ciclos_calibrados WHERE ABS(EAD_BALANCE - OR_DISPTO) > 1.0",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["EAD_BALANCE", "OR_DISPTO"]
+        },
+        {
+          "dqc_id": "DQC_EAD_EUR_002",
+          "descripcion": "La exposición convertida a EUR debe respetar el tipo de cambio del cierre.",
+          "tipo": "formula",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ABS(EAD_TOTAL_EUR - EAD_TOTAL * TIPO_CAMBIO) > 1.0",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["EAD_TOTAL_EUR", "EAD_TOTAL", "TIPO_CAMBIO"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G10",
+      "dimension": "timeliness",
+      "difficulty": "hard",
+      "request": "Controles de vigencia temporal: datos futuros y valoraciones de colateral caducadas.",
+      "variable": "MES_CICLO",
+      "expects": {
+        "defects": ["D21", "D29"],
+        "must_cite": ["CRR Art. 208"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_MES_FUTURO_001",
+          "descripcion": "Ningún ciclo puede ser posterior al periodo de referencia del corte (202412).",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, MES_CICLO, MES_DEFAULT FROM ciclos_calibrados WHERE MES_CICLO > 202412 OR MES_DEFAULT > 202412",
+          "referencia_regulatoria": "BCBS 239 P5",
+          "campos_entrada": ["MES_CICLO", "MES_DEFAULT"]
+        },
+        {
+          "dqc_id": "DQC_VALORACION_CADUCADA_002",
+          "descripcion": "El colateral debe revalorarse al menos cada 36 meses respecto al mes del ciclo.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE COLATERAL_TIPO <> 'NINGUNA' AND (MES_CICLO/100*12 + MES_CICLO%100) - (MES_VALORACION_COLATERAL/100*12 + MES_VALORACION_COLATERAL%100) > 36",
+          "referencia_regulatoria": "CRR Art. 208.3",
+          "campos_entrada": ["COLATERAL_TIPO", "MES_VALORACION_COLATERAL", "MES_CICLO"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G11",
+      "dimension": "uniqueness",
+      "difficulty": "hard",
+      "request": "Unicidad: claves duplicadas y duplicidades heredadas de las fusiones BASILEA.",
+      "variable": "ID_CONTR_CICLO_LGD",
+      "expects": {
+        "defects": ["D33", "D17"],
+        "must_cite": ["BCBS 239"],
+        "forbid_single_column": false
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_PK_DUPLICADA_001",
+          "descripcion": "La clave del ciclo no puede repetirse: una fila por ciclo-mes.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados GROUP BY ID_CONTR_CICLO_LGD HAVING COUNT(*) > 1",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["ID_CONTR_CICLO_LGD"]
+        },
+        {
+          "dqc_id": "DQC_FUSION_DUP_002",
+          "descripcion": "En contratos fusionados, un EAD en balance muy superior al OR_EAD delata filas BASILEA duplicadas.",
+          "tipo": "cross_table",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE SW_FUSION = 1 AND EAD_BALANCE > OR_EAD * 1.5",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["SW_FUSION", "EAD_BALANCE", "OR_EAD"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G12",
+      "dimension": "plausibility",
+      "difficulty": "hard",
+      "request": "Razonabilidad: recuperaciones frente a la exposición y monotonicidad rating-PD.",
+      "variable": "RECUPERACION_ACUMULADA",
+      "expects": {
+        "defects": ["D10", "D25"],
+        "must_cite": ["EBA GL 2017/16"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_RECUP_EAD_001",
+          "descripcion": "Recuperaciones más costes no pueden superar el 150% de la exposición.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE RECUPERACION_ACUMULADA + COSTE_TOTAL_ACUMULADO > 1.5 * EAD_TOTAL",
+          "referencia_regulatoria": "EBA GL 2017/16 §135",
+          "campos_entrada": ["RECUPERACION_ACUMULADA", "COSTE_TOTAL_ACUMULADO", "EAD_TOTAL"]
+        },
+        {
+          "dqc_id": "DQC_RATING_PD_002",
+          "descripcion": "Un grado de rating pésimo (>=14) con PD inferior al 1% viola la monotonicidad de la masterscale.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, RATING_GRADO, PD_ESTIMADA FROM ciclos_calibrados WHERE RATING_GRADO >= 14 AND PD_ESTIMADA < 0.01",
+          "referencia_regulatoria": "EBA GL 2017/16 §73",
+          "campos_entrada": ["RATING_GRADO", "PD_ESTIMADA"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G13",
+      "dimension": "conformity",
+      "difficulty": "hard",
+      "request": "Conformidad de negocio: hipotecario con su garantía, ventana de observación y cierres por cura.",
+      "variable": "SEGMENTO",
+      "expects": {
+        "defects": ["D14", "D28", "D32"],
+        "must_cite": ["EBA GL 2017/16 §6.3"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_HIP_GARANTIA_001",
+          "descripcion": "Todo ciclo RETAIL_HIP debe llevar colateral HIPOTECA.",
+          "tipo": "cross_table",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE SEGMENTO = 'RETAIL_HIP' AND COLATERAL_TIPO <> 'HIPOTECA'",
+          "referencia_regulatoria": "CRR Art. 147",
+          "campos_entrada": ["SEGMENTO", "COLATERAL_TIPO"]
+        },
+        {
+          "dqc_id": "DQC_VENTANA_FLAG_002",
+          "descripcion": "Una ventana de observación inferior a 5 años exige FLAG_NC activo.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE VENTANA_OBSERVACION_YEARS < 5 AND FLAG_NC = 0",
+          "referencia_regulatoria": "EBA GL 2017/16 §6.3.2.1",
+          "campos_entrada": ["VENTANA_OBSERVACION_YEARS", "FLAG_NC"]
+        },
+        {
+          "dqc_id": "DQC_CURA_FLAG_003",
+          "descripcion": "Un cierre por CURA exige el flag de curación activo.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE TERMINACION = 'CURA' AND CURE_FLAG = 0",
+          "referencia_regulatoria": "EBA GL 2017/16 §101",
+          "campos_entrada": ["TERMINACION", "CURE_FLAG"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G14",
+      "dimension": "plausibility",
+      "difficulty": "hard",
+      "request": "Coherencia temporal y de descuento: fechas imposibles y flujos sin tasa.",
+      "variable": "MES_CIERRE_CICLO",
+      "expects": {
+        "defects": ["D31", "D41"],
+        "must_cite": ["EBA GL 2019/03"],
+        "forbid_single_column": true
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_ORDEN_FECHAS_001",
+          "descripcion": "El mes de cierre no puede ser anterior al mes de default.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, MES_DEFAULT, MES_CIERRE_CICLO FROM ciclos_calibrados WHERE MES_CIERRE_CICLO IS NOT NULL AND MES_CIERRE_CICLO < MES_DEFAULT",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["MES_CIERRE_CICLO", "MES_DEFAULT"]
+        },
+        {
+          "dqc_id": "DQC_TASA_DESCUENTO_002",
+          "descripcion": "Si hay recuperaciones acumuladas, la tasa de descuento debe ser positiva.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE RECUPERACION_ACUMULADA > 0 AND TASA_DESCUENTO <= 0",
+          "referencia_regulatoria": "EBA GL 2019/03 §85",
+          "campos_entrada": ["RECUPERACION_ACUMULADA", "TASA_DESCUENTO"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G15",
+      "dimension": "validity",
+      "difficulty": "adversarial",
+      "request": "Genera DQCs para el campo COLOR_FAVORITO del cliente.",
+      "variable": "COLOR_FAVORITO",
+      "expects": {
+        "defects": [],
+        "must_cite": [],
+        "forbid_single_column": false,
+        "max_checks": 0,
+        "note": "Field does not exist in the schema. The agent must not fabricate checks nor invent regulatory references; an empty DQC list (or checks marked 'Sin referencia' that at least parse) is the only acceptable output. Any invented article is a hallucination failure."
+      },
+      "gold": []
+    },
+    {
+      "trace_id": "G16",
+      "dimension": "validity",
+      "difficulty": "adversarial",
+      "request": "Añade un control de que EAD_TOTAL no sea cero.",
+      "variable": "EAD_TOTAL",
+      "expects": {
+        "defects": ["DA"],
+        "must_cite": [],
+        "forbid_single_column": true,
+        "note": "Decoy bait: the naive answer is the single-column range check 'EAD_TOTAL <= 0', which scores r_coherence = 0. The gold answer reframes it as a coherence check against the exposure components."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_EAD_CERO_COHERENTE_001",
+          "descripcion": "EAD_TOTAL nulo o cero mientras sus componentes (balance + fuera de balance) suman positivo: agregación rota, no un simple rango.",
+          "tipo": "formula",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD, EAD_BALANCE, EAD_FUERA_BALANCE FROM ciclos_calibrados WHERE EAD_TOTAL <= 0 AND EAD_BALANCE + EAD_FUERA_BALANCE > 0",
+          "referencia_regulatoria": "CRR Art. 166",
+          "campos_entrada": ["EAD_TOTAL", "EAD_BALANCE", "EAD_FUERA_BALANCE"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G17",
+      "dimension": "accuracy",
+      "difficulty": "hard",
+      "request": "Necesito controles que crucen ciclos_calibrados con las tablas fuente CONTRATOS y BASILEA: integridad referencial, que el segmento cuadre con el maestro del contrato y que el EAD cuadre con BASILEA.",
+      "variable": "ID_CONTRATO",
+      "expects": {
+        "defects": ["D48", "D49", "D50"],
+        "must_cite": ["CRR Art. 166"],
+        "forbid_single_column": true,
+        "note": "Cross-table trace: requires JOINs to contratos and basilea_mensual. A single-table generator cannot answer this."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_XT_ORFANDAD_001",
+          "descripcion": "Todo ciclo debe tener un contrato padre en CONTRATOS.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc LEFT JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO WHERE c.ID_CONTRATO IS NULL",
+          "referencia_regulatoria": "BCBS 239 P3",
+          "campos_entrada": ["ID_CONTRATO"]
+        },
+        {
+          "dqc_id": "DQC_XT_SEGMENTO_002",
+          "descripcion": "El segmento del ciclo debe coincidir con el segmento maestro del contrato.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc JOIN contratos c ON cc.ID_CONTRATO = c.ID_CONTRATO WHERE cc.SEGMENTO <> c.SEGMENTO",
+          "referencia_regulatoria": "CRR Art. 147 / BCBS 239 P3",
+          "campos_entrada": ["SEGMENTO"]
+        },
+        {
+          "dqc_id": "DQC_XT_EAD_BASILEA_003",
+          "descripcion": "El OR_EAD del ciclo debe reconciliar con el OR_EAD autorizado en BASILEA_MENSUAL para el mismo contrato y mes.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT cc.ID_CONTR_CICLO_LGD FROM ciclos_calibrados cc JOIN basilea_mensual b ON cc.ID_CONTRATO = b.ID_CONTRATO AND cc.MES_CICLO = b.MES_CICLO WHERE ABS(cc.OR_EAD - b.OR_EAD) > 1.0",
+          "referencia_regulatoria": "CRR Art. 166 / BCBS 239 P3",
+          "campos_entrada": ["OR_EAD"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G18",
+      "dimension": "plausibility",
+      "difficulty": "hard",
+      "request": "Controles sobre la cronología del ciclo: alta, default, adjudicación, cierre y venta del colateral deben ir en orden.",
+      "variable": "FECHA_DEFAULT",
+      "expects": {
+        "defects": ["D54", "D55", "D56"],
+        "must_cite": ["CRR Art. 178"],
+        "forbid_single_column": true,
+        "note": "Date-interrelation trace: multiple lifecycle dates that must be monotonic. Needs multi-date reasoning, not a range check."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_FECHA_ALTA_DEFAULT_001",
+          "descripcion": "La fecha de alta del contrato debe preceder a la fecha de default.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE FECHA_ALTA_CONTRATO > FECHA_DEFAULT",
+          "referencia_regulatoria": "CRR Art. 178",
+          "campos_entrada": ["FECHA_ALTA_CONTRATO", "FECHA_DEFAULT"]
+        },
+        {
+          "dqc_id": "DQC_FECHA_ADJ_VENTANA_002",
+          "descripcion": "La adjudicación debe caer entre el default y el cierre del ciclo.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ADJUDICACION_FLAG = '1' AND FECHA_ADJUDICACION IS NOT NULL AND (FECHA_ADJUDICACION < FECHA_DEFAULT OR (FECHA_CIERRE_CICLO IS NOT NULL AND FECHA_ADJUDICACION > FECHA_CIERRE_CICLO))",
+          "referencia_regulatoria": "EBA GL 2017/16 §159",
+          "campos_entrada": ["FECHA_ADJUDICACION", "FECHA_DEFAULT", "FECHA_CIERRE_CICLO"]
+        },
+        {
+          "dqc_id": "DQC_FECHA_VENTA_ADJ_003",
+          "descripcion": "La venta del colateral no puede ser anterior a su adjudicación.",
+          "tipo": "consistencia",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE FECHA_VENTA_COLATERAL IS NOT NULL AND FECHA_VENTA_COLATERAL < FECHA_ADJUDICACION",
+          "referencia_regulatoria": "EBA GL 2017/16 §159",
+          "campos_entrada": ["FECHA_VENTA_COLATERAL", "FECHA_ADJUDICACION"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G19",
+      "dimension": "consistency",
+      "difficulty": "hard",
+      "request": "Sobre la evolución mensual de los ciclos (evolucion_mensual): controla que la recuperación acumulada no decrezca, que en default (stage 3) la PD sea 1, y que el stage no mejore sin cura.",
+      "variable": "STAGE_IFRS9",
+      "expects": {
+        "defects": ["D58", "D61", "D62"],
+        "must_cite": ["CRR Art. 178"],
+        "forbid_single_column": true,
+        "note": "Panel/temporal trace: needs self-joins over the monthly series (SEQ = SEQ-1). A single-snapshot generator cannot answer this."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_PANEL_RECUP_MONOTONA_001",
+          "descripcion": "La recuperación acumulada de un ciclo no puede decrecer mes a mes.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD AND p.SEQ = e.SEQ - 1 WHERE e.RECUPERACION_ACUMULADA < p.RECUPERACION_ACUMULADA",
+          "referencia_regulatoria": "EBA GL 2017/16 §135",
+          "campos_entrada": ["RECUPERACION_ACUMULADA", "SEQ"]
+        },
+        {
+          "dqc_id": "DQC_PANEL_STAGE3_PD_002",
+          "descripcion": "En cualquier mes en default (stage 3) la PD debe ser 1.0.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT DISTINCT ID_CONTR_CICLO_LGD FROM evolucion_mensual WHERE STAGE_IFRS9 = 3 AND PD_ESTIMADA < 1.0",
+          "referencia_regulatoria": "CRR Art. 178",
+          "campos_entrada": ["STAGE_IFRS9", "PD_ESTIMADA"]
+        },
+        {
+          "dqc_id": "DQC_PANEL_STAGE_REGRESION_003",
+          "descripcion": "El stage no puede mejorar de un mes al siguiente sin una cura.",
+          "tipo": "consistencia",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT DISTINCT e.ID_CONTR_CICLO_LGD FROM evolucion_mensual e JOIN evolucion_mensual p ON e.ID_CONTR_CICLO_LGD = p.ID_CONTR_CICLO_LGD AND p.SEQ = e.SEQ - 1 WHERE e.STAGE_IFRS9 < p.STAGE_IFRS9 AND e.CURE_FLAG = 0",
+          "referencia_regulatoria": "IFRS 9 B5.5.12",
+          "campos_entrada": ["STAGE_IFRS9", "CURE_FLAG", "SEQ"]
+        }
+      ]
+    },
+    {
+      "trace_id": "G20",
+      "dimension": "conformity",
+      "difficulty": "hard",
+      "request": "Detecta datos absurdos de negocio: tarjetas de crédito con colateral, préstamos hipotecarios sin hipoteca, y adjudicaciones sobre exposiciones sin garantía.",
+      "variable": "COLATERAL_TIPO",
+      "expects": {
+        "defects": ["D64", "D65", "D66"],
+        "must_cite": ["CRR Art. 194"],
+        "forbid_single_column": true,
+        "note": "Weird cross-domain trace: needs product/collateral/segment business knowledge, not a range check."
+      },
+      "gold": [
+        {
+          "dqc_id": "DQC_WEIRD_TARJETA_COL_001",
+          "descripcion": "Una tarjeta de crédito no puede llevar colateral.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE PRODUCTO = 'TARJETA' AND COLATERAL_TIPO <> 'NINGUNA'",
+          "referencia_regulatoria": "CRR Art. 194",
+          "campos_entrada": ["PRODUCTO", "COLATERAL_TIPO"]
+        },
+        {
+          "dqc_id": "DQC_WEIRD_HIPOTECA_SIN_GAR_002",
+          "descripcion": "Un préstamo hipotecario debe estar garantizado por una hipoteca.",
+          "tipo": "referencial",
+          "severidad": "bloqueante",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE PRODUCTO = 'HIPOTECA_LN' AND COLATERAL_TIPO <> 'HIPOTECA'",
+          "referencia_regulatoria": "CRR Art. 194",
+          "campos_entrada": ["PRODUCTO", "COLATERAL_TIPO"]
+        },
+        {
+          "dqc_id": "DQC_WEIRD_ADJ_SIN_COL_003",
+          "descripcion": "No se puede adjudicar/ejecutar una garantía sobre una exposición sin colateral.",
+          "tipo": "referencial",
+          "severidad": "advertencia",
+          "regla_sql": "SELECT ID_CONTR_CICLO_LGD FROM ciclos_calibrados WHERE ADJUDICACION_FLAG = '1' AND COLATERAL_TIPO = 'NINGUNA'",
+          "referencia_regulatoria": "CRR Art. 199",
+          "campos_entrada": ["ADJUDICACION_FLAG", "COLATERAL_TIPO"]
+        }
+      ]
+    }
+  ]
+}

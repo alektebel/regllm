@@ -1,7 +1,7 @@
 <div class="chat-container">
   <header class="chat-header">
     <h1>DQC Generator</h1>
-    <p>Generador de controles de calidad de datos</p>
+    <p>Sube el diccionario de campos (Excel) y escribe las instrucciones DQC</p>
   </header>
 
   <div class="messages">
@@ -23,18 +23,6 @@
               }
             </div>
           }
-
-          @if (msg.sources && msg.sources.length > 0) {
-            <div class="sources-row">
-              @for (src of msg.sources; track $index) {
-                <div class="source-chip" [attr.data-type]="src.source_type"
-                     [title]="src.snippet">
-                  <span class="source-type">{{ src.source_type }}</span>
-                  <span class="source-name">{{ src.heading || src.document }}</span>
-                </div>
-              }
-            </div>
-          }
         </div>
       </div>
     }
@@ -43,12 +31,11 @@
       <div class="welcome">
         <div class="welcome-icon">DQC</div>
         <p class="welcome-title">Generador de controles de calidad</p>
-        <p class="welcome-sub">Describe la variable o regla que quieres verificar</p>
-        <div class="suggestion-chips">
-          @for (s of suggestions; track s) {
-            <button class="chip" (click)="useSuggestion(s)">{{ s }}</button>
-          }
-        </div>
+        <p class="welcome-sub">
+          1. Sube el diccionario de campos (.xlsx)<br>
+          2. Escribe las reglas DQC (una por línea)<br>
+          3. Pulsa Generar
+        </p>
       </div>
     }
 
@@ -61,15 +48,38 @@
     }
   </div>
 
-  <form class="input-bar" (ngSubmit)="send()">
-    <input
-      type="text"
-      [(ngModel)]="userMessage"
-      name="message"
-      placeholder="Ej: Crea DQC para comprobar que PD_ESTIMADA esta correctamente construida"
+  <div class="input-panel">
+    <div class="file-row">
+      <label class="file-label">
+        <input type="file" accept=".xlsx,.xls" (change)="onFileSelected($event)" [disabled]="isLoading" />
+        {{ dictionaryName || 'Seleccionar diccionario Excel (.xlsx)' }}
+      </label>
+      <input
+        type="text"
+        [(ngModel)]="tableName"
+        name="tableName"
+        class="table-input"
+        placeholder="Tabla (p.ej. mylib.ciclos_recuperacion)"
+        [disabled]="isLoading"
+      />
+    </div>
+
+    <textarea
+      [(ngModel)]="instructions"
+      name="instructions"
+      rows="6"
+      placeholder="Instrucciones DQC, una por línea. Ejemplo:
+La PD nunca debe superar el 100%
+ECL = PD_ESTIMADA * LGD_ESTIMADA * EAD_TOTAL
+Toda hipoteca debe tener COLATERAL_TIPO = HIPOTECA"
       [disabled]="isLoading"
-      autocomplete="off"
-    />
-    <button type="submit" [disabled]="isLoading || !userMessage.trim()">Enviar</button>
-  </form>
+    ></textarea>
+
+    <button
+      class="generate-btn"
+      (click)="generate()"
+      [disabled]="isLoading || !instructions.trim() || !dictionaryFile">
+      Generar DQCs
+    </button>
+  </div>
 </div>

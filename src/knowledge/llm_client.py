@@ -9,25 +9,38 @@ Auto-detects an available OpenAI-compatible local backend:
    (Qwen, Gemma, Llama, Phi, …). The default model
    ``qwen2.5:14b-instruct-q4_K_M`` is a great drop-in for structured JSON RAG
    verdicts and is small enough to run on a single 24 GB GPU.
-3. **Amazon Bedrock** — managed LLM backend via the Converse API. Set
+3. **GGUF (standalone, via `llama-cpp-python`)** — loads a ``.gguf`` weight
+   file directly **in-process**, no Ollama server required. Set
+   ``GGUF_MODEL_PATH=/path/to/model.gguf`` (and optionally
+   ``REGLLM_LLM=gguf`` to force it). This is distinct from pointing
+   ``OLLAMA_MODEL`` at a ``.gguf`` path (still supported — that path
+   auto-registers the file *into a running Ollama server* via
+   ``ollama create``). The standalone backend needs nothing but the weight
+   file and the optional ``llama-cpp-python`` dependency, which makes it the
+   right choice for a fully self-contained, single-process deployment (e.g.
+   an air-gapped bank environment with no sidecar model server).
+4. **Amazon Bedrock** — managed LLM backend via the Converse API. Set
    ``REGLLM_LLM=bedrock`` and let the IAM task role handle auth.
-4. **Google Gemini** — cloud API. Set ``REGLLM_LLM=gemini`` and supply
-   ``GEMINI_API_KEY``. Model defaults to ``gemini-2.5-pro``.
 5. **Stub** mode: when ``REGLLM_LLM=stub`` or no backend reachable, returns a
    deterministic JSON-shaped placeholder so unit tests and the frontend keep
    working without any model installed.
 
 Configuration via environment variables (with sensible defaults):
 
-- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``bedrock`` | ``gemini`` | ``stub``
+- ``REGLLM_LLM``             ``auto`` | ``litert`` | ``ollama`` | ``gguf`` | ``bedrock`` | ``stub``
 - ``OLLAMA_URL``             default ``http://localhost:11434``
 - ``OLLAMA_MODEL``           Ollama tag or path to ``.gguf`` file
 - ``LITERT_URL``             default ``http://localhost:9379/v1``
 - ``LITERT_MODEL``           default ``gemma4-12b,gpu``
+- ``GGUF_MODEL_PATH``        path to a ``.gguf`` chat model — enables the standalone backend
+- ``GGUF_N_CTX``             context window, default ``8192``
+- ``GGUF_N_GPU_LAYERS``      layers to offload to GPU, default ``0`` (CPU-only)
+- ``GGUF_N_THREADS``         CPU threads, default: let ``llama.cpp`` choose
+- ``GGUF_CHAT_FORMAT``       override the chat template ``llama.cpp`` infers
+  from the GGUF's metadata (rarely needed — set only if a model's built-in
+  template isn't recognised, e.g. ``"chatml"``, ``"qwen"``, ``"gemma"``)
 - ``BEDROCK_MODEL_ID``       default ``eu.amazon.nova-micro-v1:0``
 - ``BEDROCK_REGION``         default ``eu-west-1``
-- ``GEMINI_API_KEY``         Google Gemini API key
-- ``GEMINI_MODEL``           default ``gemini-2.5-pro``
 - ``REGLLM_LLM_TIMEOUT``     request timeout in seconds, default ``120``
 
 Backwards-compatible aliases (still read for migration):
@@ -56,9 +69,9 @@ except ImportError:  # boto3 not installed — bedrock backend unavailable
     _boto3 = None
 
 try:
-    from google import genai as _genai
-except ImportError:  # google-genai not installed — gemini backend unavailable
-    _genai = None
+    from llama_cpp import Llama as _Llama
+except ImportError:  # llama-cpp-python not installed — gguf backend unavailable
+    _Llama = None
 
 
 def _load_yaml_config() -> dict[str, Any]:
@@ -87,7 +100,7 @@ _DEFAULT_TIMEOUT = float(os.getenv("REGLLM_LLM_TIMEOUT", "120"))
 @dataclass
 class ChatResponse:
     text: str
-    backend: str                       # "litert" | "ollama" | "bedrock" | "stub"
+    backend: str                       # "litert" | "ollama" | "gguf" | "bedrock" | "stub"
     model: str
     raw: dict[str, Any] | None = None
     tool_calls: list[dict[str, Any]] | None = None  # populated by ``chat_tools``
@@ -148,16 +161,24 @@ class LocalLLMClient:
             or "eu-west-1"
         )
         self._bedrock_client = None
-        self.gemini_api_key = (
-            os.getenv("GEMINI_API_KEY")
-            or _LLM_CFG.get("gemini_api_key")
-            or ""
+        # Standalone GGUF (llama-cpp-python) — see module docstring. Distinct
+        # from OLLAMA_MODEL=*.gguf, which registers the file into a running
+        # Ollama server instead of loading it in-process.
+        self.gguf_model_path = (
+            os.getenv("GGUF_MODEL_PATH") or _LLM_CFG.get("gguf_model_path") or ""
         )
-        self.gemini_model = (
-            os.getenv("GEMINI_MODEL")
-            or _LLM_CFG.get("gemini_model")
-            or "gemini-2.5-pro"
+        self.gguf_n_ctx = int(
+            os.getenv("GGUF_N_CTX") or _LLM_CFG.get("gguf_n_ctx") or 8192
         )
+        self.gguf_n_gpu_layers = int(
+            os.getenv("GGUF_N_GPU_LAYERS") or _LLM_CFG.get("gguf_n_gpu_layers") or 0
+        )
+        _threads = os.getenv("GGUF_N_THREADS") or _LLM_CFG.get("gguf_n_threads")
+        self.gguf_n_threads = int(_threads) if _threads else None
+        self.gguf_chat_format = (
+            os.getenv("GGUF_CHAT_FORMAT") or _LLM_CFG.get("gguf_chat_format") or None
+        )
+        self._gguf_llama: Any = None
         self.prefer = prefer or os.getenv("REGLLM_LLM") or _LLM_CFG.get("backend") or "auto"
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
@@ -226,17 +247,6 @@ class LocalLLMClient:
                 return "stub"
             self._backend = "bedrock"
             return "bedrock"
-        if self.prefer == "gemini":
-            if _genai is None:
-                logger.error("REGLLM_LLM=gemini but google-genai is not installed")
-                self._backend = "stub"
-                return "stub"
-            if not self.gemini_api_key:
-                logger.error("REGLLM_LLM=gemini but GEMINI_API_KEY is not set")
-                self._backend = "stub"
-                return "stub"
-            self._backend = "gemini"
-            return "gemini"
         if self.prefer in ("auto", "litert") and self._probe_litert():
             self._backend = "litert"
             return "litert"
@@ -251,6 +261,22 @@ class LocalLLMClient:
                 "installed models. Falling back to stub.",
                 self.ollama_model, self.ollama_model,
             )
+        if self.prefer in ("auto", "gguf") and self._probe_gguf():
+            self._backend = "gguf"
+            return "gguf"
+        if self.prefer == "gguf":
+            # User explicitly asked for gguf but the weight file or the
+            # llama-cpp-python dependency is missing.
+            if _Llama is None:
+                logger.warning(
+                    "REGLLM_LLM=gguf but llama-cpp-python is not installed "
+                    "(pip install llama-cpp-python); falling back to stub"
+                )
+            else:
+                logger.warning(
+                    "REGLLM_LLM=gguf but GGUF_MODEL_PATH=%r does not point to "
+                    "a file; falling back to stub", self.gguf_model_path,
+                )
         if self.prefer == "ollama":
             # User explicitly asked for ollama but it's unreachable
             logger.warning("REGLLM_LLM=ollama but Ollama unreachable; falling back to stub")
@@ -287,6 +313,19 @@ class LocalLLMClient:
         except Exception:
             return False
 
+    def _probe_gguf(self) -> bool:
+        """Cheap availability check — does NOT load the model.
+
+        Loading a multi-GB GGUF file is expensive (seconds, significant
+        memory), so ``detect_backend()`` only verifies the dependency is
+        importable and the weight file exists; the actual ``Llama`` instance
+        is constructed lazily on first real chat call, in
+        :meth:`_get_gguf_llama`.
+        """
+        if _Llama is None or not self.gguf_model_path:
+            return False
+        return Path(self.gguf_model_path).expanduser().is_file()
+
     # ── Bedrock ───────────────────────────────────────────────────────────
 
     def _get_bedrock_client(self):
@@ -297,6 +336,57 @@ class LocalLLMClient:
             )
         return self._bedrock_client
 
+    @staticmethod
+    def _bedrock_convert_messages(
+        messages: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+        """Convert OpenAI/Ollama-shaped chat history into Bedrock Converse
+        ``system`` + ``messages`` blocks, including the ``tool_calls``
+        (assistant) and ``tool`` (tool-result) turns the agent loop appends
+        to conversation history."""
+        system_parts: list[dict[str, str]] = []
+        converse_msgs: list[dict[str, Any]] = []
+        for m in messages:
+            role = m["role"]
+            if role == "system":
+                system_parts.append({"text": m["content"]})
+            elif role == "tool":
+                converse_msgs.append({
+                    "role": "user",
+                    "content": [{
+                        "toolResult": {
+                            "toolUseId": m.get("tool_call_id", ""),
+                            "content": [{"text": m.get("content", "")}],
+                        }
+                    }],
+                })
+            elif role == "assistant" and m.get("tool_calls"):
+                blocks: list[dict[str, Any]] = []
+                if m.get("content"):
+                    blocks.append({"text": m["content"]})
+                for c in m["tool_calls"]:
+                    fn = c.get("function", c)
+                    args = fn.get("arguments")
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+                    blocks.append({
+                        "toolUse": {
+                            "toolUseId": c.get("id", ""),
+                            "name": fn.get("name", ""),
+                            "input": args or {},
+                        }
+                    })
+                converse_msgs.append({"role": "assistant", "content": blocks})
+            else:
+                converse_msgs.append({
+                    "role": role,
+                    "content": [{"text": m.get("content", "")}],
+                })
+        return system_parts, converse_msgs
+
     def _chat_bedrock(
         self,
         messages: list[dict[str, str]],
@@ -305,17 +395,7 @@ class LocalLLMClient:
         json_mode: bool,
     ) -> ChatResponse:
         client = self._get_bedrock_client()
-
-        system_parts: list[dict[str, str]] = []
-        converse_msgs: list[dict[str, Any]] = []
-        for m in messages:
-            if m["role"] == "system":
-                system_parts.append({"text": m["content"]})
-            else:
-                converse_msgs.append({
-                    "role": m["role"],
-                    "content": [{"text": m["content"]}],
-                })
+        system_parts, converse_msgs = self._bedrock_convert_messages(messages)
 
         if json_mode and system_parts:
             system_parts[0]["text"] += "\n\nRespond ONLY with valid JSON."
@@ -340,46 +420,184 @@ class LocalLLMClient:
             raw=response,
         )
 
-    # ── Gemini ────────────────────────────────────────────────────────────
+    def _chat_json_stream_bedrock(
+        self, system: str, user: str, temperature: float, max_tokens: int,
+    ):
+        client = self._get_bedrock_client()
+        kwargs: dict[str, Any] = {
+            "modelId": self.bedrock_model_id,
+            "messages": [{"role": "user", "content": [{"text": user}]}],
+            "inferenceConfig": {"temperature": temperature, "maxTokens": max_tokens},
+            "system": [{"text": system + "\n\nRespond ONLY with valid JSON."}],
+        }
+        response = client.converse_stream(**kwargs)
+        full_text = ""
+        for event in response["stream"]:
+            delta = (event.get("contentBlockDelta") or {}).get("delta") or {}
+            token = delta.get("text")
+            if not token:
+                continue
+            full_text += token
+            yield token
+        yield _safe_json(full_text)
 
-    def _chat_gemini(
+    def _chat_tools_bedrock(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+    ) -> ChatResponse:
+        client = self._get_bedrock_client()
+        system_parts, converse_msgs = self._bedrock_convert_messages(messages)
+
+        kwargs: dict[str, Any] = {
+            "modelId": self.bedrock_model_id,
+            "messages": converse_msgs,
+            "inferenceConfig": {"temperature": temperature, "maxTokens": max_tokens},
+            "toolConfig": {"tools": [_bedrock_tool_spec(t) for t in tools]},
+        }
+        if system_parts:
+            kwargs["system"] = system_parts
+
+        response = client.converse(**kwargs)
+        blocks = response["output"]["message"]["content"]
+        text_parts: list[str] = []
+        calls: list[dict[str, Any]] = []
+        for block in blocks:
+            if "text" in block:
+                text_parts.append(block["text"])
+            elif "toolUse" in block:
+                tu = block["toolUse"]
+                calls.append({
+                    "id": tu.get("toolUseId", f"call_{len(calls)}"),
+                    "name": tu.get("name", ""),
+                    "arguments": tu.get("input") or {},
+                })
+        return ChatResponse(
+            text="".join(text_parts),
+            backend="bedrock",
+            model=self.bedrock_model_id,
+            raw=response,
+            tool_calls=calls or None,
+        )
+
+    # ── GGUF (standalone, llama-cpp-python) ─────────────────────────────────
+
+    def _get_gguf_llama(self):
+        """Lazily construct (and cache) the in-process ``Llama`` instance.
+
+        Loading is deferred to first use so ``detect_backend()`` stays cheap
+        and a process that never actually calls the GGUF backend never pays
+        the multi-GB load cost.
+        """
+        if self._gguf_llama is None:
+            logger.info(
+                "Loading GGUF model %s (n_ctx=%d, n_gpu_layers=%d) …",
+                self.gguf_model_path, self.gguf_n_ctx, self.gguf_n_gpu_layers,
+            )
+            kwargs: dict[str, Any] = {
+                "model_path": str(Path(self.gguf_model_path).expanduser()),
+                "n_ctx": self.gguf_n_ctx,
+                "n_gpu_layers": self.gguf_n_gpu_layers,
+                "verbose": False,
+            }
+            if self.gguf_n_threads:
+                kwargs["n_threads"] = self.gguf_n_threads
+            if self.gguf_chat_format:
+                kwargs["chat_format"] = self.gguf_chat_format
+            self._gguf_llama = _Llama(**kwargs)
+        return self._gguf_llama
+
+    def _chat_gguf(
         self,
         messages: list[dict[str, str]],
         temperature: float,
         max_tokens: int,
         json_mode: bool,
     ) -> ChatResponse:
-        client = _genai.Client(api_key=self.gemini_api_key)
-
-        # Split system message from the conversation
-        system_instruction: str | None = None
-        contents: list[Any] = []
-        for m in messages:
-            if m["role"] == "system":
-                system_instruction = m["content"]
-            else:
-                role = "user" if m["role"] == "user" else "model"
-                contents.append({"role": role, "parts": [{"text": m["content"]}]})
-
-        if json_mode and system_instruction:
-            system_instruction += "\n\nRespond ONLY with valid JSON."
-        elif json_mode:
-            system_instruction = "Respond ONLY with valid JSON."
-
-        config: dict[str, Any] = {
+        llama = self._get_gguf_llama()
+        kwargs: dict[str, Any] = {
+            "messages": messages,
             "temperature": temperature,
-            "max_output_tokens": max_tokens,
+            "max_tokens": max_tokens,
         }
-        if system_instruction:
-            config["system_instruction"] = system_instruction
-
-        response = client.models.generate_content(
-            model=self.gemini_model,
-            contents=contents,
-            config=config,
+        if json_mode:
+            # Grammar-constrained JSON generation — llama.cpp guarantees
+            # syntactically valid JSON output when this is honoured by the
+            # loaded chat handler (all built-in handlers support it).
+            kwargs["response_format"] = {"type": "json_object"}
+        result = llama.create_chat_completion(**kwargs)
+        text = _strip_think_tags(
+            (result.get("choices") or [{}])[0].get("message", {}).get("content") or ""
         )
-        text = response.text or ""
-        return ChatResponse(text=text, backend="gemini", model=self.gemini_model, raw=None)
+        return ChatResponse(
+            text=text, backend="gguf",
+            model=Path(self.gguf_model_path).name, raw=result,
+        )
+
+    def _chat_json_stream_gguf(
+        self, system: str, user: str, temperature: float, max_tokens: int,
+    ):
+        llama = self._get_gguf_llama()
+        msgs = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        stream = llama.create_chat_completion(
+            messages=msgs, temperature=temperature, max_tokens=max_tokens,
+            response_format={"type": "json_object"}, stream=True,
+        )
+        full_text = ""
+        for chunk in stream:
+            delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+            token = delta.get("content") or ""
+            if not token:
+                continue
+            full_text += token
+            yield token
+        yield _safe_json(_strip_think_tags(full_text))
+
+    def _chat_tools_gguf(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+    ) -> ChatResponse:
+        """Best-effort tool-calling — quality depends on the GGUF model's
+        chat template and whether ``llama-cpp-python`` recognises it as a
+        function-calling-capable handler. Falls back to a plain text answer
+        (no ``tool_calls``) if the response doesn't carry any, which the
+        agent loop already treats as a normal final answer."""
+        llama = self._get_gguf_llama()
+        result = llama.create_chat_completion(
+            messages=messages, tools=tools, temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        choice = (result.get("choices") or [{}])[0]
+        msg = choice.get("message", {}) or {}
+        text = _strip_think_tags(msg.get("content") or "")
+        raw_calls = msg.get("tool_calls") or []
+        calls = []
+        for c in raw_calls:
+            fn = (c.get("function") or {})
+            args = fn.get("arguments")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {"_raw": args}
+            calls.append({
+                "id": c.get("id", f"call_{len(calls)}"),
+                "name": fn.get("name", ""),
+                "arguments": args or {},
+            })
+        return ChatResponse(
+            text=text, backend="gguf",
+            model=Path(self.gguf_model_path).name,
+            raw=result, tool_calls=calls or None,
+        )
 
     # ── Chat ──────────────────────────────────────────────────────────────
 
@@ -397,10 +615,10 @@ class LocalLLMClient:
             return self._chat_litert(messages, temperature, max_tokens, json_mode)
         if backend == "ollama":
             return self._chat_ollama(messages, temperature, max_tokens, json_mode)
+        if backend == "gguf":
+            return self._chat_gguf(messages, temperature, max_tokens, json_mode)
         if backend == "bedrock":
             return self._chat_bedrock(messages, temperature, max_tokens, json_mode)
-        if backend == "gemini":
-            return self._chat_gemini(messages, temperature, max_tokens, json_mode)
         return self._chat_stub(messages, json_mode)
 
     def _chat_litert(
@@ -507,10 +725,16 @@ class LocalLLMClient:
 
         Yields ``str`` tokens as they arrive. The last yield is a
         ``dict`` with the parsed JSON result (or an error dict).
-        Only implemented for Ollama; other backends fall back to
-        non-streaming and yield the full result at once.
+        Implemented for Ollama, GGUF and Bedrock; other backends (LiteRT,
+        stub) fall back to non-streaming and yield the full result at once.
         """
         backend = self.detect_backend()
+        if backend == "gguf":
+            yield from self._chat_json_stream_gguf(system, user, temperature, max_tokens)
+            return
+        if backend == "bedrock":
+            yield from self._chat_json_stream_bedrock(system, user, temperature, max_tokens)
+            return
         if backend != "ollama":
             result = self.chat_json(system, user, temperature=temperature, max_tokens=max_tokens)
             yield result
@@ -603,8 +827,10 @@ class LocalLLMClient:
             return self._chat_tools_openai(messages, tools, temperature, max_tokens)
         if backend == "ollama":
             return self._chat_tools_ollama(messages, tools, temperature, max_tokens)
+        if backend == "gguf":
+            return self._chat_tools_gguf(messages, tools, temperature, max_tokens)
         if backend == "bedrock":
-            raise NotImplementedError("Bedrock tool-calling not yet implemented")
+            return self._chat_tools_bedrock(messages, tools, temperature, max_tokens)
         return self._chat_tools_stub(messages, tools)
 
     def _chat_tools_ollama(
@@ -753,6 +979,21 @@ def _strip_think_tags(text: str) -> str:
     """Remove <think>...</think> blocks from model output (qwen3, deepseek-r1)."""
     import re
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+def _bedrock_tool_spec(tool: dict[str, Any]) -> dict[str, Any]:
+    """Convert one OpenAI/Ollama-format tool schema (as produced by
+    ``ToolSpec.schema()``) into a Bedrock Converse ``toolConfig`` entry."""
+    fn = tool.get("function", tool)
+    return {
+        "toolSpec": {
+            "name": fn.get("name", ""),
+            "description": fn.get("description", ""),
+            "inputSchema": {
+                "json": fn.get("parameters") or {"type": "object", "properties": {}},
+            },
+        }
+    }
 
 
 def _inject_spanish(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

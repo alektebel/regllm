@@ -161,17 +161,53 @@
   border-color: #6c7bbf;
 }
 
-/* ── Input bar ── */
-.input-bar {
+/* ── Input panel ── */
+.input-panel {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px 20px;
   border-top: 1px solid #2a2a40;
   background: #161625;
 }
 
-.input-bar input {
+.file-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.file-label {
   flex: 1;
+  display: block;
+  padding: 10px 14px;
+  border: 1px dashed #2a2a40;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #aaa;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-label input { display: none; }
+.file-label:hover { border-color: #6c7bbf; color: #ccc; }
+
+.table-input {
+  width: 280px;
+  padding: 10px 14px;
+  border: 1px solid #2a2a40;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: #0f0f1a;
+  color: #fff;
+}
+.table-input:focus { border-color: #6c7bbf; }
+
+.input-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
   padding: 10px 14px;
   border: 1px solid #2a2a40;
   border-radius: 8px;
@@ -179,12 +215,16 @@
   outline: none;
   background: #0f0f1a;
   color: #fff;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 120px;
 }
-.input-bar input::placeholder { color: #555; }
-.input-bar input:focus { border-color: #6c7bbf; }
+.input-panel textarea::placeholder { color: #555; white-space: pre-line; }
+.input-panel textarea:focus { border-color: #6c7bbf; }
 
-.input-bar button {
-  padding: 10px 20px;
+.generate-btn {
+  align-self: flex-end;
+  padding: 10px 24px;
   background: #6c7bbf;
   color: #fff;
   border: none;
@@ -192,10 +232,9 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
 }
-.input-bar button:hover:not(:disabled) { background: #5a69a8; }
-.input-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.generate-btn:hover:not(:disabled) { background: #5a69a8; }
+.generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── DQC code blocks in chat ── */
 .dqc-list {

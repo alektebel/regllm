@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
-  DqcResponse, CheckRecord, CountsResponse, DashboardResponse, TestsResponse,
+  GenerateResponse, CheckRecord, CountsResponse, DashboardResponse,
 } from '../models/dqc.model';
 
 @Injectable({ providedIn: 'root' })
@@ -11,21 +11,17 @@ export class DqcService {
 
   constructor(private http: HttpClient) {}
 
-  generate(message: string, sessionId = 'default'): Observable<DqcResponse> {
-    return this.http.post<DqcResponse>(`${this.apiUrl}/generate`, {
-      message,
-      session_id: sessionId,
-    });
+  generate(
+    dictionary: File,
+    instructions: string,
+    tableName = 'mylib.ciclos_recuperacion',
+  ): Observable<GenerateResponse> {
+    const form = new FormData();
+    form.append('dictionary', dictionary);
+    form.append('instructions', instructions);
+    form.append('table_name', tableName);
+    return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, form);
   }
-
-  generateTests(tests: string[], sessionId = 'default'): Observable<TestsResponse> {
-    return this.http.post<TestsResponse>(`${this.apiUrl}/generate/tests`, {
-      tests,
-      session_id: sessionId,
-    });
-  }
-
-  // ── Validation pipeline ───────────────────────────────────────────────
 
   counts(): Observable<CountsResponse> {
     return this.http.get<CountsResponse>(`${this.apiUrl}/checks/counts`);
@@ -41,10 +37,6 @@ export class DqcService {
       `${this.apiUrl}/checks/${checkId}/status`,
       { status },
     );
-  }
-
-  batchStream(sessionId = 'default'): EventSource {
-    return new EventSource(`${this.apiUrl}/generate/batch/stream?session_id=${sessionId}`);
   }
 
   delete(checkId: string): Observable<unknown> {

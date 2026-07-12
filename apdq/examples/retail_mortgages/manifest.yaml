@@ -1,0 +1,119 @@
+# APDQ binding manifest — retail_mortgages
+#
+# A deliberately different reporting schema (a retail mortgage book with
+# a client master, a servicing-system surface and FINREP control totals).
+# Exists to prove the MVP gate from docs/MVP_ROADMAP.md item 3: a second
+# schema certifies end-to-end with zero code edits — only this file.
+
+apdq_manifest: 1
+name: retail_mortgages
+
+tables:
+  - name: clients
+    primary_key: CLIENT_ID
+    rows: 80
+    waivers:
+      control: "client master counts controlled in CRM domain (signed: mvp-example)"
+    columns:
+      - name: CLIENT_ID
+        concept: client_id
+        role: source
+        domain: {type: text, unique: true}
+        waivers: {reconcile: "system of record for its own identifier (signed: mvp-example)"}
+      - name: PROVINCE
+        concept: legal_nature
+        role: source
+        domain: {type: text, values: [MADRID, BARCELONA, VALENCIA, SEVILLA, OTRAS]}
+        waivers: {reconcile: "address source out of MVP scope (signed: mvp-example)"}
+      - name: ANNUAL_INCOME
+        concept: drawn_amount
+        role: source
+        domain: {type: real, min: 12000, max: 300000}
+        waivers: {reconcile: "income verified at origination only (signed: mvp-example)"}
+
+  - name: mortgages
+    primary_key: MORTGAGE_ID
+    rows: 300
+    control:
+      surface: finrep_totals
+      checks:
+        - {kind: count}
+        - {kind: sum, column: OUTSTANDING}
+    foreign_keys:
+      - {column: CLIENT_ID, ref_table: clients, ref_column: CLIENT_ID}
+    date_orderings:
+      - [ORIG_DATE, DEFAULT_DATE]
+    constraints:
+      - id: variable_needs_spread
+        expr: "RATE_TYPE = 'FIXED' or SPREAD > 0"
+        description: "variable-rate mortgages must carry a positive spread"
+        plant: {RATE_TYPE: VARIABLE, SPREAD: 0}
+    columns:
+      - name: MORTGAGE_ID
+        concept: contract_id
+        role: source
+        domain: {type: text, unique: true}
+        waivers: {reconcile: "system of record for its own identifier (signed: mvp-example)"}
+      - name: CLIENT_ID
+        concept: client_id
+        role: source
+        domain: {type: text}
+        waivers: {reconcile: "covered by referential integrity to clients (signed: mvp-example)"}
+      - name: ORIG_DATE
+        concept: origination_date
+        role: source
+        domain: {type: yyyymm, min: 200501, max: 202406}
+        waivers: {reconcile: "notary deed register out of MVP scope (signed: mvp-example)"}
+      - name: DEFAULT_DATE
+        concept: default_date
+        role: source
+        domain: {type: yyyymm, min: 200502, max: 202412, nullable: true}
+        waivers: {reconcile: "default register out of MVP scope (signed: mvp-example)"}
+      - name: PRINCIPAL
+        concept: ead_on_balance
+        role: source
+        domain: {type: real, min: 10000, max: 500000}
+        waivers: {reconcile: "reconciled at origination; OUTSTANDING carries the live control (signed: mvp-example)"}
+      - name: PROPERTY_VALUE
+        concept: collateral_value
+        role: source
+        domain: {type: real, min: 20000, max: 1000000}
+        waivers: {reconcile: "appraisal register out of MVP scope (signed: mvp-example)"}
+      - name: LTV
+        concept: ltv
+        role: derived
+        formula: "PRINCIPAL / PROPERTY_VALUE"
+      - name: RATE_TYPE
+        concept: product_type
+        role: source
+        domain: {type: text, values: [FIXED, VARIABLE]}
+        waivers: {reconcile: "product catalog out of MVP scope (signed: mvp-example)"}
+      - name: SPREAD
+        concept: interest_rate
+        role: source
+        domain: {type: real, min: 0, max: 0.05}
+        waivers: {reconcile: "pricing system out of MVP scope (signed: mvp-example)"}
+      - name: EFFECTIVE_RATE
+        concept: interest_rate
+        role: derived
+        formula: "if(RATE_TYPE = 'FIXED', 0.031, 0.018 + SPREAD)"
+      - name: OUTSTANDING
+        concept: exposure_at_default
+        role: source
+        domain: {type: real, min: 0, max: 500000}
+        reconcile:
+          - {surface: servicing_system, column: OUTSTANDING_SRC, join_column: MORTGAGE_ID}
+      - name: PD
+        concept: pd_final
+        role: source
+        domain: {type: real, min: 0.0005, max: 0.2}
+        waivers: {reconcile: "model output, verified by reperformance downstream (signed: mvp-example)"}
+      - name: LGD
+        concept: lgd_final
+        role: source
+        domain: {type: real, min: 0.05, max: 0.6}
+        waivers: {reconcile: "model output, verified by reperformance downstream (signed: mvp-example)"}
+      - name: EXPECTED_LOSS
+        concept: expected_credit_loss
+        role: derived
+        formula: "PD * LGD * OUTSTANDING"

@@ -25,10 +25,47 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu --quiet
 
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements.txt
 
-      - name: Import smoke test (DQC backend wiring)
-        run: python -c "import api.main"
+      - name: Generate V2/V3 sample data
+        run: python scripts/generate_v3.py
 
       - name: Run tests
-        run: pytest tests/ -q
+        run: pytest -q
+
+      # DQC eval harness gates — every oracle must hold (0 rows on clean,
+      # all planted rows on its trap) and the field × article coverage
+      # matrix must have no TODO cells.
+      - name: DQC eval — oracle self-test
+        run: python DQC/eval/eval_harness.py --selftest
+
+      - name: DQC eval — coverage matrix gate
+        run: python DQC/eval/coverage_matrix.py --fail-under 1.0
+
+      - name: DQC eval — golden traces self-test
+        run: python DQC/eval/golden_eval.py --selftest
+
+  dqc-slim:
+    # Installs ONLY requirements-dqc.txt (what the production Docker image
+    # ships) in an isolated job — the main `test` job installs the full
+    # requirements.txt, which would mask a heavy dependency creeping back
+    # into the DQC request path. If this job fails, the deployed image
+    # will crash at runtime; see tests/test_dqc_slim_imports.py.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install slim (DQC-only) dependencies
+        run: |
+          pip install -r requirements-dqc.txt --quiet
+          pip install pytest --quiet
+
+      - name: Verify the slim image's request path needs no heavy deps
+        run: pytest tests/test_dqc_slim_imports.py -v

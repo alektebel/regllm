@@ -25,6 +25,13 @@ pyyaml>=6.0
 boto3>=1.34
 google-genai>=1.0
 
+# Standalone GGUF backend (in-process .gguf inference/embedding, no Ollama
+# server needed) — optional, lazily imported; uncomment to use REGLLM_LLM=gguf
+# or REGLLM_EMBED_BACKEND=gguf. Not installed by requirements-dqc.txt by
+# default (a compiled dependency; add it there too if your DQC deployment
+# should run fully local, no Ollama/Bedrock).
+# llama-cpp-python>=0.3
+
 # Demo / CLI
 rich>=13.7
 

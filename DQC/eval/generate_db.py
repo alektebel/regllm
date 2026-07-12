@@ -19,6 +19,7 @@ import argparse
 import math
 import random
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 from defect_catalog import (
@@ -30,20 +31,33 @@ DATA_DIR = HERE / "data"
 
 # Full ordered column list of the final table (see data_dictionary.md).
 COLUMNS: list[str] = [
-    # identity / segmentation
-    "ID_CONTR_CICLO_LGD", "ID_CONTRATO", "ID_FUSION_FINAL", "SW_FUSION",
+    # identity / segmentation / counterparty
+    "ID_CONTR_CICLO_LGD", "ID_CONTRATO", "ID_CLIENTE", "TIPO_PERSONA",
+    "ID_FUSION_FINAL", "SW_FUSION",
     "SEGMENTO", "CALIBRATION_SEGMENT", "PRODUCTO", "MES_CICLO",
     "ENTIDAD_ORIGEN",
+    # cycle dates (YYYYMM periods)
+    "MES_DEFAULT", "MES_CIERRE_CICLO",
+    # cycle dates (ISO day-level, for interrelation checks)
+    "FECHA_ALTA_CONTRATO", "FECHA_DEFAULT", "FECHA_CIERRE_CICLO",
+    "FECHA_ADJUDICACION", "FECHA_VENTA_COLATERAL",
+    # currency
+    "DIVISA", "TIPO_CAMBIO",
     # exposure (BASILEA)
     "OR_EAD", "OR_DISPTO", "OR_DISBLE", "SALDO_PENDIENTE", "EAD",
     "EAD_BALANCE", "CCF_ESTIMADO", "EAD_FUERA_BALANCE", "EAD_TOTAL",
+    "EAD_TOTAL_EUR",
     # collateral
     "COLATERAL_TIPO", "VALOR_COLATERAL_INICIAL", "VALOR_COLATERAL",
-    "HAIRCUT", "LTV",
+    "HAIRCUT", "LTV", "MES_VALORACION_COLATERAL",
     # PD
     "RATING_GRADO", "PD_ESTIMADA", "PD_SUELO", "PD_FINAL", "PD_DOWNTURN",
-    # LGD
-    "LGD_ESTIMADA", "LGD_REALIZADA", "LGD_SUELO", "MOC", "LGD_CON_MOC", "LGD_FINAL",
+    # LGD (incl. MoC category breakdown per EBA GL 2017/16 §43-44)
+    "LGD_ESTIMADA", "LGD_REALIZADA", "LGD_SUELO",
+    "MOC_CAT_A", "MOC_CAT_B", "MOC_CAT_C", "MOC",
+    "LGD_CON_MOC", "LGD_FINAL", "LGD_DOWNTURN",
+    # calibration governance
+    "VENTANA_OBSERVACION_YEARS", "FLAG_NC",
     # ECL / RWA / stage
     "K_IRB", "M_VENCIMIENTO", "RWA", "ECL", "PROVISION", "STAGE_IFRS9",
     # lifecycle / recovery
@@ -57,10 +71,19 @@ SEGMENTS = ["CORP", "SME", "RETAIL_HIP", "RETAIL_CONS"]
 PRODUCTS = {"CORP": ["PRESTAMO", "LINEA"], "SME": ["PRESTAMO", "LINEA"],
             "RETAIL_HIP": ["HIPOTECA_LN"], "RETAIL_CONS": ["TARJETA", "PRESTAMO"]}
 CAUSAS = ["90_DIAS_VENCIDO", "IMPROBABLE_PAGO", "REFINANCIACION_DETERIORO"]
-TERMINACIONES = ["CURA", "FALLIDO", "VENTA_CARTERA", "LIQUIDACION"]
+TERMINACIONES_NO_CURA = ["FALLIDO", "VENTA_CARTERA", "LIQUIDACION"]
 ADJ_TIPOS = ["SUBASTA", "DACCION", "SEGURO", "GARANTIA"]
 ENTIDADES = ["BANCO_A", "BANCO_B", "BANCO_C"]
+CURRENCIES = ["EUR", "USD", "GBP"]
+FX_RATES = {"EUR": 1.0, "USD": 0.92, "GBP": 1.17}   # units of EUR per unit
 CCF = 0.75
+REFERENCE_PERIOD = 202412
+
+
+def month_shift(yyyymm: int, months: int) -> int:
+    """Shift a YYYYMM period by ``months`` (negative = into the past)."""
+    total = (yyyymm // 100) * 12 + (yyyymm % 100) - 1 + months
+    return (total // 12) * 100 + (total % 12) + 1
 
 
 def _type_of(col: str) -> str:
@@ -87,6 +110,12 @@ def _base_row(rng: random.Random, idx: int) -> dict:
         colat = rng.choices(["NINGUNA", "PRENDA"], weights=[8, 2])[0]
     else:
         colat = rng.choices(["NINGUNA", "PRENDA"], weights=[9, 1])[0]
+
+    producto = rng.choice(PRODUCTS[seg])
+    # Business rule: credit cards are unsecured revolving lines — they never
+    # carry collateral (keeps D64 "collateral on a credit card" clean = 0).
+    if producto == "TARJETA":
+        colat = "NINGUNA"
 
     contrato = f"CONT_{idx:06d}"
     fusion = rng.random() < 0.12
@@ -119,9 +148,17 @@ def _base_row(rng: random.Random, idx: int) -> dict:
 
     cerrado = rng.random() < 0.4
     estado = "CERRADO" if cerrado else "ESTIMACION"
-    terminacion = rng.choice(TERMINACIONES) if cerrado else ""
+    # CURE_FLAG and TERMINACION must agree: a cured cycle closes with 'CURA',
+    # a non-cured closed cycle with one of the terminal causes (invariant D32).
+    cure = 1 if (cerrado and rng.random() < 0.6) else 0
+    if cerrado:
+        terminacion = "CURA" if cure else rng.choice(TERMINACIONES_NO_CURA)
+    else:
+        terminacion = ""
 
-    adjud = rng.random() < 0.3
+    # Foreclosure/adjudication only happens on SECURED exposures (you cannot
+    # foreclose what has no collateral) — keeps D66 clean = 0.
+    adjud = colat != "NINGUNA" and rng.random() < 0.4
     if adjud:
         adj_flag, adj_tipo = "1", rng.choice(ADJ_TIPOS)
         adj_valor = round(rng.uniform(5_000, 80_000), 2)
@@ -145,14 +182,67 @@ def _base_row(rng: random.Random, idx: int) -> dict:
 
     period = (2019 + rng.randint(0, 4)) * 100 + rng.randint(1, 12)  # valid YYYYMM
 
+    # Cycle dates: the cycle opens at default; closed cycles get a closure
+    # month after the default month (capped at the reference period).
+    mes_default = period
+    mes_cierre = None
+    if cerrado:
+        mes_cierre = min(month_shift(mes_default, rng.randint(1, 24)),
+                         REFERENCE_PERIOD)
+
+    # Collateral valuation month: within the last 12 months for secured
+    # exposures (CRR Art. 208.3 revaluation), NULL when unsecured.
+    mes_valoracion = (
+        month_shift(period, -rng.randint(0, 11)) if colat != "NINGUNA" else None
+    )
+
+    # Currency + FX (EUR-converted amounts must satisfy the FX invariant).
+    divisa = rng.choices(CURRENCIES, weights=[8, 1, 1])[0]
+    fx = round(FX_RATES[divisa] * rng.uniform(0.97, 1.03), 6) if divisa != "EUR" else 1.0
+
+    # Calibration governance: observation window and the non-conformity flag
+    # must agree (EBA GL 2017/16 — minimum 5-year historical window).
+    ventana = rng.randint(3, 9)
+    flag_nc = 1 if ventana < 5 else 0
+
+    # Day-level dates with the ordering invariants a real cycle satisfies:
+    #   alta <= default <= (adjudicacion) <= cierre,  and  venta >= adjudicacion.
+    d_default = date(mes_default // 100, mes_default % 100, rng.randint(1, 28))
+    d_alta = d_default - timedelta(days=rng.randint(180, 1825))
+    d_cierre = (date(mes_cierre // 100, mes_cierre % 100, rng.randint(1, 28))
+                if mes_cierre else None)
+    d_adj = d_venta = None
+    if adjud:
+        # keep adjudication strictly inside (default, cierre] so the clean DB
+        # never trips the date-window check
+        hi = max((d_cierre - d_default).days - 1, 1) if d_cierre else 365
+        d_adj = d_default + timedelta(days=rng.randint(1, hi))
+        if rng.random() < 0.6:
+            d_venta = d_adj + timedelta(days=rng.randint(30, 300))
+    _iso = lambda d: d.isoformat() if d else None
+
     return {
         "ID_CONTR_CICLO_LGD": f"{contrato}_{period}",
         "ID_CONTRATO": contrato,
+        "ID_CLIENTE": f"CLI_{rng.randint(1, 400_000):06d}",
+        "TIPO_PERSONA": "J" if seg in ("CORP", "SME") else "F",
         "ID_FUSION_FINAL": id_fusion,
         "SW_FUSION": sw_fusion,
+        "MES_DEFAULT": mes_default,
+        "MES_CIERRE_CICLO": mes_cierre,
+        "FECHA_ALTA_CONTRATO": _iso(d_alta),
+        "FECHA_DEFAULT": _iso(d_default),
+        "FECHA_CIERRE_CICLO": _iso(d_cierre),
+        "FECHA_ADJUDICACION": _iso(d_adj),
+        "FECHA_VENTA_COLATERAL": _iso(d_venta),
+        "MES_VALORACION_COLATERAL": mes_valoracion,
+        "DIVISA": divisa,
+        "TIPO_CAMBIO": fx,
+        "VENTANA_OBSERVACION_YEARS": ventana,
+        "FLAG_NC": flag_nc,
         "SEGMENTO": seg,
         "CALIBRATION_SEGMENT": f"{seg}_{rng.choice(['HIGH','MED','LOW','MICRO'])}",
-        "PRODUCTO": rng.choice(PRODUCTS[seg]),
+        "PRODUCTO": producto,
         "MES_CICLO": period,
         "ENTIDAD_ORIGEN": rng.choice(ENTIDADES),
         "OR_EAD": or_ead,
@@ -168,10 +258,13 @@ def _base_row(rng: random.Random, idx: int) -> dict:
         "LGD_REALIZADA": round(rng.uniform(0.0, 0.95), 6),
         "STAGE_IFRS9": stage,
         "DPDS": dpds,
-        "CURE_FLAG": 1 if (cerrado and rng.random() < 0.6) else 0,
+        "CURE_FLAG": cure,
         "ESTADO_CICLO": estado,
         "TERMINACION": terminacion,
-        "CAUSA_DEFAULT": rng.choice(CAUSAS),
+        # default cause must agree with the DPD counter (CRR Art. 178):
+        # '90_DIAS_VENCIDO' is only a valid cause at >= 90 days past due.
+        "CAUSA_DEFAULT": ("90_DIAS_VENCIDO" if dpds >= 90
+                          else rng.choice(CAUSAS[1:])),
         "ADJUDICACION_FLAG": adj_flag,
         "ADJUDICACION_TIPO": adj_tipo,
         "ADJUDICACION_VALOR": adj_valor,
@@ -183,11 +276,13 @@ def _base_row(rng: random.Random, idx: int) -> dict:
         "INTERESES_ACUMULADOS": round(rng.uniform(0, 8000), 2),
         # placeholders filled by derive()
         "EAD": None, "EAD_BALANCE": None, "EAD_FUERA_BALANCE": None,
-        "EAD_TOTAL": None, "CCF_ESTIMADO": None, "LTV": None,
-        "VALOR_COLATERAL": None, "PD_SUELO": None, "PD_FINAL": None,
-        "PD_DOWNTURN": None, "LGD_SUELO": None, "MOC": None,
-        "LGD_CON_MOC": None, "LGD_FINAL": None, "K_IRB": None,
-        "M_VENCIMIENTO": None, "RWA": None, "ECL": None, "PROVISION": None,
+        "EAD_TOTAL": None, "EAD_TOTAL_EUR": None, "CCF_ESTIMADO": None,
+        "LTV": None, "VALOR_COLATERAL": None, "PD_SUELO": None,
+        "PD_FINAL": None, "PD_DOWNTURN": None, "LGD_SUELO": None,
+        "MOC_CAT_A": None, "MOC_CAT_B": None, "MOC_CAT_C": None, "MOC": None,
+        "LGD_CON_MOC": None, "LGD_FINAL": None, "LGD_DOWNTURN": None,
+        "K_IRB": None, "M_VENCIMIENTO": None, "RWA": None, "ECL": None,
+        "PROVISION": None,
     }
 
 
@@ -209,16 +304,31 @@ def derive(row: dict) -> dict:
     else:
         lgd_suelo = 0.0
     r["LGD_SUELO"] = lgd_suelo
-    moc = 0.05 * lgd_est
+    # MoC broken down by EBA GL 2017/16 §43-44 categories:
+    #   A = data/methodological deficiencies, B = representativeness,
+    #   C = general estimation error.  MOC must equal their sum.
+    moc_a = 0.02 * lgd_est
+    moc_b = 0.02 * lgd_est
+    moc_c = 0.01 * lgd_est
+    moc = moc_a + moc_b + moc_c
+    r["MOC_CAT_A"], r["MOC_CAT_B"], r["MOC_CAT_C"] = moc_a, moc_b, moc_c
     r["MOC"] = moc
     r["LGD_CON_MOC"] = lgd_est + moc
     r["LGD_FINAL"] = max(r["LGD_CON_MOC"], lgd_suelo)
+    # Downturn LGD must never undercut the long-run average (CRR Art. 181.1(b))
+    r["LGD_DOWNTURN"] = min(1.0, lgd_est * 1.15)
     # L6 EAD
     r["CCF_ESTIMADO"] = CCF
     r["EAD_BALANCE"] = r["OR_DISPTO"] if r["OR_DISPTO"] is not None else r["SALDO_PENDIENTE"]
     r["EAD_FUERA_BALANCE"] = CCF * (r["OR_DISBLE"] or 0.0)
     r["EAD_TOTAL"] = r["EAD_BALANCE"] + r["EAD_FUERA_BALANCE"]
     r["EAD"] = r["EAD_TOTAL"]
+    r["EAD_TOTAL_EUR"] = round(r["EAD_TOTAL"] * (r["TIPO_CAMBIO"] or 1.0), 2)
+    # Realised LGD backtesting formula (EBA GL 2017/16 §135) holds for
+    # closed cycles: LGD_REALIZADA = clamp(1 - (recup - costes)/EAD, 0, 1).
+    if r["ESTADO_CICLO"] == "CERRADO" and r["EAD_TOTAL"]:
+        loss = 1.0 - (r["RECUPERACION_ACUMULADA"] - r["COSTE_TOTAL_ACUMULADO"]) / r["EAD_TOTAL"]
+        r["LGD_REALIZADA"] = round(max(0.0, min(1.0, loss)), 6)
     # collateral derived
     vcol_in = r["VALOR_COLATERAL_INICIAL"] or 0.0
     hc = r["HAIRCUT"] or 0.0
@@ -234,41 +344,289 @@ def derive(row: dict) -> dict:
     return r
 
 
+# ── source (upstream) tables ────────────────────────────────────────────────
+# The final CICLOS_CALIBRADOS is derived from three source tables. Reproducing
+# them lets the harness exercise CROSS-TABLE checks: referential integrity
+# (every reported cycle has a parent contract) and reconciliation (the same
+# attribute reported in two tables must agree). Each is built from the same
+# clean rows, so every cross-table invariant holds by construction.
+
+_AUX_SCHEMA = {
+    "contratos": (
+        "ID_CONTRATO", "ID_CLIENTE", "TIPO_PERSONA", "SEGMENTO", "PRODUCTO",
+        "ENTIDAD_ORIGEN", "FECHA_ALTA_CONTRATO",
+    ),
+    "basilea_mensual": (
+        "ID_CONTRATO", "MES_CICLO", "OR_EAD", "OR_DISPTO", "OR_DISBLE",
+    ),
+    "colaterales": (
+        "ID_COLATERAL", "ID_CONTRATO", "COLATERAL_TIPO",
+        "VALOR_COLATERAL_INICIAL", "HAIRCUT", "FECHA_VALORACION",
+    ),
+}
+
+
+def _has_aux(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='contratos'"
+    ).fetchone()
+    return row is not None
+
+
+def _create_aux(conn: sqlite3.Connection) -> None:
+    conn.execute('CREATE TABLE contratos ("ID_CONTRATO" TEXT, "ID_CLIENTE" '
+                 'TEXT, "TIPO_PERSONA" TEXT, "SEGMENTO" TEXT, "PRODUCTO" TEXT, '
+                 '"ENTIDAD_ORIGEN" TEXT, "FECHA_ALTA_CONTRATO" TEXT)')
+    conn.execute('CREATE TABLE basilea_mensual ("ID_CONTRATO" TEXT, '
+                 '"MES_CICLO" INTEGER, "OR_EAD" REAL, "OR_DISPTO" REAL, '
+                 '"OR_DISBLE" REAL)')
+    conn.execute('CREATE TABLE colaterales ("ID_COLATERAL" TEXT, '
+                 '"ID_CONTRATO" TEXT, "COLATERAL_TIPO" TEXT, '
+                 '"VALOR_COLATERAL_INICIAL" REAL, "HAIRCUT" REAL, '
+                 '"FECHA_VALORACION" TEXT)')
+
+
+def _populate_aux(conn: sqlite3.Connection, rows: list[dict]) -> None:
+    seen: set[str] = set()
+    contr, bas, col = [], [], []
+    for r in rows:
+        cid = r["ID_CONTRATO"]
+        if cid not in seen:
+            seen.add(cid)
+            contr.append([r.get(c) for c in _AUX_SCHEMA["contratos"]])
+        bas.append([r.get(c) for c in _AUX_SCHEMA["basilea_mensual"]])
+        if r["COLATERAL_TIPO"] != "NINGUNA":
+            mv = r["MES_VALORACION_COLATERAL"]
+            col.append([
+                f"COL_{cid}", cid, r["COLATERAL_TIPO"],
+                r["VALOR_COLATERAL_INICIAL"], r["HAIRCUT"],
+                f"{mv // 100:04d}-{mv % 100:02d}-15" if mv else None,
+            ])
+    conn.executemany(f'INSERT INTO contratos VALUES ({",".join("?"*7)})', contr)
+    conn.executemany(f'INSERT INTO basilea_mensual VALUES ({",".join("?"*5)})', bas)
+    conn.executemany(f'INSERT INTO colaterales VALUES ({",".join("?"*6)})', col)
+    conn.commit()
+
+
+# ── monthly evolution panel ─────────────────────────────────────────────────
+# One row per (cycle, month): the temporal evolution of a defaulted cycle. This
+# is the table that forces PANEL checks — invariants that only exist *across
+# months* (monotone cumulative recovery, contiguous periods, IFRS-9 stage
+# transitions, PD=1 while in default). A single snapshot cannot express them.
+
+PANEL_TABLE = "evolucion_mensual"
+PANEL_COLS = (
+    "ID_CONTR_CICLO_LGD", "ID_CONTRATO", "SEQ", "MES_CICLO", "DPDS",
+    "STAGE_IFRS9", "SALDO_PENDIENTE", "RECUPERACION_ACUMULADA",
+    "COSTE_TOTAL_ACUMULADO", "PD_ESTIMADA", "CURE_FLAG", "ESTADO_CICLO",
+)
+
+
+def _create_panel(conn: sqlite3.Connection) -> None:
+    types = {"SEQ": "INTEGER", "MES_CICLO": "INTEGER", "DPDS": "INTEGER",
+             "STAGE_IFRS9": "INTEGER", "CURE_FLAG": "INTEGER",
+             "SALDO_PENDIENTE": "REAL", "RECUPERACION_ACUMULADA": "REAL",
+             "COSTE_TOTAL_ACUMULADO": "REAL", "PD_ESTIMADA": "REAL"}
+    defs = ", ".join(f'"{c}" {types.get(c, "TEXT")}' for c in PANEL_COLS)
+    conn.execute(f'CREATE TABLE {PANEL_TABLE} ({defs})')
+
+
+def _gen_series(rng: random.Random, pk: str, contrato: str,
+                start_period: int, ead0: float) -> list[dict]:
+    """A guideline-compliant monthly evolution for one defaulted cycle.
+
+    Invariants (all hold by construction):
+      * months contiguous (no gaps), unique per (cycle, month);
+      * DPD non-decreasing while in default; only resets when CURE_FLAG=1;
+      * IFRS-9 stage never improves unless CURE_FLAG=1;
+      * PD = 1.0 while STAGE=3 (in default) — CRR Art. 178 / IFRS 9;
+      * cumulative recovery and cost non-decreasing; balance non-increasing.
+    """
+    n = rng.randint(3, 6)
+    cures = rng.random() < 0.3
+    dpd0 = rng.choice([90, 100, 120])
+    saldo = ead0
+    recup = 0.0
+    coste = round(rng.uniform(0, 200), 2)
+    rows: list[dict] = []
+    mes = start_period
+    for seq in range(1, n + 1):
+        last = seq == n
+        if cures and last:                       # cured on the final month
+            dpd_v, stage, cure, estado, pd_v = 0, 1, 1, "CERRADO", round(
+                rng.uniform(0.05, 0.30), 4)
+        else:
+            dpd_v, stage, cure, estado, pd_v = (
+                dpd0 + 30 * (seq - 1), 3, 0, "ESTIMACION", 1.0)
+        recup += round(rng.uniform(0, 0.05) * ead0, 2)     # non-decreasing
+        coste += round(rng.uniform(0, 0.01) * ead0, 2)     # non-decreasing
+        saldo = max(0.0, saldo - round(rng.uniform(0, 0.05) * ead0, 2))
+        rows.append({
+            "ID_CONTR_CICLO_LGD": pk, "ID_CONTRATO": contrato, "SEQ": seq,
+            "MES_CICLO": mes, "DPDS": dpd_v, "STAGE_IFRS9": stage,
+            "SALDO_PENDIENTE": round(saldo, 2),
+            "RECUPERACION_ACUMULADA": round(recup, 2),
+            "COSTE_TOTAL_ACUMULADO": round(coste, 2), "PD_ESTIMADA": pd_v,
+            "CURE_FLAG": cure, "ESTADO_CICLO": estado,
+        })
+        mes = month_shift(mes, 1)
+    return rows
+
+
+def _insert_series(conn: sqlite3.Connection, series: list[dict]) -> None:
+    ins = f'INSERT INTO {PANEL_TABLE} VALUES ({",".join("?" * len(PANEL_COLS))})'
+    conn.executemany(ins, [[r.get(c) for c in PANEL_COLS] for r in series])
+
+
+def _populate_panel(conn: sqlite3.Connection, rows: list[dict],
+                    rng: random.Random) -> None:
+    """One compliant monthly series per clean cycle."""
+    for r in rows:
+        series = _gen_series(rng, r["ID_CONTR_CICLO_LGD"], r["ID_CONTRATO"],
+                             r["MES_DEFAULT"], r["EAD_TOTAL"] or 10_000.0)
+        _insert_series(conn, series)
+    conn.commit()
+
+
 def build_clean_conn(n_rows: int = 2000, seed: int = 42,
                      table: str = TABLE_NAME) -> sqlite3.Connection:
-    """Build an in-memory clean DB with all invariants satisfied."""
+    """Build an in-memory clean DB (final table + source tables + monthly
+    panel) with all single-table, cross-table AND temporal invariants
+    satisfied by construction."""
     rng = random.Random(seed)
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute(create_table_sql(table))
     placeholders = ", ".join(["?"] * len(COLUMNS))
     ins = f'INSERT INTO "{table}" VALUES ({placeholders})'
-    batch = []
-    for i in range(1, n_rows + 1):
-        row = derive(_base_row(rng, i))           # derive ONCE per row
-        batch.append([row.get(c) for c in COLUMNS])
-        if len(batch) >= 1000:
-            conn.executemany(ins, batch); batch.clear()
-    if batch:
-        conn.executemany(ins, batch)
+    rows = [derive(_base_row(rng, i)) for i in range(1, n_rows + 1)]
+    conn.executemany(ins, [[r.get(c) for c in COLUMNS] for r in rows])
+    if table == TABLE_NAME:
+        _create_aux(conn)
+        _populate_aux(conn, rows)
+        _create_panel(conn)
+        _populate_panel(conn, rows, rng)
     conn.commit()
     return conn
 
 
+def plant_defect(conn: sqlite3.Connection, defect: Defect, *,
+                 seed: int = 42, k: int = 1,
+                 table: str = TABLE_NAME) -> list[str]:
+    """Plant ``k`` violations of ``defect`` into ``conn``; return their PKs.
+
+    Each planted row is derived from a *different* deterministic base row so
+    the violation space is sampled at k points instead of one (a check must
+    detect the invariant, not memorise a single row).
+
+    Uniqueness defects (``plants_duplicate_pk``) are planted by re-inserting
+    verbatim copies of existing rows — the only way to create a true PK
+    duplicate without breaking any other invariant.
+
+    Cross-table defects (``plants_from_existing``) are planted by copying an
+    *existing clean row* (so its parents in contratos/basilea/colaterales stay
+    valid), applying the mutation to break exactly one cross-table invariant,
+    and re-keying it. ``pick_where`` restricts which clean rows are eligible
+    (e.g. only secured rows for a collateral reconciliation).
+    """
+    placeholders = ", ".join(["?"] * len(COLUMNS))
+    ins = f'INSERT INTO "{table}" VALUES ({placeholders})'
+    planted: list[str] = []
+
+    if defect.target_table == PANEL_TABLE:
+        # Panel defect: generate a fresh compliant monthly series, break one
+        # temporal invariant, tag it with a dirty cycle key, and insert the
+        # whole series into the panel. Attribution is by ID_CONTR_CICLO_LGD.
+        for i in range(k):
+            rng = random.Random(seed + 4241 + 17 * i)
+            pk = f"__DIRTY_{defect.defect_id}_{i}__"
+            series = _gen_series(rng, pk, f"CONT_{defect.defect_id}_{i}",
+                                 202001, rng.uniform(20_000, 500_000))
+            series = defect.panel_mutate(series, rng)
+            _insert_series(conn, series)
+            planted.append(pk)
+        conn.commit()
+        return planted
+
+    if defect.plants_duplicate_pk:
+        rows = conn.execute(
+            f'SELECT * FROM "{table}" ORDER BY {PK_COLUMN} LIMIT ?', (k,)
+        ).fetchall()
+        for row in rows:
+            conn.execute(ins, list(row))
+            planted.append(row[PK_COLUMN])
+        conn.commit()
+        return planted
+
+    if defect.plants_from_existing:
+        where = f"WHERE {defect.pick_where}" if defect.pick_where else ""
+        rows = conn.execute(
+            f'SELECT * FROM "{table}" {where} ORDER BY {PK_COLUMN} LIMIT ?',
+            (k,),
+        ).fetchall()
+        for i, row in enumerate(rows):
+            dirty = defect.mutate(dict(row))
+            dirty[PK_COLUMN] = f"__DIRTY_{defect.defect_id}_{i}__"
+            conn.execute(ins, [dirty.get(c) for c in COLUMNS])
+            planted.append(dirty[PK_COLUMN])
+        conn.commit()
+        return planted
+
+    dirties: list[dict] = []
+    for i in range(k):
+        rng = random.Random(seed + 7919 + 31 * i)
+        base = derive(_base_row(rng, 1_000_000 + i))
+        dirty = defect.mutate(base)
+        dirty[PK_COLUMN] = f"__DIRTY_{defect.defect_id}_{i}__"
+        # Globally-unique contract id so this row's registered parent is its
+        # own — two defects planting off the same base idx must not collide in
+        # the contratos/basilea parent tables (which would fabricate spurious
+        # cross-table mismatches).
+        dirty["ID_CONTRATO"] = f"CONT_{defect.defect_id}_{i}"
+        conn.execute(ins, [dirty.get(c) for c in COLUMNS])
+        dirties.append(dirty)
+        planted.append(dirty[PK_COLUMN])
+    # Register matching parent rows for the fresh contracts so a single-table
+    # defect does NOT read as a cross-table orphan/mismatch. Parents are built
+    # from the dirty row itself, so they AGREE with what the cycle reports —
+    # only the deliberate cross-table defects (plants_from_existing) leave the
+    # real parent untouched and thereby mismatch.
+    if table == TABLE_NAME and _has_aux(conn):
+        _populate_aux(conn, dirties)
+    conn.commit()
+    return planted
+
+
+def build_trap(defect: Defect, n_rows: int = 2000, seed: int = 42,
+               table: str = TABLE_NAME, k: int = 1,
+               ) -> tuple[sqlite3.Connection, list[str]]:
+    """Clean DB + ``k`` rows mutated by ``defect``. Returns (conn, planted PKs)."""
+    clean = build_clean_conn(n_rows, seed, table)
+    planted = plant_defect(clean, defect, seed=seed, k=k, table=table)
+    return clean, planted
+
+
 def build_trap_conn(defect: Defect, n_rows: int = 2000, seed: int = 42,
                     table: str = TABLE_NAME) -> sqlite3.Connection:
-    """Clean DB + ONE row mutated by ``defect`` (fresh PK appended last)."""
-    clean = build_clean_conn(n_rows, seed, table)
-    # mutate a deterministic base row so the planted defect is reproducible
-    rng = random.Random(seed + 7919)
-    base = derive(_base_row(rng, 1_000_000))
-    dirty = defect.mutate(base)
-    dirty[PK_COLUMN] = f"__DIRTY_{defect.defect_id}__"
-    placeholders = ", ".join(["?"] * len(COLUMNS))
-    clean.execute(f'INSERT INTO "{table}" VALUES ({placeholders})',
-                  [dirty.get(c) for c in COLUMNS])
-    clean.commit()
-    return clean
+    """Backward-compatible single-row trap (see ``build_trap``)."""
+    return build_trap(defect, n_rows, seed, table, k=1)[0]
+
+
+def build_mixed(defects: list[Defect], n_rows: int = 2000, seed: int = 42,
+                table: str = TABLE_NAME, k: int = 1,
+                ) -> tuple[sqlite3.Connection, dict[str, list[str]]]:
+    """One DB with ALL defects planted simultaneously (production-like).
+
+    Returns (conn, {defect_id: [planted PKs]}). Used for the confusion
+    matrix: which checks fire on which defects' rows when every defect is
+    present at once.
+    """
+    conn = build_clean_conn(n_rows, seed, table)
+    planted: dict[str, list[str]] = {}
+    for j, d in enumerate(defects):
+        planted[d.defect_id] = plant_defect(
+            conn, d, seed=seed + 104_729 * (j + 1), k=k, table=table)
+    return conn, planted
 
 
 # ── CLI: dump clean + per-defect trap DBs to disk ───────────────────────────
@@ -299,6 +657,10 @@ def main() -> None:
         trap = build_trap_conn(d, args.rows, args.seed)
         _dump(trap, args.out / f"trap_{d.defect_id}.db")
     print(f"Wrote {len(DEFECTS)} trap DBs (trap_<id>.db) to {args.out}/")
+
+    mixed, planted = build_mixed(DEFECTS, args.rows, args.seed)
+    _dump(mixed, args.out / "mixed.db")
+    print(f"mixed.db  → all {len(planted)} defects planted simultaneously")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ project a normalised violation rowset.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime
@@ -216,11 +217,12 @@ def build_dashboard_query(
     parts: list[str] = []
     for r in rows:
         inner = r["sql"].strip().rstrip(";").strip()
-        alias = "_" + r["check_id"].replace("-", "_")
+        alias = "_" + re.sub(r"[^0-9A-Za-z_]", "_", r["check_id"])
         sev = _SEVERITY_CANON.get(r["severity"], r["severity"])
         name_lit = r["name"].replace("'", "''")
+        check_id_lit = r["check_id"].replace("'", "''")
         parts.append(
-            f"SELECT '{r['check_id']}' AS check_id, "
+            f"SELECT '{check_id_lit}' AS check_id, "
             f"'{name_lit}' AS check_name, "
             f"'{sev}' AS severity, "
             f"{alias}.\"{PK_COLUMN}\" AS pk "
@@ -232,6 +234,12 @@ def build_dashboard_query(
 def export_validated(conn: sqlite3.Connection) -> list[dict]:
     """All validated checks as plain dicts — fuels the UI's copy-all button."""
     return list_checks(conn, status="validated")
+
+
+def delete_check(conn: sqlite3.Connection, check_id: str) -> bool:
+    cur = conn.execute("DELETE FROM checks WHERE check_id=?", (check_id,))
+    conn.commit()
+    return cur.rowcount > 0
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────

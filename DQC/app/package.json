@@ -22,5 +22,8 @@
     "@angular/cli": "^18.0.0",
     "@angular/compiler-cli": "^18.0.0",
     "typescript": "~5.4.0"
+  },
+  "overrides": {
+    "chokidar": "^4.0.0"
   }
 }

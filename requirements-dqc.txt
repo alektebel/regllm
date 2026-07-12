@@ -1,0 +1,26 @@
+# Minimal runtime dependencies for the DQC (Data Quality Check) generator
+# API — the production image built from the root Dockerfile and deployed by
+# .github/workflows/deploy.yml + DQC/terraform (REGLLM_ROUTERS=dqc).
+#
+# Deliberately excludes torch, kuzu, chromadb, scikit-learn, umap-learn,
+# pandas, openpyxl: those back the SAS field-diff explainer, the interactive
+# knowledge-graph builder, and the embedding/tabular routers, none of which
+# are mounted or reachable when REGLLM_ROUTERS=dqc. See docs/DEPLOYMENT.md.
+#
+# For local full-stack development (all routers, tests, notebooks), use
+# requirements.txt instead — it is a superset of this file.
+
+# Core API
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+python-multipart>=0.0.9
+
+# Regulation knowledge graph (static data/regulation/graph.json — pure
+# Python, no compiled graph-DB backend needed for read-only traversal)
+networkx>=3.3
+
+# LLM transport (Ollama / LiteRT-LM OpenAI-compatible clients + Bedrock)
+httpx>=0.27
+pyyaml>=6.0
+boto3>=1.34

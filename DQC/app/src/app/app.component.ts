@@ -1,17 +1,15 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChatComponent } from './chat/chat.component';
-import { TestsComponent } from './tests/tests.component';
 import { DqcService } from './services/dqc.service';
 import { CheckRecord } from './models/dqc.model';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, ChatComponent, TestsComponent],
+  imports: [CommonModule, ChatComponent],
   template: `
     <div class="shell">
-      <!-- Left: DQC sidebar -->
       <aside class="sidebar">
         <div class="sidebar-header">
           <h2>DQCs</h2>
@@ -21,34 +19,6 @@ import { CheckRecord } from './models/dqc.model';
             <span class="cnt cnt-rejected">{{ rejected.length }}</span>
           </div>
         </div>
-
-        @if (batchRunning || batchTotal > 0) {
-          <div class="batch-progress">
-            <div class="batch-info">
-              <span class="batch-label">
-                @if (batchRunning) {
-                  {{ batchField }}
-                } @else {
-                  Completado
-                }
-              </span>
-              <span class="batch-count">{{ batchCompleted }}/{{ batchTotal }}</span>
-            </div>
-            <div class="progress-track">
-              <div class="progress-fill"
-                   [style.width.%]="batchTotal ? (batchCompleted / batchTotal) * 100 : 0">
-              </div>
-            </div>
-            <span class="batch-generated">{{ batchGenerated }} DQCs generados</span>
-            @if (!batchRunning) {
-              <button class="batch-reset" (click)="resetBatch()">Nuevo lote</button>
-            }
-          </div>
-        } @else {
-          <button class="batch-btn" (click)="startBatch()" [disabled]="batchRunning">
-            Generar DQCs para todos los campos
-          </button>
-        }
 
         <div class="filter-row">
           <button class="filter-btn" [class.active]="filter === 'all'"
@@ -81,13 +51,12 @@ import { CheckRecord } from './models/dqc.model';
           } @empty {
             <div class="dqc-empty">
               Sin chequeos{{ filter !== 'all' ? ' en estado ' + filter : '' }}.
-              Genera nuevos desde el chat.
+              Genera nuevos desde el panel derecho.
             </div>
           }
         </div>
       </aside>
 
-      <!-- Center: detail panel (visible when a DQC is selected) -->
       @if (selected) {
         <section class="detail">
           <div class="detail-toolbar">
@@ -171,531 +140,122 @@ import { CheckRecord } from './models/dqc.model';
         </section>
       }
 
-      <!-- Right: chat + live LLM output -->
       <main class="main" [class.has-detail]="!!selected">
-        @if (batchRunning || llmOutput) {
-          <div class="llm-panel">
-            <div class="llm-header">
-              <span class="llm-title">
-                @if (batchRunning) {
-                  LLM — {{ batchField }}
-                } @else {
-                  LLM — completado
-                }
-              </span>
-              @if (!batchRunning) {
-                <button class="llm-close" (click)="llmOutput = ''">Cerrar</button>
-              }
-            </div>
-            <pre class="llm-output" #llmOutputEl>{{ llmOutput }}</pre>
-          </div>
-        }
-        <div class="view-tabs">
-          <button class="view-tab" [class.active]="view === 'chat'" (click)="view = 'chat'">Chat</button>
-          <button class="view-tab" [class.active]="view === 'tests'" (click)="view = 'tests'">Tests en lote</button>
-        </div>
-        @if (view === 'chat') {
-          <app-chat (dqcGenerated)="onDqcGenerated()" />
-        } @else {
-          <app-tests (testsGenerated)="onDqcGenerated()" />
-        }
+        <app-chat (dqcGenerated)="onDqcGenerated()" />
       </main>
     </div>
   `,
   styles: [`
     :host { display: block; height: 100vh; overflow: hidden; }
-
-    .shell {
-      display: flex;
-      height: 100%;
-      background: #0f0f1a;
-    }
-
-    /* ── Sidebar ── */
+    .shell { display: flex; height: 100%; background: #0f0f1a; }
     .sidebar {
-      width: 320px;
-      min-width: 320px;
-      display: flex;
-      flex-direction: column;
-      background: #161625;
-      border-right: 1px solid #2a2a40;
-      color: #ccc;
+      width: 320px; min-width: 320px; display: flex; flex-direction: column;
+      background: #161625; border-right: 1px solid #2a2a40; color: #ccc;
     }
-
     .sidebar-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 16px 12px;
-      border-bottom: 1px solid #2a2a40;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 16px 12px; border-bottom: 1px solid #2a2a40;
     }
-    .sidebar-header h2 {
-      margin: 0;
-      font-size: 16px;
-      color: #fff;
-      font-weight: 600;
-    }
-    .sidebar-counts {
-      display: flex;
-      gap: 6px;
-    }
-    .cnt {
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 10px;
-    }
+    .sidebar-header h2 { margin: 0; font-size: 16px; color: #fff; font-weight: 600; }
+    .sidebar-counts { display: flex; gap: 6px; }
+    .cnt { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
     .cnt-pending   { background: #f9a825; color: #000; }
     .cnt-validated { background: #2e7d32; color: #fff; }
     .cnt-rejected  { background: #c62828; color: #fff; }
-
-    /* ── Batch ── */
-    .batch-btn {
-      display: block;
-      width: calc(100% - 24px);
-      margin: 10px 12px;
-      padding: 10px;
-      background: #6c7bbf;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .batch-btn:hover:not(:disabled) { background: #5a69a8; }
-    .batch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    .batch-progress {
-      padding: 10px 12px;
-      border-bottom: 1px solid #2a2a40;
-    }
-    .batch-info {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 6px;
-    }
-    .batch-label {
-      font-size: 11px;
-      color: #aaa;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 200px;
-    }
-    .batch-count {
-      font-size: 11px;
-      font-weight: 700;
-      color: #6c7bbf;
-    }
-    .progress-track {
-      height: 6px;
-      background: #2a2a40;
-      border-radius: 3px;
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      background: #6c7bbf;
-      border-radius: 3px;
-      transition: width 0.3s ease;
-    }
-    .batch-generated {
-      display: block;
-      font-size: 10px;
-      color: #666;
-      margin-top: 4px;
-      text-align: right;
-    }
-
-    .filter-row {
-      display: flex;
-      gap: 0;
-      padding: 8px 12px;
-      border-bottom: 1px solid #2a2a40;
-    }
+    .filter-row { display: flex; padding: 8px 12px; border-bottom: 1px solid #2a2a40; }
     .filter-btn {
-      flex: 1;
-      background: transparent;
-      border: 1px solid #2a2a40;
-      color: #888;
-      font-size: 11px;
-      padding: 5px 0;
-      cursor: pointer;
-      transition: all 0.15s;
+      flex: 1; background: transparent; border: 1px solid #2a2a40; color: #888;
+      font-size: 11px; padding: 5px 0; cursor: pointer;
     }
     .filter-btn:first-child { border-radius: 4px 0 0 4px; }
     .filter-btn:last-child  { border-radius: 0 4px 4px 0; }
     .filter-btn:not(:last-child) { border-right: none; }
-    .filter-btn.active {
-      background: #6c7bbf;
-      color: #fff;
-      border-color: #6c7bbf;
-    }
-    .filter-btn:hover:not(.active) { background: #1e1e35; color: #ccc; }
-
+    .filter-btn.active { background: #6c7bbf; color: #fff; border-color: #6c7bbf; }
     .copy-all-btn {
-      display: block;
-      width: calc(100% - 24px);
-      margin: 8px 12px 0;
-      padding: 8px;
-      background: transparent;
-      color: #6c7bbf;
-      border: 1px solid #2a2a40;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s;
+      display: block; width: calc(100% - 24px); margin: 8px 12px 0; padding: 8px;
+      background: transparent; color: #6c7bbf; border: 1px solid #2a2a40;
+      border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
     }
-    .copy-all-btn:hover:not(:disabled) { background: #1e1e35; }
-    .copy-all-btn:disabled { color: #4caf50; border-color: #2e7d32; cursor: default; }
-
-    .dqc-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
-    }
-
+    .copy-all-btn:disabled { color: #4caf50; border-color: #2e7d32; }
+    .dqc-list { flex: 1; overflow-y: auto; padding: 8px; }
     .dqc-item {
-      padding: 10px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      border-left: 3px solid transparent;
-      margin-bottom: 4px;
-      transition: background 0.12s;
+      padding: 10px 12px; border-radius: 6px; cursor: pointer;
+      border-left: 3px solid transparent; margin-bottom: 4px;
     }
-    .dqc-item:hover { background: #1e1e35; }
-    .dqc-item.selected { background: #1e1e35; border-left-color: #6c7bbf; }
+    .dqc-item:hover, .dqc-item.selected { background: #1e1e35; }
+    .dqc-item.selected { border-left-color: #6c7bbf; }
     .dqc-item[data-status="pending"]   { border-left-color: #f9a825; }
     .dqc-item[data-status="validated"] { border-left-color: #2e7d32; }
     .dqc-item[data-status="rejected"]  { border-left-color: #c62828; }
-
-    .dqc-item-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-    }
-    .dqc-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: #e0e0e0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .sev-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
+    .dqc-item-head { display: flex; align-items: center; justify-content: space-between; }
+    .dqc-name { font-size: 12px; font-weight: 600; color: #e0e0e0; }
+    .sev-dot { width: 8px; height: 8px; border-radius: 50%; }
     .sev-HIGH { background: #c62828; }
     .sev-MED  { background: #f9a825; }
     .sev-LOW  { background: #6c7bbf; }
-
-    .dqc-item-desc {
-      margin: 4px 0 0;
-      font-size: 11px;
-      color: #888;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
+    .dqc-item-desc { margin: 4px 0 0; font-size: 11px; color: #888; }
     .dqc-item-var {
-      font-size: 10px;
-      color: #e65100;
-      background: rgba(230,81,0,0.1);
-      padding: 1px 6px;
-      border-radius: 3px;
-      margin-top: 4px;
-      display: inline-block;
+      font-size: 10px; color: #e65100; background: rgba(230,81,0,0.1);
+      padding: 1px 6px; border-radius: 3px; margin-top: 4px; display: inline-block;
     }
-
-    .dqc-empty {
-      text-align: center;
-      color: #666;
-      font-size: 13px;
-      padding: 32px 16px;
-    }
-
-    /* ── Detail panel ── */
+    .dqc-empty { text-align: center; color: #666; font-size: 13px; padding: 32px 16px; }
     .detail {
-      width: 480px;
-      min-width: 480px;
-      display: flex;
-      flex-direction: column;
-      background: #12121f;
-      border-right: 1px solid #2a2a40;
-      color: #ccc;
+      width: 480px; min-width: 480px; display: flex; flex-direction: column;
+      background: #12121f; border-right: 1px solid #2a2a40; color: #ccc;
     }
-
     .detail-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 16px;
-      border-bottom: 1px solid #2a2a40;
-      gap: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px; border-bottom: 1px solid #2a2a40;
     }
-    .detail-close {
-      background: transparent;
-      border: none;
-      color: #6c7bbf;
-      font-size: 13px;
-      cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .detail-close:hover { background: #1e1e35; }
+    .detail-close { background: transparent; border: none; color: #6c7bbf; cursor: pointer; }
     .detail-actions { display: flex; gap: 8px; }
-    .btn-validate {
-      background: #2e7d32;
-      color: #fff;
-      border: none;
-      padding: 6px 16px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .btn-validate:hover { background: #1b5e20; }
-    .btn-reject {
-      background: transparent;
-      color: #c62828;
-      border: 1px solid #c62828;
-      padding: 6px 16px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .btn-reject:hover { background: rgba(198,40,40,0.1); }
-    .btn-delete {
-      background: #c62828;
-      color: #fff;
-      border: none;
-      padding: 6px 16px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .btn-delete:hover { background: #b71c1c; }
-    .status-label {
-      font-size: 12px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 4px;
-    }
+    .btn-validate { background: #2e7d32; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+    .btn-reject { background: transparent; color: #c62828; border: 1px solid #c62828; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+    .btn-delete { background: #c62828; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+    .status-label { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; }
     .status-label[data-status="validated"] { background: rgba(46,125,50,0.15); color: #4caf50; }
     .status-label[data-status="rejected"]  { background: rgba(198,40,40,0.15); color: #ef5350; }
-
-    .detail-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-    }
-    .detail-head h3 {
-      margin: 0 0 8px;
-      font-size: 16px;
-      color: #fff;
-    }
-    .detail-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 12px;
-    }
-    .badge {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
+    .detail-body { flex: 1; overflow-y: auto; padding: 16px; }
+    .detail-head h3 { margin: 0 0 8px; font-size: 16px; color: #fff; }
+    .detail-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; }
     .sev-high { background: #c62828; color: #fff; }
     .sev-med  { background: #f9a825; color: #000; }
     .sev-low  { background: #6c7bbf; color: #fff; }
     .badge-cat { background: #2a2a40; color: #aaa; }
-    .badge-var {
-      font-size: 11px;
-      background: rgba(230,81,0,0.15);
-      color: #ff9800;
-      padding: 2px 8px;
-      border-radius: 10px;
-    }
-
-    .detail-desc {
-      font-size: 14px;
-      color: #bbb;
-      margin: 0 0 16px;
-      line-height: 1.5;
-    }
-
-    .detail-body h4 {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #666;
-      margin: 0 0 6px;
-    }
-
+    .badge-var { font-size: 11px; background: rgba(230,81,0,0.15); color: #ff9800; padding: 2px 8px; border-radius: 10px; }
+    .detail-desc { font-size: 14px; color: #bbb; margin: 0 0 16px; line-height: 1.5; }
+    .detail-body h4 { font-size: 12px; text-transform: uppercase; color: #666; margin: 0 0 6px; }
     .sql-block {
-      background: #0a0a14;
-      color: #d4d4d4;
-      padding: 12px;
-      border-radius: 6px;
-      font-family: 'SF Mono', Monaco, Menlo, monospace;
-      font-size: 12px;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      margin: 0 0 16px;
-      border: 1px solid #2a2a40;
+      background: #0a0a14; color: #d4d4d4; padding: 12px; border-radius: 6px;
+      font-family: 'SF Mono', Monaco, Menlo, monospace; font-size: 12px;
+      overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+      margin: 0 0 16px; border: 1px solid #2a2a40;
     }
-
-    .detail-meta {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .meta-row {
-      font-size: 12px;
-      color: #999;
-      line-height: 1.5;
-    }
+    .detail-meta { display: flex; flex-direction: column; gap: 8px; }
+    .meta-row { font-size: 12px; color: #999; }
     .meta-row strong { color: #ccc; }
-    .field-tag {
-      font-size: 11px;
-      background: #1e1e35;
-      padding: 1px 6px;
-      border-radius: 3px;
-      margin-left: 4px;
-    }
+    .field-tag { font-size: 11px; background: #1e1e35; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
     .justification { font-style: italic; color: #888; }
-
-    .batch-reset {
-      display: block;
-      width: 100%;
-      margin-top: 6px;
-      padding: 4px;
-      background: transparent;
-      border: 1px solid #2a2a40;
-      color: #888;
-      border-radius: 4px;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    .batch-reset:hover { background: #1e1e35; color: #ccc; }
-
-    /* ── Main (chat) ── */
-    .main {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .view-tabs {
-      display: flex;
-      border-bottom: 1px solid #2a2a40;
-      background: #161625;
-    }
-    .view-tab {
-      background: transparent;
-      border: none;
-      color: #666;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 10px 20px;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.15s;
-    }
-    .view-tab:hover { color: #ccc; }
-    .view-tab.active {
-      color: #6c7bbf;
-      border-bottom-color: #6c7bbf;
-    }
-
-    /* ── Live LLM output ── */
-    .llm-panel {
-      border-bottom: 1px solid #2a2a40;
-      background: #0a0a14;
-      display: flex;
-      flex-direction: column;
-      max-height: 40vh;
-    }
-    .llm-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 16px;
-      border-bottom: 1px solid #2a2a40;
-      background: #161625;
-    }
-    .llm-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: #6c7bbf;
-    }
-    .llm-close {
-      background: transparent;
-      border: 1px solid #2a2a40;
-      color: #888;
-      font-size: 11px;
-      padding: 2px 10px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .llm-close:hover { background: #1e1e35; color: #ccc; }
-    .llm-output {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px 16px;
-      font-family: 'SF Mono', Monaco, Menlo, monospace;
-      font-size: 12px;
-      color: #a0a0b0;
-      line-height: 1.5;
-      white-space: pre-wrap;
-      word-break: break-word;
-      margin: 0;
-    }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   `],
 })
 export class AppComponent implements OnInit, OnDestroy {
-  @ViewChild('llmOutputEl') llmOutputEl?: ElementRef<HTMLPreElement>;
-
   checks: CheckRecord[] = [];
   selected: CheckRecord | null = null;
   filter: 'all' | 'pending' | 'validated' | 'rejected' = 'all';
-  view: 'chat' | 'tests' = 'chat';
-
-  batchRunning = false;
-  batchTotal = 0;
-  batchCompleted = 0;
-  batchField = '';
-  batchGenerated = 0;
-  llmOutput = '';
   copiedAll = false;
   copyAllMsg = '';
-  private eventSource: EventSource | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private dqc: DqcService) {}
 
   ngOnInit(): void {
     this.loadChecks();
-    // Poll for new checks every 4s so the sidebar stays in sync
     this.refreshTimer = setInterval(() => this.loadChecks(), 4000);
   }
 
   ngOnDestroy(): void {
-    this.eventSource?.close();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
   }
 
@@ -720,94 +280,18 @@ export class AppComponent implements OnInit, OnDestroy {
 
   setStatus(c: CheckRecord, status: 'validated' | 'rejected'): void {
     this.dqc.setStatus(c.check_id, status).subscribe({
-      next: (updated) => {
-        this.selected = updated;
-        this.loadChecks();
-      },
+      next: (updated) => { this.selected = updated; this.loadChecks(); },
     });
   }
 
   deleteCheck(c: CheckRecord): void {
     this.dqc.delete(c.check_id).subscribe({
-      next: () => {
-        this.selected = null;
-        this.loadChecks();
-      },
+      next: () => { this.selected = null; this.loadChecks(); },
     });
   }
 
-  startBatch(): void {
-    this.batchRunning = true;
-    this.batchCompleted = 0;
-    this.batchGenerated = 0;
-    this.llmOutput = '';
+  onDqcGenerated(): void { this.loadChecks(); }
 
-    const es = this.dqc.batchStream();
-    this.eventSource = es;
-
-    es.addEventListener('start', (e: any) => {
-      const d = JSON.parse(e.data);
-      this.batchTotal = d.total;
-    });
-
-    es.addEventListener('field_start', (e: any) => {
-      const d = JSON.parse(e.data);
-      this.batchField = d.field;
-      this.llmOutput = '';
-    });
-
-    es.addEventListener('token', (e: any) => {
-      const d = JSON.parse(e.data);
-      this.llmOutput += d.token;
-      // Auto-scroll
-      setTimeout(() => {
-        const el = this.llmOutputEl?.nativeElement;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
-    });
-
-    es.addEventListener('field_done', (e: any) => {
-      const d = JSON.parse(e.data);
-      this.batchCompleted = d.index + 1;
-      this.batchGenerated = d.total_generated;
-      this.loadChecks();
-    });
-
-    es.addEventListener('field_error', (e: any) => {
-      const d = JSON.parse(e.data);
-      this.batchCompleted++;
-      this.llmOutput += `\n[ERROR] ${d.field}: ${d.error}`;
-    });
-
-    es.addEventListener('done', () => {
-      this.batchRunning = false;
-      this.batchField = '';
-      es.close();
-      this.eventSource = null;
-      this.loadChecks();
-    });
-
-    es.onerror = () => {
-      this.batchRunning = false;
-      es.close();
-      this.eventSource = null;
-    };
-  }
-
-  resetBatch(): void {
-    this.batchTotal = 0;
-    this.batchCompleted = 0;
-    this.batchGenerated = 0;
-    this.llmOutput = '';
-  }
-
-  onDqcGenerated(): void {
-    this.loadChecks();
-  }
-
-  // Copy every validated check query plus the UNION ALL dashboard query in a
-  // single block. The /dashboard endpoint only returns data once no visible
-  // pending checks remain; otherwise it comes back empty.
   copyAll(): void {
     this.dqc.dashboard().subscribe({
       next: (d) => {
@@ -828,8 +312,6 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private loadChecks(): void {
-    this.dqc.list().subscribe({
-      next: (cs) => { this.checks = cs; },
-    });
+    this.dqc.list().subscribe({ next: (cs) => { this.checks = cs; } });
   }
 }

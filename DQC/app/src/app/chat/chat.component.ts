@@ -2,7 +2,7 @@ import { Component, EventEmitter, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DqcService } from '../services/dqc.service';
-import { ChatMessage, RAGSource } from '../models/dqc.model';
+import { ChatMessage } from '../models/dqc.model';
 
 @Component({
   selector: 'app-chat',
@@ -15,41 +15,44 @@ export class ChatComponent {
   @Output() dqcGenerated = new EventEmitter<void>();
 
   messages: ChatMessage[] = [];
-  userMessage = '';
+  instructions = '';
+  tableName = 'mylib.ciclos_recuperacion';
+  dictionaryFile: File | null = null;
+  dictionaryName = '';
   isLoading = false;
-  suggestions = [
-    'Verifica que PD_ESTIMADA cumple los suelos regulatorios',
-    'Comprueba la consistencia de LGD_ESTIMADA con los floors por segmento',
-    'Valida que el provision period cumple los mínimos por fase de ciclo',
-    'Genera DQCs para comprobar el cálculo de ECL (PD x LGD x EAD)',
-    'Comprueba que STAGE_IFRS9 es coherente con DPDS',
-  ];
 
   constructor(private dqcService: DqcService) {}
 
-  send(): void {
-    const msg = this.userMessage.trim();
-    if (!msg || this.isLoading) return;
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.dictionaryFile = file;
+    this.dictionaryName = file?.name ?? '';
+  }
 
-    this.messages.push({ role: 'user', content: msg });
-    this.userMessage = '';
+  generate(): void {
+    const text = this.instructions.trim();
+    if (!text || !this.dictionaryFile || this.isLoading) return;
+
+    this.messages.push({
+      role: 'user',
+      content: `Diccionario: ${this.dictionaryName}\n\n${text}`,
+    });
     this.isLoading = true;
 
-    this.dqcService.generate(msg).subscribe({
+    this.dqcService.generate(this.dictionaryFile, text, this.tableName).subscribe({
       next: (res) => {
         const count = res.dqcs.length;
         const summary = count > 0
-          ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} para **${res.variable}**. Revisa el panel izquierdo.`
+          ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} (${res.dictionary_fields} campos en diccionario). Revisa el panel izquierdo.`
           : res.context_summary;
 
         this.messages.push({
           role: 'assistant',
           content: summary,
-          sources: res.sources,
           dqcs: res.dqcs,
         });
         this.isLoading = false;
-
         if (count > 0) {
           this.dqcGenerated.emit();
         }
@@ -57,15 +60,10 @@ export class ChatComponent {
       error: (err) => {
         this.messages.push({
           role: 'assistant',
-          content: `Error: ${err.message || 'No se pudo conectar con el servidor'}`,
+          content: `Error: ${err.error?.detail || err.message || 'No se pudo conectar con el servidor'}`,
         });
         this.isLoading = false;
       },
     });
-  }
-
-  useSuggestion(text: string): void {
-    this.userMessage = text;
-    this.send();
   }
 }

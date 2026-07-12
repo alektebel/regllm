@@ -36,9 +36,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import dqc  # noqa: E402
+# Router set is configurable so the slim AWS/DQC deployment can ship only
+# what it needs (REGLLM_ROUTERS=dqc) while the default local stack exposes
+# the full surface the frontend + tests rely on. Routers that fail to import
+# (e.g. an optional heavy dependency missing) are skipped with a warning
+# instead of taking the whole API down.
+_ALL_ROUTERS = ("dqc", "sas", "diff", "kb", "kg", "agent", "embeddings", "tabular")
+_enabled = [r.strip() for r in os.getenv("REGLLM_ROUTERS", "all").split(",") if r.strip()]
+if "all" in _enabled:
+    _enabled = list(_ALL_ROUTERS)
 
-app.include_router(dqc.router)
+for _name in _enabled:
+    try:
+        _module = __import__(f"api.routers.{_name}", fromlist=["router"])
+        app.include_router(_module.router)
+    except Exception:  # pragma: no cover — depends on installed extras
+        logging.getLogger(__name__).warning(
+            "Router %r could not be mounted — skipping", _name, exc_info=True
+        )
 
 
 @app.get("/health")

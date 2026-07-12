@@ -5,13 +5,15 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    REGLLM_ROUTERS=dqc
 
-# CPU-only torch — keeps the image small and avoids CUDA dependencies
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Slim, DQC-only dependency set (no torch/kuzu/chromadb/sklearn/umap — those
+# back the SAS diff explainer and knowledge-graph builder, neither of which
+# is reachable with REGLLM_ROUTERS=dqc, set below and by the deploy infra).
+# See requirements-dqc.txt and docs/DEPLOYMENT.md.
+COPY requirements-dqc.txt .
+RUN pip install -r requirements-dqc.txt
 
 # Project source — only what the DQC API needs
 COPY src/ ./src/

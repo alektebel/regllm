@@ -42,38 +42,40 @@ tmp/
 .env
 .env.local
 
+# Frontend
+frontend/.next/
+frontend/node_modules/
+
 # DQC Angular app
 DQC/app/node_modules/
 DQC/app/.angular/
 DQC/app/dist/
-
-# AWS IaC — build/state artifacts. cdk.context.json can cache the Gemini
-# key that deploy.sh passes as CDK context, so keep it out of git too.
-DQC/cdk/cdk.out/
-DQC/cdk/cdk.context.json
-DQC/terraform/.terraform/
-DQC/terraform/*.tfstate*
+frontend/out/
+frontend/tsconfig.tsbuildinfo
 
 # Generated artifacts
 data/changelog/graph.json
 data/knowledge/
 data/docs/embeddings.json
 
-# DQC checks store — local SQLite (runtime; DynamoDB used in AWS)
-data/dq/
-training/dq/*.db
-
 # DQC eval — generated stress-test databases (regenerate via generate_db.py)
 DQC/eval/data/*.db
 
-# Local scratch / leftovers
-archive/
-data/sas/
-
 # Training / ML artifacts (large)
 training/output/
+autoresearch/output/
 mlruns/
 unsloth_compiled_cache/
 data/embeddings/
 data/sessions/
+data/uploads/
+data/dq/
+# Regulation RAG embedding index (generated — rebuild via
+# scripts/build_regulation_embeddings.py; depends on the embedding
+# backend/model chosen, so it isn't portable across configurations)
+data/regulation/embeddings/
 data/eval_results*.json
+autoresearch/mlflow.db
+
+# Test-generated SAS session artifacts (written by the pytest suite)
+data/sas/sessions/test_session*/

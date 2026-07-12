@@ -1,21 +1,17 @@
 """RegLLM DQC — AWS CDK stack.
 
-Deploys the DQC application on ECS Fargate behind an ALB, with a Gemini
-(or Bedrock) LLM backend for the API container, and a DynamoDB table for
-persisting the generated/validated DQCs.  Self-contained: creates its own
-VPC, ECR repos, DynamoDB table, IAM roles, ALB, ECS cluster and service.
+Deploys the DQC application on ECS Fargate behind an ALB, with Bedrock
+access for the API container.  Direct translation of DQC/terraform/main.tf.
 
-Optional context (pass via ``cdk deploy -c key=value``):
+Required context values (pass via ``cdk deploy -c key=value`` or cdk.json):
+  vpc_id       — VPC to deploy into
+  subnet_ids   — comma-separated subnet IDs for ALB + ECS tasks
+Optional:
   project          — resource name prefix   (default: regllm-dqc)
   aws_region       — AWS region             (default: eu-west-1)
   cpu              — Fargate CPU units       (default: 1024)
   memory           — Fargate memory MiB      (default: 4096)
   bedrock_model_id — Bedrock model           (default: eu.amazon.nova-micro-v1:0)
-  gemini_api_key   — Google Gemini API key; when set, switches LLM backend to gemini
-  gemini_model     — Gemini model            (default: gemini-2.5-pro)
-
-Use ``DQC/cdk/deploy.sh`` for a one-command deploy that also builds and
-pushes the Docker images to the CDK-created ECR repos.
 """
 
 from __future__ import annotations
@@ -26,7 +22,6 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_ecr as ecr,
     aws_ecs as ecs,
-    aws_dynamodb as dynamodb,
     aws_iam as iam,
     aws_logs as logs,
     aws_elasticloadbalancingv2 as elbv2,
@@ -45,27 +40,21 @@ class DqcStack(Stack):
             self.node.try_get_context("bedrock_model_id")
             or "eu.amazon.nova-micro-v1:0"
         )
-        gemini_api_key = self.node.try_get_context("gemini_api_key") or ""
-        gemini_model = self.node.try_get_context("gemini_model") or "gemini-2.5-pro"
         cpu = int(self.node.try_get_context("cpu") or 1024)
         memory = int(self.node.try_get_context("memory") or 4096)
 
-        # ── VPC — create a dedicated public-only VPC (no NAT gateways).
-        # The Fargate tasks get public IPs (assign_public_ip=True), so they
-        # can pull from ECR / reach the Gemini API directly without NAT.
-        vpc = ec2.Vpc(
-            self, "Vpc",
-            max_azs=2,
-            subnet_configuration=[
-                ec2.SubnetConfiguration(
-                    name="public",
-                    subnet_type=ec2.SubnetType.PUBLIC,
-                    cidr_mask=24,
-                ),
-            ],
-            nat_gateways=0,
-        )
-        subnets = ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
+        vpc_id = self.node.try_get_context("vpc_id")
+        subnet_csv = self.node.try_get_context("subnet_ids") or ""
+
+        # Look up existing VPC + subnets (the bank provides these)
+        vpc = ec2.Vpc.from_lookup(self, "Vpc", vpc_id=vpc_id)
+        subnet_ids = [s.strip() for s in subnet_csv.split(",") if s.strip()]
+        subnets = ec2.SubnetSelection(
+            subnets=[
+                ec2.Subnet.from_subnet_id(self, f"Sub{i}", sid)
+                for i, sid in enumerate(subnet_ids)
+            ]
+        ) if subnet_ids else ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
 
         # ── ECR ────────────────────────────────────────────────────────────
         ecr_api = ecr.Repository(
@@ -81,21 +70,6 @@ class DqcStack(Stack):
             image_tag_mutability=ecr.TagMutability.MUTABLE,
             removal_policy=RemovalPolicy.DESTROY,
             empty_on_delete=True,
-        )
-
-        # ── DynamoDB ───────────────────────────────────────────────────────
-        # Persistent store for validated/pending DQCs. One item per check,
-        # keyed by ``check_id``; on-demand billing (volumes are tiny — a human
-        # validates each check). The api container selects this backend via
-        # CHECKS_BACKEND=dynamodb + CHECKS_TABLE (see api_env below).
-        checks_table = dynamodb.Table(
-            self, "ChecksTable",
-            table_name=f"{project}-checks",
-            partition_key=dynamodb.Attribute(
-                name="check_id", type=dynamodb.AttributeType.STRING,
-            ),
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY,
         )
 
         # ── CloudWatch ─────────────────────────────────────────────────────
@@ -139,8 +113,6 @@ class DqcStack(Stack):
                 f"arn:aws:bedrock:*::foundation-model/*",
             ],
         ))
-        # DQC persistence — read/write the checks table.
-        checks_table.grant_read_write_data(task_role)
 
         # ── Security Groups ────────────────────────────────────────────────
         alb_sg = ec2.SecurityGroup(self, "AlbSg", vpc=vpc,
@@ -178,25 +150,17 @@ class DqcStack(Stack):
         )
 
         # API container
-        api_env: dict[str, str] = {
-            "CORS_ORIGINS": "*",
-            "BEDROCK_MODEL_ID": bedrock_model_id,
-            "BEDROCK_REGION": self.region,
-            "CHECKS_BACKEND": "dynamodb",
-            "CHECKS_TABLE": checks_table.table_name,
-        }
-        if gemini_api_key:
-            api_env["REGLLM_LLM"] = "gemini"
-            api_env["GEMINI_API_KEY"] = gemini_api_key
-            api_env["GEMINI_MODEL"] = gemini_model
-        else:
-            api_env["REGLLM_LLM"] = "bedrock"
-
         api_container = task_def.add_container(
             "api",
             image=ecs.ContainerImage.from_ecr_repository(ecr_api, "latest"),
             essential=True,
-            environment=api_env,
+            environment={
+                "CORS_ORIGINS": "*",
+                "REGLLM_LLM": "bedrock",
+                "REGLLM_ROUTERS": "dqc",
+                "BEDROCK_MODEL_ID": bedrock_model_id,
+                "BEDROCK_REGION": self.region,
+            },
             logging=ecs.LogDriver.aws_logs(
                 stream_prefix="api",
                 log_group=log_group,
@@ -249,4 +213,3 @@ class DqcStack(Stack):
         CfnOutput(self, "EcrDqcUrl", value=ecr_dqc.repository_uri)
         CfnOutput(self, "EcsCluster", value=cluster.cluster_name)
         CfnOutput(self, "EcsService", value=service.service_name)
-        CfnOutput(self, "ChecksTableName", value=checks_table.table_name)
