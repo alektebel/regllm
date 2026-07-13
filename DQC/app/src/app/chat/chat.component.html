@@ -13,8 +13,16 @@
           @if (msg.options && msg.options.length > 0) {
             <div class="sheet-options">
               @for (opt of msg.options; track opt) {
-                <button class="sheet-option" (click)="chooseSheet(opt)" [disabled]="isLoading">
+                <button
+                  class="sheet-option"
+                  [class.proposed]="opt === msg.proposedOption && !msg.selectedOption"
+                  [class.selected]="opt === msg.selectedOption"
+                  (click)="chooseSheet(msg, opt)"
+                  [disabled]="isLoading || isInspecting || !!msg.selectedOption">
                   {{ opt }}
+                  @if (opt === msg.proposedOption && !msg.selectedOption) {
+                    <span class="proposed-tag">propuesta</span>
+                  }
                 </button>
               }
             </div>
@@ -49,6 +57,15 @@
       </div>
     }
 
+    @if (isInspecting) {
+      <div class="message assistant">
+        <div class="message-bubble inspecting">
+          <p class="inspect-label">Inspeccionando el Excel…</p>
+          <div class="progress-track"><div class="progress-fill"></div></div>
+        </div>
+      </div>
+    }
+
     @if (isLoading) {
       <div class="message assistant">
         <div class="message-bubble loading">
@@ -61,11 +78,11 @@
   <div class="input-panel">
     <div class="file-row">
       <label class="file-label">
-        <input type="file" accept=".xlsx,.xls" (change)="onFileSelected($event)" [disabled]="isLoading" />
+        <input type="file" accept=".xlsx,.xls" (change)="onFileSelected($event)" [disabled]="isLoading || isInspecting" />
         {{ dictionaryName || 'Seleccionar diccionario Excel (.xlsx)' }}
       </label>
       <label class="file-label">
-        <input type="file" accept=".txt,.md,.csv,.xlsx,.xls" (change)="onTestsFileSelected($event)" [disabled]="isLoading" />
+        <input type="file" accept=".txt,.md,.csv,.xlsx,.xls" (change)="onTestsFileSelected($event)" [disabled]="isLoading || isInspecting" />
         {{ testsFileName || 'Subir lista de tests (.txt/.csv/.xlsx)' }}
       </label>
       <input
@@ -74,7 +91,7 @@
         name="tableName"
         class="table-input"
         placeholder="Tabla (p.ej. mylib.ciclos_recuperacion)"
-        [disabled]="isLoading"
+        [disabled]="isLoading || isInspecting"
       />
     </div>
 
@@ -86,13 +103,13 @@
 La PD nunca debe superar el 100%
 ECL = PD_ESTIMADA * LGD_ESTIMADA * EAD_TOTAL
 Toda hipoteca debe tener COLATERAL_TIPO = HIPOTECA"
-      [disabled]="isLoading"
+      [disabled]="isLoading || isInspecting"
     ></textarea>
 
     <button
       class="generate-btn"
       (click)="generate()"
-      [disabled]="isLoading || (!instructions.trim() && !testsFile) || !dictionaryFile">
+      [disabled]="isLoading || isInspecting || (!instructions.trim() && !testsFile) || !dictionaryFile">
       Generar DQCs
     </button>
   </div>

@@ -22,6 +22,7 @@ export class ChatComponent {
   testsFile: File | null = null;
   testsFileName = '';
   isLoading = false;
+  isInspecting = false;
 
   // dictionary intelligence state: the LLM's sheet/mapping proposal,
   // confirmed or overridden by the user via the option buttons
@@ -41,36 +42,46 @@ export class ChatComponent {
   }
 
   private inspectDictionary(file: File): void {
-    this.isLoading = true;
+    this.isInspecting = true;
     this.dqcService.inspect(file).subscribe({
       next: (res: InspectResponse) => {
-        this.isLoading = false;
+        this.isInspecting = false;
         this.columnMapping = res.column_mapping ?? null;
-        if (res.question && res.options.length > 1) {
+        const sheetNames = res.options.length > 0
+          ? res.options
+          : res.sheets.map((s) => s.name);
+        const mapped = Object.entries(res.column_mapping ?? {})
+          .filter(([, v]) => v)
+          .map(([k, v]) => `${k}→${v}`)
+          .join(', ');
+
+        if (res.question && sheetNames.length > 1) {
           // the model is unsure — ask, render the sheets as buttons
           this.messages.push({
             role: 'assistant',
-            content: `${res.question}` +
-              (res.proposed_sheet ? ` (propuesta: ${res.proposed_sheet})` : ''),
-            options: res.options,
+            content: res.question,
+            options: sheetNames,
+            proposedOption: res.proposed_sheet ?? undefined,
           });
         } else if (res.proposed_sheet) {
           this.selectedSheet = res.proposed_sheet;
-          const mapped = Object.entries(res.column_mapping ?? {})
-            .filter(([, v]) => v)
-            .map(([k, v]) => `${k}→${v}`)
-            .join(', ');
+          // confident proposal: pre-select it but still surface the other
+          // sheets as buttons so the user can override the LLM's choice
           this.messages.push({
             role: 'assistant',
             content: `Diccionario detectado en la hoja "${res.proposed_sheet}"` +
               (mapped ? ` (columnas: ${mapped})` : '') +
-              '. Escribe las instrucciones y pulsa Generar.',
+              (sheetNames.length > 1
+                ? '. Confirma la hoja o elige otra:'
+                : '. Escribe las instrucciones y pulsa Generar.'),
+            options: sheetNames.length > 1 ? sheetNames : undefined,
+            proposedOption: res.proposed_sheet,
           });
         }
       },
       error: () => {
         // inspection is best-effort; generation can still ask via 422
-        this.isLoading = false;
+        this.isInspecting = false;
       },
     });
   }
@@ -88,7 +99,8 @@ export class ChatComponent {
     }
   }
 
-  chooseSheet(name: string): void {
+  chooseSheet(msg: ChatMessage, name: string): void {
+    msg.selectedOption = name;
     this.selectedSheet = name;
     this.messages.push({ role: 'user', content: `Hoja: ${name}` });
     this.messages.push({

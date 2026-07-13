@@ -46,6 +46,10 @@ export interface ChatMessage {
   dqcs?: DqcItem[];
   /** sheet names rendered as clickable answers to an assistant question */
   options?: string[];
+  /** sheet the LLM proposed after inspection (highlighted among options) */
+  proposedOption?: string;
+  /** option the user clicked; freezes the buttons once chosen */
+  selectedOption?: string;
 }
 
 // ── Validation pipeline models (mirror api/routers/dqc.py) ─────────────

@@ -256,6 +256,60 @@
 .sheet-option:hover:not(:disabled) { background: #5a69a8; color: #fff; }
 .sheet-option:disabled { opacity: 0.5; cursor: default; }
 
+.sheet-option.proposed {
+  background: rgba(108,123,191,0.15);
+  border-color: #6c7bbf;
+  color: #a9b4e6;
+  font-weight: 600;
+}
+.sheet-option.selected {
+  background: #5a69a8;
+  border-color: #5a69a8;
+  color: #fff;
+  opacity: 1;
+}
+
+.proposed-tag {
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6c7bbf;
+  background: rgba(108,123,191,0.2);
+  padding: 1px 5px;
+  border-radius: 8px;
+  vertical-align: middle;
+}
+
+/* ── Excel inspection progress bar ── */
+.inspecting { min-width: 240px; }
+
+.inspect-label {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #aaa;
+}
+
+.progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #2a2a40;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 40%;
+  border-radius: 3px;
+  background: #6c7bbf;
+  animation: indeterminate 1.2s infinite ease-in-out;
+}
+
+@keyframes indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
 /* ── DQC code blocks in chat ── */
 .dqc-list {
   display: flex;
