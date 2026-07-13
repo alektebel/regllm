@@ -195,6 +195,7 @@ def test_inspect_endpoint_proposes_sheet(client, monkeypatch):
         "confidence": 0.9,
     }])
     monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
     data = _workbook({"Notas": NOTES_ROWS, "DICCIONARIO": DICT_ROWS})
     resp = client.post("/dqc/inspect_dictionary", files=_upload(data))
     assert resp.status_code == 200
@@ -210,6 +211,7 @@ def test_generate_asks_when_sheets_ambiguous(client, monkeypatch):
                          "confidence": 0.4,
                          "question": "¿HOJA1 o HOJA2?"}])
     monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
     data = _workbook({"HOJA1": DICT_ROWS, "HOJA2": DICT_ROWS})
     resp = client.post("/dqc/generate", data={"instructions": "ECL correcto"},
                        files=_upload(data))
@@ -235,6 +237,7 @@ def test_generate_with_explicit_sheet_batches_agents(client, monkeypatch):
         gen_payload,
     ])
     monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
     data = _workbook({"Notas": NOTES_ROWS, "DICCIONARIO": DICT_ROWS})
     instructions = "\n".join(["ECL = PD*LGD*EAD", "PD <= 1", "EAD >= 0"])
     resp = client.post(
@@ -281,6 +284,7 @@ def test_generate_accepts_uploaded_test_list(client, monkeypatch):
                    "severidad": "bloqueante", "regla_sql": "SELECT 1"}]},
     ])
     monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
     data = _workbook({"DICCIONARIO": DICT_ROWS})
     tests_txt = b"1. PD_ESTIMADA <= 1\n2. EAD_TOTAL >= 0\n"
     resp = client.post(
@@ -296,7 +300,9 @@ def test_generate_accepts_uploaded_test_list(client, monkeypatch):
 
 
 def test_generate_rejects_no_rules_at_all(client, monkeypatch):
-    monkeypatch.setattr(dqc_router, "get_client", lambda: _FakeClient([{}]))
+    fake = _FakeClient([{}])
+    monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
     data = _workbook({"DICCIONARIO": DICT_ROWS})
     resp = client.post("/dqc/generate",
                        data={"instructions": "", "sheet": "DICCIONARIO"},
@@ -314,6 +320,7 @@ def test_generate_single_sheet_no_question(client, monkeypatch):
         {"dqcs": []},
     ])
     monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
     data = _workbook({"DICCIONARIO": DICT_ROWS})
     resp = client.post("/dqc/generate",
                        data={"instructions": "PD <= 1"}, files=_upload(data))

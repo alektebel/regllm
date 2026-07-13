@@ -1003,10 +1003,68 @@ def get_client() -> LocalLLMClient:
     return _default_client
 
 
+_inspect_client: LocalLLMClient | None = None
+
+
+def get_inspect_client() -> LocalLLMClient:
+    """Lightweight client for the Excel inspection / sheet-mapping step.
+
+    That step runs on every upload but only has to pick which sheet holds the
+    dictionary and map its columns — a small, fast model does this well and
+    keeps inspection snappy, instead of paying for the full chat model. It is
+    configured independently of the main model, in ``config.yaml`` under
+    ``llm`` (env vars in parentheses override):
+
+        inspect_model            (INSPECT_MODEL)
+            Ollama tag (e.g. ``"qwen3:1.7b"``) or a local ``.gguf`` path,
+            which is auto-registered into Ollama like the main ``model``.
+        inspect_gguf_model_path  (INSPECT_GGUF_MODEL_PATH)
+            A ``.gguf`` weight file loaded in-process via llama-cpp-python
+            (standalone ``gguf`` backend, no Ollama server). Tunable with
+            ``inspect_gguf_n_ctx`` (INSPECT_GGUF_N_CTX) and
+            ``inspect_gguf_n_gpu_layers`` (INSPECT_GGUF_N_GPU_LAYERS).
+
+    When neither is configured this returns the main :func:`get_client`, so
+    behaviour is unchanged until a lighter model is set up.
+    """
+    global _inspect_client
+    if _inspect_client is not None:
+        return _inspect_client
+
+    inspect_gguf = (
+        os.getenv("INSPECT_GGUF_MODEL_PATH")
+        or _LLM_CFG.get("inspect_gguf_model_path")
+    )
+    inspect_model = os.getenv("INSPECT_MODEL") or _LLM_CFG.get("inspect_model")
+
+    if inspect_gguf:
+        # Standalone GGUF weights loaded in-process — override the main
+        # client's gguf settings on a fresh instance forced onto that backend.
+        client = LocalLLMClient(prefer="gguf")
+        client.gguf_model_path = str(inspect_gguf)
+        n_ctx = os.getenv("INSPECT_GGUF_N_CTX") or _LLM_CFG.get("inspect_gguf_n_ctx")
+        if n_ctx:
+            client.gguf_n_ctx = int(n_ctx)
+        n_gpu = os.getenv("INSPECT_GGUF_N_GPU_LAYERS")
+        if n_gpu is None:
+            n_gpu = _LLM_CFG.get("inspect_gguf_n_gpu_layers")
+        if n_gpu is not None and str(n_gpu) != "":
+            client.gguf_n_gpu_layers = int(n_gpu)
+    elif inspect_model:
+        # A dedicated (smaller) Ollama tag or auto-registered .gguf path.
+        client = LocalLLMClient(ollama_model=str(inspect_model))
+    else:
+        client = get_client()
+
+    _inspect_client = client
+    return _inspect_client
+
+
 def reset_client() -> None:
-    """Reset the singleton (useful in tests when env vars change)."""
-    global _default_client
+    """Reset the singletons (useful in tests when env vars change)."""
+    global _default_client, _inspect_client
     _default_client = None
+    _inspect_client = None
 
 
 def _strip_think_tags(text: str) -> str:

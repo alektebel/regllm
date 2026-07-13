@@ -27,6 +27,21 @@ llm:
   # bedrock_region: "eu-west-1"
   timeout: 300
 
+  # ── Excel inspection / sheet-mapping step ──────────────────────────────
+  # This runs on every upload but only picks which sheet is the dictionary
+  # and maps its columns — a tiny structured task. Point it at a small, fast
+  # model so inspection stays snappy instead of paying for the full chat
+  # model above. Leave both unset to reuse `model`.
+  #
+  # Option A — Ollama tag or a .gguf path (auto-registered into Ollama):
+  inspect_model: "qwen3:1.7b"
+  #
+  # Option B — standalone GGUF weights loaded in-process (llama-cpp-python,
+  # no Ollama server). Takes precedence over inspect_model when set:
+  # inspect_gguf_model_path: "/home/user/models/qwen3-1.7b-instruct.Q4_K_M.gguf"
+  # inspect_gguf_n_ctx: 4096
+  # inspect_gguf_n_gpu_layers: 0    # >0 to offload layers to GPU
+
 # Embedding model — encodes regulation text into the vector store.
 # Used both by the ChromaDB-backed knowledge-graph RAG (src/knowledge/
 # vector_store.py) and the dependency-free regulation RAG

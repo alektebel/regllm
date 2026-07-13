@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel
 
-from src.knowledge import get_client
+from src.knowledge import get_client, get_inspect_client
 from training.dq import checks_db
 
 from . import dqc_dictionary as dict_ai
@@ -245,7 +245,10 @@ async def inspect_dictionary(
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="Workbook has no sheets")
 
-    proposal = dict_ai.propose_mapping(inspection, get_client())
+    # sheet + column mapping is a small structured task — run it on the
+    # lightweight inspection model (config: llm.inspect_model) so the
+    # per-upload inspection stays fast
+    proposal = dict_ai.propose_mapping(inspection, get_inspect_client())
     ask = proposal["question"] if (proposal.get("question")
                                    or inspection.ambiguous) else None
     if inspection.ambiguous and not ask:
@@ -330,7 +333,7 @@ async def generate_dqc(
         if should_ask:
             # the UI must ask the user which sheet to use (422 carries the
             # same payload /inspect_dictionary would return)
-            proposal = dict_ai.propose_mapping(inspection, get_client())
+            proposal = dict_ai.propose_mapping(inspection, get_inspect_client())
             raise HTTPException(status_code=422, detail={
                 "needs_sheet_selection": True,
                 "question": proposal.get("question")
@@ -340,7 +343,7 @@ async def generate_dqc(
                 "column_mapping": proposal.get("column_mapping", {}),
             })
         if mapping is None:
-            proposal = dict_ai.propose_mapping(inspection, get_client())
+            proposal = dict_ai.propose_mapping(inspection, get_inspect_client())
             agents_used += 1
             sheet = proposal.get("sheet")
             mapping = proposal.get("column_mapping")

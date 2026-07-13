@@ -11,6 +11,7 @@ from .llm_client import (
     GemmaClient,        # legacy alias
     LocalLLMClient,
     get_client,
+    get_inspect_client,
     reset_client,
 )
 from .graph_rag import (
@@ -38,7 +39,8 @@ from .ontology import (
 
 __all__ = [
     "build_graph", "graph_to_payload", "load_graph", "save_graph",
-    "ChatResponse", "LocalLLMClient", "GemmaClient", "get_client", "reset_client",
+    "ChatResponse", "LocalLLMClient", "GemmaClient", "get_client",
+    "get_inspect_client", "reset_client",
     "FieldJustification", "GraphRAG", "GraphRAGReport",
     "collect_evidence", "field_subgraph", "linearise_subgraph",
     "EdgeType", "KGEdge", "KGNode", "NodeType",

@@ -81,6 +81,7 @@ def _stub_dqcs():
 def test_generate_from_excel_and_instructions(client, monkeypatch):
     fake = _FakeClient(_stub_dqcs())
     monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
 
     resp = client.post(
         "/dqc/generate",
@@ -113,6 +114,7 @@ def test_rejects_empty_dictionary(client):
 def test_persists_generated_dqcs(client, monkeypatch, isolated_checks_db):
     fake = _FakeClient(_stub_dqcs())
     monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
 
     resp = client.post(
         "/dqc/generate",
@@ -132,7 +134,9 @@ def test_llm_error_degrades_gracefully(client, monkeypatch):
         def chat_json(self, *a, **k):
             raise RuntimeError("model not loaded")
 
-    monkeypatch.setattr(dqc_router, "get_client", lambda: _BrokenClient())
+    broken = _BrokenClient()
+    monkeypatch.setattr(dqc_router, "get_client", lambda: broken)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: broken)
     resp = client.post(
         "/dqc/generate",
         data={"instructions": "x"},
