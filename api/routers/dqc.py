@@ -273,7 +273,9 @@ def _require_xlsx(dictionary: UploadFile) -> None:
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_dqc(
     dictionary: UploadFile = File(..., description="Field dictionary (.xlsx)"),
-    instructions: str = Form(..., description="DQC rules, one per line"),
+    instructions: str = Form("", description="DQC rules, one per line"),
+    instructions_file: UploadFile | None = File(
+        None, description="Natural-language test list (.txt/.md/.csv/.xlsx)"),
     table_name: str = Form("mylib.ciclos_recuperacion"),
     sheet: str | None = Form(None, description="Workbook sheet holding the dictionary"),
     column_mapping: str | None = Form(None, description="JSON role->header mapping"),
@@ -345,9 +347,23 @@ async def generate_dqc(
         formats_inferred = dict_ai.infer_missing_formats(fields, get_client())
         agents_used += -(-untyped // 25)  # ceil(untyped / batch)
 
+    # typed rules + uploaded test list, deduplicated in order
     instr_lines = _split_instructions(instructions)
+    if instructions_file is not None and instructions_file.filename:
+        file_rules = dict_ai.read_instructions_upload(
+            instructions_file.filename, await instructions_file.read())
+        if not file_rules:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not read any rules from "
+                       f"'{instructions_file.filename}' — expected one "
+                       f"natural-language test per line/row.")
+        seen = {ln for ln in instr_lines}
+        instr_lines += [r for r in file_rules if r not in seen]
     if not instr_lines:
-        raise HTTPException(status_code=400, detail="instructions cannot be empty")
+        raise HTTPException(
+            status_code=400,
+            detail="Provide instructions (textarea) or upload a test list")
 
     # one fresh agent per instruction batch, fed only the relevant fields
     dqcs: list[DQCItem] = []

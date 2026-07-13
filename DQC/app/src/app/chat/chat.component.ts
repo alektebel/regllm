@@ -19,6 +19,8 @@ export class ChatComponent {
   tableName = 'mylib.ciclos_recuperacion';
   dictionaryFile: File | null = null;
   dictionaryName = '';
+  testsFile: File | null = null;
+  testsFileName = '';
   isLoading = false;
 
   // dictionary intelligence state: the LLM's sheet/mapping proposal,
@@ -73,6 +75,19 @@ export class ChatComponent {
     });
   }
 
+  onTestsFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.testsFile = file;
+    this.testsFileName = file?.name ?? '';
+    if (file) {
+      this.messages.push({
+        role: 'assistant',
+        content: `Lista de tests "${file.name}" cargada. Se combinará con las instrucciones escritas (una regla por línea/fila).`,
+      });
+    }
+  }
+
   chooseSheet(name: string): void {
     this.selectedSheet = name;
     this.messages.push({ role: 'user', content: `Hoja: ${name}` });
@@ -84,17 +99,18 @@ export class ChatComponent {
 
   generate(): void {
     const text = this.instructions.trim();
-    if (!text || !this.dictionaryFile || this.isLoading) return;
+    if ((!text && !this.testsFile) || !this.dictionaryFile || this.isLoading) return;
 
-    this.messages.push({
-      role: 'user',
-      content: `Diccionario: ${this.dictionaryName}\n\n${text}`,
-    });
+    const parts = [`Diccionario: ${this.dictionaryName}`];
+    if (this.testsFileName) parts.push(`Lista de tests: ${this.testsFileName}`);
+    if (text) parts.push(text);
+    this.messages.push({ role: 'user', content: parts.join('\n\n') });
     this.isLoading = true;
 
     this.dqcService
       .generate(this.dictionaryFile, text, this.tableName,
-                this.selectedSheet ?? undefined, this.columnMapping ?? undefined)
+                this.selectedSheet ?? undefined, this.columnMapping ?? undefined,
+                this.testsFile ?? undefined)
       .subscribe({
         next: (res) => {
           const count = res.dqcs.length;

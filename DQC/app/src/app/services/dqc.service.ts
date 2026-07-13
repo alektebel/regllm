@@ -24,6 +24,7 @@ export class DqcService {
     tableName = 'mylib.ciclos_recuperacion',
     sheet?: string,
     columnMapping?: Record<string, string | null>,
+    instructionsFile?: File,
   ): Observable<GenerateResponse> {
     const form = new FormData();
     form.append('dictionary', dictionary);
@@ -31,6 +32,7 @@ export class DqcService {
     form.append('table_name', tableName);
     if (sheet) form.append('sheet', sheet);
     if (columnMapping) form.append('column_mapping', JSON.stringify(columnMapping));
+    if (instructionsFile) form.append('instructions_file', instructionsFile);
     return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, form);
   }
 

@@ -405,6 +405,63 @@ def fields_to_text(fields: list[FieldEntry],
     return "\n".join(lines), count
 
 
+# ── uploaded natural-language test lists ─────────────────────────────────────
+
+_BULLET_RE = re.compile(r"^\s*(?:[-*•·]|\d+[.)]|[a-zA-Z][.)])\s+")
+
+
+def _clean_instruction(line: str) -> str:
+    """One rule per line; leading bullets/numbering stripped."""
+    return _BULLET_RE.sub("", line).strip()
+
+
+def read_instructions_upload(filename: str, data: bytes) -> list[str]:
+    """Extract natural-language DQC rules from an uploaded list.
+
+    Supported: .txt / .md (one rule per line), .csv (first non-empty cell
+    per row), .xlsx (first sheet, first text column; a header row that
+    looks like a title — 'test', 'regla', 'instruccion', 'dqc',
+    'descripcion' — is skipped).
+    """
+    name = (filename or "").lower()
+    if name.endswith((".xlsx", ".xls")):
+        import openpyxl
+
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True,
+                                    data_only=True)
+        ws = wb.active
+        rules: list[str] = []
+        if ws is not None:
+            for row in ws.iter_rows(values_only=True):
+                if not row:
+                    continue
+                cell = next((str(v).strip() for v in row
+                             if v is not None and str(v).strip()), "")
+                if cell:
+                    rules.append(cell)
+        wb.close()
+    elif name.endswith(".csv"):
+        text = data.decode("utf-8", errors="replace")
+        rules = []
+        for line in text.splitlines():
+            cell = next((c.strip().strip('"') for c in line.split(",")
+                         if c.strip().strip('"')), "")
+            if cell:
+                rules.append(cell)
+    else:  # .txt / .md / anything text-like
+        text = data.decode("utf-8", errors="replace")
+        rules = [ln for ln in text.splitlines() if ln.strip()]
+
+    cleaned = [c for c in (_clean_instruction(r) for r in rules) if c]
+    # drop a lone header/title row (common in xlsx/csv lists)
+    if cleaned and _norm(cleaned[0]) in (
+            "test", "tests", "regla", "reglas", "instruccion", "instrucciones",
+            "dqc", "dqcs", "descripcion", "control", "controles", "check",
+            "checks"):
+        cleaned = cleaned[1:]
+    return cleaned
+
+
 def plan_batches(lines: list[str], batch_size: int) -> list[list[str]]:
     batch_size = max(1, batch_size)
     return [lines[i:i + batch_size] for i in range(0, len(lines), batch_size)]
