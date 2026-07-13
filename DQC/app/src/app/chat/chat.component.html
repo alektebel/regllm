@@ -10,6 +10,16 @@
         <div class="message-bubble">
           <p class="msg-text">{{ msg.content }}</p>
 
+          @if (msg.options && msg.options.length > 0) {
+            <div class="sheet-options">
+              @for (opt of msg.options; track opt) {
+                <button class="sheet-option" (click)="chooseSheet(opt)" [disabled]="isLoading">
+                  {{ opt }}
+                </button>
+              }
+            </div>
+          }
+
           @if (msg.dqcs && msg.dqcs.length > 0) {
             <div class="dqc-list">
               @for (dqc of msg.dqcs; track dqc.dqc_id) {

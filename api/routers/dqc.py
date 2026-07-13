@@ -10,10 +10,8 @@ reviews, validates, and exports them.
 
 from __future__ import annotations
 
-import io
 import json
 import logging
-import re
 import sqlite3
 from typing import Any
 
@@ -22,6 +20,8 @@ from pydantic import BaseModel
 
 from src.knowledge import get_client
 from training.dq import checks_db
+
+from . import dqc_dictionary as dict_ai
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,27 @@ class GenerateResponse(BaseModel):
     dqcs: list[DQCItem]
     dictionary_fields: int
     context_summary: str = ""
+    sheet_used: str = ""
+    mapping_source: str = ""       # llm | heuristic | user
+    formats_inferred: int = 0
+    agents_used: int = 0           # stateless LLM calls spent on this run
+
+
+class SheetSummary(BaseModel):
+    name: str
+    rows: int
+    headers: list[str]
+    score: int
+
+
+class InspectResponse(BaseModel):
+    sheets: list[SheetSummary]
+    proposed_sheet: str | None = None
+    column_mapping: dict[str, str | None] = {}
+    confidence: float = 0.0
+    source: str = "heuristic"      # llm | heuristic
+    question: str | None = None    # non-null ⇒ the UI should ask the user
+    options: list[str] = []
 
 
 class CheckRecord(BaseModel):
@@ -137,75 +158,6 @@ def _db() -> sqlite3.Connection:
     return checks_db.connect()
 
 
-def _parse_excel_dictionary(data: bytes) -> tuple[str, int]:
-    """Read an Excel field dictionary into compact text for the LLM prompt."""
-    import openpyxl
-
-    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-    ws = wb.active
-    if ws is None:
-        wb.close()
-        return "", 0
-
-    rows_iter = ws.iter_rows(values_only=True)
-    header_row = next(rows_iter, None)
-    if not header_row:
-        wb.close()
-        return "", 0
-
-    headers = [str(c or "").strip() for c in header_row]
-    # Normalise common Spanish/English column names
-    field_col = _pick_col(headers, ("field", "campo", "columna", "nombre", "name"))
-    type_col = _pick_col(headers, ("type", "tipo", "datatype"))
-    desc_col = _pick_col(headers, ("description", "descripcion", "descripción", "definicion"))
-    null_col = _pick_col(headers, ("null", "nulo", "nullable", "obligatorio"))
-    formula_col = _pick_col(headers, ("formula", "derivacion", "derivación", "calculo"))
-    reg_col = _pick_col(headers, ("reg ref", "reg_ref", "referencia", "regulacion"))
-
-    lines: list[str] = []
-    count = 0
-    for row in rows_iter:
-        if not row or all(v is None or str(v).strip() == "" for v in row):
-            continue
-        cells = {headers[i]: row[i] for i in range(min(len(headers), len(row)))}
-        field = _cell(cells, field_col)
-        if not field:
-            continue
-        count += 1
-        parts = [f"- {field}"]
-        if type_col:
-            parts.append(f"type={_cell(cells, type_col)}")
-        if null_col:
-            parts.append(f"null={_cell(cells, null_col)}")
-        if desc_col:
-            parts.append(f"desc={_cell(cells, desc_col)}")
-        if formula_col:
-            parts.append(f"formula={_cell(cells, formula_col)}")
-        if reg_col:
-            parts.append(f"reg={_cell(cells, reg_col)}")
-        lines.append(", ".join(parts))
-
-    wb.close()
-    return "\n".join(lines), count
-
-
-def _pick_col(headers: list[str], candidates: tuple[str, ...]) -> str | None:
-    lower = {h.lower(): h for h in headers if h}
-    for c in candidates:
-        if c in lower:
-            return lower[c]
-    return None
-
-
-def _cell(cells: dict[str, Any], col: str | None) -> str:
-    if not col:
-        return ""
-    v = cells.get(col)
-    if v is None:
-        return ""
-    return str(v).strip()
-
-
 def _extract_dqc_list(result: Any) -> list[dict]:
     if not isinstance(result, dict):
         return []
@@ -276,6 +228,46 @@ def _split_instructions(text: str) -> list[str]:
     return [text.strip()] if text.strip() else []
 
 
+# ── Dictionary inspection (sheet + mapping proposal) ─────────────────────────
+
+@router.post("/inspect_dictionary", response_model=InspectResponse)
+async def inspect_dictionary(
+    dictionary: UploadFile = File(..., description="Field dictionary (.xlsx)"),
+) -> InspectResponse:
+    """Inspect an uploaded workbook: list its sheets and let ONE stateless
+    LLM agent propose which sheet is the field dictionary and how its
+    columns map. When confidence is low the response carries a `question`
+    for the chat UI; the user's click resolves it (no free-form parsing)."""
+    _require_xlsx(dictionary)
+    raw = await dictionary.read()
+    inspection = dict_ai.inspect_workbook(raw)
+    if not inspection.sheets:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Workbook has no sheets")
+
+    proposal = dict_ai.propose_mapping(inspection, get_client())
+    ask = proposal["question"] if (proposal.get("question")
+                                   or inspection.ambiguous) else None
+    if inspection.ambiguous and not ask:
+        ask = "¿Qué hoja del Excel contiene el diccionario de campos?"
+    return InspectResponse(
+        sheets=[SheetSummary(name=s.name, rows=s.n_rows, headers=s.headers,
+                             score=s.score) for s in inspection.sheets],
+        proposed_sheet=proposal.get("sheet"),
+        column_mapping=proposal.get("column_mapping", {}),
+        confidence=float(proposal.get("confidence", 0.0)),
+        source=proposal.get("source", "heuristic"),
+        question=ask,
+        options=proposal.get("options", []),
+    )
+
+
+def _require_xlsx(dictionary: UploadFile) -> None:
+    if not dictionary.filename or not dictionary.filename.lower().endswith((".xlsx", ".xls")):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="dictionary must be an Excel file (.xlsx)")
+
+
 # ── Generation ──────────────────────────────────────────────────────────────
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -283,63 +275,143 @@ async def generate_dqc(
     dictionary: UploadFile = File(..., description="Field dictionary (.xlsx)"),
     instructions: str = Form(..., description="DQC rules, one per line"),
     table_name: str = Form("mylib.ciclos_recuperacion"),
+    sheet: str | None = Form(None, description="Workbook sheet holding the dictionary"),
+    column_mapping: str | None = Form(None, description="JSON role->header mapping"),
+    batch_size: int = Form(5, description="Instructions per generation agent"),
+    infer_formats: bool = Form(True, description="LLM-infer missing field types"),
 ) -> GenerateResponse:
-    """Generate DQCs from an Excel field dictionary + NL instructions."""
-    if not dictionary.filename or not dictionary.filename.lower().endswith((".xlsx", ".xls")):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="dictionary must be an Excel file (.xlsx)")
+    """Generate DQCs from an Excel field dictionary + NL instructions.
 
+    Context-window discipline: instructions are processed in batches and
+    each batch is ONE fresh, stateless agent call that receives only the
+    dictionary fields relevant to it (never more than the char budget).
+    """
+    from fastapi import HTTPException
+
+    _require_xlsx(dictionary)
     raw = await dictionary.read()
-    dict_text, field_count = _parse_excel_dictionary(raw)
-    if field_count == 0:
-        from fastapi import HTTPException
+
+    mapping: dict | None = None
+    if column_mapping:
+        try:
+            parsed = json.loads(column_mapping)
+            if isinstance(parsed, dict):
+                mapping = parsed
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="column_mapping must be JSON")
+
+    agents_used = 0
+    mapping_source = "user" if (sheet or mapping) else "heuristic"
+    if not sheet:
+        inspection = dict_ai.inspect_workbook(raw)
+        # ask only when there is a real choice: several sheets, at least
+        # one plausible, and the heuristics cannot separate them (a single
+        # or empty sheet falls through to parsing and its 400)
+        best = inspection.best
+        should_ask = (len(inspection.sheets) > 1 and inspection.ambiguous
+                      and best is not None and best.score >= 2)
+        if should_ask:
+            # the UI must ask the user which sheet to use (422 carries the
+            # same payload /inspect_dictionary would return)
+            proposal = dict_ai.propose_mapping(inspection, get_client())
+            raise HTTPException(status_code=422, detail={
+                "needs_sheet_selection": True,
+                "question": proposal.get("question")
+                or "¿Qué hoja del Excel contiene el diccionario de campos?",
+                "options": [s.name for s in inspection.sheets],
+                "proposed_sheet": proposal.get("sheet"),
+                "column_mapping": proposal.get("column_mapping", {}),
+            })
+        if mapping is None:
+            proposal = dict_ai.propose_mapping(inspection, get_client())
+            agents_used += 1
+            sheet = proposal.get("sheet")
+            mapping = proposal.get("column_mapping")
+            mapping_source = proposal.get("source", "heuristic")
+        else:
+            sheet = inspection.best.name if inspection.best else None
+
+    fields = dict_ai.parse_dictionary(raw, sheet=sheet, mapping=mapping)
+    if not fields:
         raise HTTPException(
             status_code=400,
             detail="Could not read any fields from the Excel dictionary. "
                    "Expected columns like Field/Campo, Type/Tipo, Description/Descripcion.",
         )
 
+    formats_inferred = 0
+    if infer_formats and any(not f.type for f in fields):
+        untyped = sum(1 for f in fields if not f.type)
+        formats_inferred = dict_ai.infer_missing_formats(fields, get_client())
+        agents_used += -(-untyped // 25)  # ceil(untyped / batch)
+
     instr_lines = _split_instructions(instructions)
     if not instr_lines:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="instructions cannot be empty")
 
-    user_prompt = (
-        f"Tabla objetivo: {table_name}\n\n"
-        f"DICCIONARIO DE CAMPOS ({field_count} campos):\n{dict_text}\n\n"
-        f"INSTRUCCIONES DQC ({len(instr_lines)} reglas):\n"
-        + "\n".join(f"{i+1}. {ln}" for i, ln in enumerate(instr_lines))
-    )
-
-    try:
-        result = get_client().chat_json(
-            system=DQC_SYSTEM_PROMPT,
-            user=user_prompt,
-            max_tokens=8192,
+    # one fresh agent per instruction batch, fed only the relevant fields
+    dqcs: list[DQCItem] = []
+    errors: list[str] = []
+    batches = dict_ai.plan_batches(instr_lines, batch_size)
+    offset = 0
+    for batch in batches:
+        relevant = dict_ai.select_relevant_fields(fields, batch)
+        dict_text, sent = dict_ai.fields_to_text(relevant)
+        user_prompt = (
+            f"Tabla objetivo: {table_name}\n\n"
+            f"DICCIONARIO DE CAMPOS ({sent} campos relevantes de {len(fields)}):\n"
+            f"{dict_text}\n\n"
+            f"INSTRUCCIONES DQC ({len(batch)} reglas):\n"
+            + "\n".join(f"{offset + i + 1}. {ln}" for i, ln in enumerate(batch))
         )
-    except Exception as exc:
-        logger.error("LLM call failed: %s", exc)
-        return GenerateResponse(
-            dqcs=[],
-            dictionary_fields=field_count,
-            context_summary=f"Error al generar DQCs: {exc}",
-        )
+        offset += len(batch)
+        try:
+            result = get_client().chat_json(
+                system=DQC_SYSTEM_PROMPT, user=user_prompt, max_tokens=4096)
+            agents_used += 1
+        except Exception as exc:  # noqa: BLE001 — a batch failing must not kill the run
+            logger.error("LLM batch failed: %s", exc)
+            errors.append(str(exc))
+            continue
+        dqcs.extend(_parse_dqc_items(result))
 
-    dqcs = _parse_dqc_items(result)
+    _dedupe_ids(dqcs)
     try:
         saved = _persist_dqc_items(dqcs)
         logger.info("persisted %d/%d DQCs", len(saved), len(dqcs))
     except Exception as exc:
         logger.warning("persist failed: %s", exc)
 
+    summary = (
+        f"Se generaron {len(dqcs)} DQCs a partir de {len(instr_lines)} "
+        f"instrucción(es) y {len(fields)} campos del diccionario "
+        f"(hoja '{sheet}', {len(batches)} agente(s) de generación"
+        + (f", {formats_inferred} formato(s) inferido(s)" if formats_inferred else "")
+        + ")."
+    )
+    if errors and not dqcs:
+        summary = f"Error al generar DQCs: {errors[0]}"
+
     return GenerateResponse(
         dqcs=dqcs,
-        dictionary_fields=field_count,
-        context_summary=(
-            f"Se generaron {len(dqcs)} DQCs a partir de {len(instr_lines)} "
-            f"instrucción(es) y {field_count} campos del diccionario."
-        ),
+        dictionary_fields=len(fields),
+        context_summary=summary,
+        sheet_used=sheet or "",
+        mapping_source=mapping_source,
+        formats_inferred=formats_inferred,
+        agents_used=agents_used,
     )
+
+
+def _dedupe_ids(items: list[DQCItem]) -> None:
+    seen: dict[str, int] = {}
+    for item in items:
+        base = item.dqc_id or "DQC"
+        if base in seen:
+            seen[base] += 1
+            item.dqc_id = f"{base}_{seen[base]}"
+        else:
+            seen[base] = 1
 
 
 # ── Validation pipeline ───────────────────────────────────────────────────────

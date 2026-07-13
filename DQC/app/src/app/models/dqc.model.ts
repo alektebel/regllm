@@ -17,12 +17,35 @@ export interface GenerateResponse {
   dqcs: DqcItem[];
   dictionary_fields: number;
   context_summary: string;
+  sheet_used?: string;
+  mapping_source?: string;
+  formats_inferred?: number;
+  agents_used?: number;
+}
+
+export interface SheetSummary {
+  name: string;
+  rows: number;
+  headers: string[];
+  score: number;
+}
+
+export interface InspectResponse {
+  sheets: SheetSummary[];
+  proposed_sheet: string | null;
+  column_mapping: Record<string, string | null>;
+  confidence: number;
+  source: string;
+  question: string | null;
+  options: string[];
 }
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   dqcs?: DqcItem[];
+  /** sheet names rendered as clickable answers to an assistant question */
+  options?: string[];
 }
 
 // ── Validation pipeline models (mirror api/routers/dqc.py) ─────────────

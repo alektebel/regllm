@@ -236,6 +236,26 @@
 .generate-btn:hover:not(:disabled) { background: #5a69a8; }
 .generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ── sheet-selection option buttons ── */
+.sheet-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.sheet-option {
+  padding: 6px 14px;
+  border: 1px solid #5a69a8;
+  border-radius: 16px;
+  background: transparent;
+  color: #5a69a8;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sheet-option:hover:not(:disabled) { background: #5a69a8; color: #fff; }
+.sheet-option:disabled { opacity: 0.5; cursor: default; }
+
 /* ── DQC code blocks in chat ── */
 .dqc-list {
   display: flex;

@@ -65,7 +65,7 @@ def test_dqc_only_api_boots_without_heavy_deps():
         "from api.main import app; "
         "client = TestClient(app); "
         "r = client.get('/health'); assert r.status_code == 200, r.text; "
-        "r = client.post('/dqc/generate', json={'message': 'Genera DQCs para PD_ESTIMADA'}); "
+        "r = client.get('/dqc/checks/counts'); "
         "assert r.status_code == 200, r.text; "
         f"{_HEAVY_CHECK}"
     )

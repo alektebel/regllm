@@ -3,12 +3,18 @@
 Related applications for IRB / IFRS 9 regulatory data pipelines:
 
 1. **DQC Generator** (`DQC/`, `api/routers/dqc.py`) — generates structured
-   data-quality checks (SQL) for a database whose schema and dictionary are
-   known, grounded in the EBA GL/2017/16 PD & LGD guidelines via a regulation
-   knowledge graph. Ships with an Angular chat UI, an AWS (ECS Fargate +
-   Bedrock) deployment, and a mutation-testing **eval harness**
-   (`DQC/eval/`) that scores generated checks against 67 ground-truth
-   defects across 8 data-quality dimensions. See
+   data-quality checks (SQL) from an **Excel field dictionary + natural-
+   language instructions**, through the Angular chat UI. The dictionary
+   layer is LLM-assisted (`api/routers/dqc_dictionary.py`): the model
+   proposes **which sheet** of the workbook is the dictionary (asking the
+   user in chat when unsure), **how its columns map** (field / type /
+   description / formula / reg-ref — override-able), and **infers missing
+   field formats**. Generation is context-window disciplined: instructions
+   run in batches, each batch is one fresh stateless agent receiving only
+   the dictionary fields relevant to it (sized for an 8k-token local
+   model; the same code runs on AWS Bedrock via `REGLLM_LLM=bedrock`).
+   Ships with an AWS (ECS Fargate + Bedrock) deployment and a
+   mutation-testing **eval harness** (`DQC/eval/`). See
    [`DQC/eval/README.md`](DQC/eval/README.md),
    [`docs/EVALUATION.md`](docs/EVALUATION.md), and
    [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the production image.

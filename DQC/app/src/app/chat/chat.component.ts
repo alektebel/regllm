@@ -2,7 +2,7 @@ import { Component, EventEmitter, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DqcService } from '../services/dqc.service';
-import { ChatMessage } from '../models/dqc.model';
+import { ChatMessage, InspectResponse } from '../models/dqc.model';
 
 @Component({
   selector: 'app-chat',
@@ -21,6 +21,11 @@ export class ChatComponent {
   dictionaryName = '';
   isLoading = false;
 
+  // dictionary intelligence state: the LLM's sheet/mapping proposal,
+  // confirmed or overridden by the user via the option buttons
+  selectedSheet: string | null = null;
+  columnMapping: Record<string, string | null> | null = null;
+
   constructor(private dqcService: DqcService) {}
 
   onFileSelected(event: Event): void {
@@ -28,6 +33,53 @@ export class ChatComponent {
     const file = input.files?.[0] ?? null;
     this.dictionaryFile = file;
     this.dictionaryName = file?.name ?? '';
+    this.selectedSheet = null;
+    this.columnMapping = null;
+    if (file) this.inspectDictionary(file);
+  }
+
+  private inspectDictionary(file: File): void {
+    this.isLoading = true;
+    this.dqcService.inspect(file).subscribe({
+      next: (res: InspectResponse) => {
+        this.isLoading = false;
+        this.columnMapping = res.column_mapping ?? null;
+        if (res.question && res.options.length > 1) {
+          // the model is unsure — ask, render the sheets as buttons
+          this.messages.push({
+            role: 'assistant',
+            content: `${res.question}` +
+              (res.proposed_sheet ? ` (propuesta: ${res.proposed_sheet})` : ''),
+            options: res.options,
+          });
+        } else if (res.proposed_sheet) {
+          this.selectedSheet = res.proposed_sheet;
+          const mapped = Object.entries(res.column_mapping ?? {})
+            .filter(([, v]) => v)
+            .map(([k, v]) => `${k}→${v}`)
+            .join(', ');
+          this.messages.push({
+            role: 'assistant',
+            content: `Diccionario detectado en la hoja "${res.proposed_sheet}"` +
+              (mapped ? ` (columnas: ${mapped})` : '') +
+              '. Escribe las instrucciones y pulsa Generar.',
+          });
+        }
+      },
+      error: () => {
+        // inspection is best-effort; generation can still ask via 422
+        this.isLoading = false;
+      },
+    });
+  }
+
+  chooseSheet(name: string): void {
+    this.selectedSheet = name;
+    this.messages.push({ role: 'user', content: `Hoja: ${name}` });
+    this.messages.push({
+      role: 'assistant',
+      content: `Usaré la hoja "${name}". Escribe las instrucciones y pulsa Generar.`,
+    });
   }
 
   generate(): void {
@@ -40,30 +92,38 @@ export class ChatComponent {
     });
     this.isLoading = true;
 
-    this.dqcService.generate(this.dictionaryFile, text, this.tableName).subscribe({
-      next: (res) => {
-        const count = res.dqcs.length;
-        const summary = count > 0
-          ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} (${res.dictionary_fields} campos en diccionario). Revisa el panel izquierdo.`
-          : res.context_summary;
+    this.dqcService
+      .generate(this.dictionaryFile, text, this.tableName,
+                this.selectedSheet ?? undefined, this.columnMapping ?? undefined)
+      .subscribe({
+        next: (res) => {
+          const count = res.dqcs.length;
+          const summary = count > 0
+            ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} (${res.dictionary_fields} campos, hoja "${res.sheet_used}"${res.formats_inferred ? `, ${res.formats_inferred} formatos inferidos` : ''}). Revisa el panel izquierdo.`
+            : res.context_summary;
 
-        this.messages.push({
-          role: 'assistant',
-          content: summary,
-          dqcs: res.dqcs,
-        });
-        this.isLoading = false;
-        if (count > 0) {
-          this.dqcGenerated.emit();
-        }
-      },
-      error: (err) => {
-        this.messages.push({
-          role: 'assistant',
-          content: `Error: ${err.error?.detail || err.message || 'No se pudo conectar con el servidor'}`,
-        });
-        this.isLoading = false;
-      },
-    });
+          this.messages.push({ role: 'assistant', content: summary, dqcs: res.dqcs });
+          this.isLoading = false;
+          if (count > 0) this.dqcGenerated.emit();
+        },
+        error: (err) => {
+          const detail = err.error?.detail;
+          if (detail?.needs_sheet_selection) {
+            // backend could not pick a sheet on its own — ask here
+            this.columnMapping = detail.column_mapping ?? this.columnMapping;
+            this.messages.push({
+              role: 'assistant',
+              content: detail.question,
+              options: detail.options ?? [],
+            });
+          } else {
+            this.messages.push({
+              role: 'assistant',
+              content: `Error: ${typeof detail === 'string' ? detail : err.message || 'No se pudo conectar con el servidor'}`,
+            });
+          }
+          this.isLoading = false;
+        },
+      });
   }
 }
