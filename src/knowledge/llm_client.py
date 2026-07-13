@@ -430,6 +430,16 @@ class LocalLLMClient:
             "inferenceConfig": {"temperature": temperature, "maxTokens": max_tokens},
             "system": [{"text": system + "\n\nRespond ONLY with valid JSON."}],
         }
+        # TODO(streaming-reasoning): to stream model reasoning from Bedrock,
+        # switch to a reasoning-capable model (e.g. a Claude model id — the
+        # default nova-micro has no reasoning mode) and enable it via
+        #   kwargs["additionalModelRequestFields"] = {
+        #       "thinking": {"type": "enabled", "budget_tokens": 2048}}
+        # converse_stream then interleaves `contentBlockDelta` events whose
+        # delta carries `reasoningContent` (thinking) alongside `text` —
+        # yield them as separate ("thinking", token) / ("text", token) events
+        # for chat_stream(). Docs: AWS Bedrock ConverseStream + "inference
+        # reasoning".
         response = client.converse_stream(**kwargs)
         full_text = ""
         for event in response["stream"]:
@@ -548,6 +558,12 @@ class LocalLLMClient:
             messages=msgs, temperature=temperature, max_tokens=max_tokens,
             response_format={"type": "json_object"}, stream=True,
         )
+        # TODO(streaming-reasoning): for thinking GGUF models the reasoning
+        # arrives INLINE as <think>…</think> tokens in this same stream.
+        # Instead of stripping at the end, track whether the cursor is inside
+        # a <think> block and route tokens to ("thinking", token) vs
+        # ("text", token) events for chat_stream(); only the text channel is
+        # accumulated for the final _safe_json parse.
         full_text = ""
         for chunk in stream:
             delta = (chunk.get("choices") or [{}])[0].get("delta", {})
@@ -600,6 +616,16 @@ class LocalLLMClient:
         )
 
     # ── Chat ──────────────────────────────────────────────────────────────
+
+    # TODO(streaming-reasoning): add a `chat_stream()` sibling of `chat()` that
+    # returns a generator of typed events instead of a final ChatResponse:
+    #     {"type": "thinking", "delta": str}   # model reasoning tokens
+    #     {"type": "text",     "delta": str}   # answer tokens
+    #     {"type": "done",     "text": str}    # full final text (JSON-parseable)
+    # Dispatch per backend like chat() does; the per-backend TODOs below say
+    # where each backend's reasoning tokens come from. Keep thinking and text
+    # in separate event types — callers in JSON mode must only parse the
+    # "done"/"text" channel, never the thinking channel.
 
     def chat(
         self,
@@ -657,6 +683,14 @@ class LocalLLMClient:
         # thinking to prevent <think> tokens consuming the output budget.
         # In JSON mode, skip /no_think — it causes empty output with format:json.
         # Instead we let the model think and strip tags from the result.
+        #
+        # TODO(streaming-reasoning): for a streaming variant, POST /api/chat
+        # with `"stream": true, "think": true` (instead of /no_think). Ollama
+        # then delivers each chunk with the reasoning in `message.thinking`
+        # SEPARATE from `message.content`, so JSON mode stays clean — no
+        # <think> tags to strip. Iterate the ndjson lines with
+        # `httpx.stream(...)` and yield ("thinking", delta) / ("text", delta)
+        # events for chat_stream(). Docs: ollama/docs/api.md, "thinking".
         msgs = list(messages)
         if self._is_thinking_model() and not json_mode:
             msgs = _inject_no_think(msgs)

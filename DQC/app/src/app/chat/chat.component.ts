@@ -109,6 +109,16 @@ export class ChatComponent {
     });
   }
 
+  // TODO(streaming-reasoning): once DqcService.generateStream() exists,
+  // switch generate() to it: subscribe to the event stream and
+  //   - on 'step':     push an assistant message for the step name;
+  //   - on 'thinking': append the delta to a collapsible "razonamiento"
+  //                    section of the current step's bubble (new optional
+  //                    `thinking?: string` field on ChatMessage);
+  //   - on 'answer'/'result': fill the bubble's normal content/dqcs.
+  // fetch() callbacks run outside Angular, so apply updates inside
+  // NgZone.run() (or signals) so the chat re-renders per token, and keep
+  // the messages list auto-scrolled to the bottom while streaming.
   generate(): void {
     const text = this.instructions.trim();
     if ((!text && !this.testsFile) || !this.dictionaryFile || this.isLoading) return;

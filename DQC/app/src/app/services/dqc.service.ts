@@ -18,6 +18,14 @@ export class DqcService {
     return this.http.post<InspectResponse>(`${this.apiUrl}/inspect_dictionary`, form);
   }
 
+  // TODO(streaming-reasoning): add a `generateStream()` counterpart that
+  // consumes the future POST /api/dqc/generate_stream SSE endpoint.
+  // Angular's HttpClient buffers the whole body, so don't use it here (and
+  // EventSource is GET-only): use fetch() with the same FormData, then read
+  // `response.body.getReader()` chunk by chunk, split on "\n\n", parse the
+  // `event:`/`data:` lines, and push typed events ({type: 'step'|'thinking'|
+  // 'answer'|'result', ...}) through an RxJS Subject returned as Observable.
+  // Docs: MDN "Server-sent events" + "Streams API".
   generate(
     dictionary: File,
     instructions: string,

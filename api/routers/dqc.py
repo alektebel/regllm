@@ -270,6 +270,21 @@ def _require_xlsx(dictionary: UploadFile) -> None:
 
 # ── Generation ──────────────────────────────────────────────────────────────
 
+# TODO(streaming-reasoning): add a POST /generate_stream twin of this endpoint
+# that streams the pipeline live to the chat UI over Server-Sent Events:
+#   return StreamingResponse(gen(), media_type="text/event-stream")
+#   (or the `sse-starlette` package for proper event framing/heartbeats)
+# The generator should emit one `event: step` (e.g. "propose_mapping",
+# "infer_formats", "batch 2/5") BEFORE each LLM call below, then relay the
+# ("thinking", delta) / ("text", delta) events from llm_client.chat_stream()
+# as `event: thinking` / `event: answer` SSE messages, and finish each step
+# with `event: result` carrying the parsed JSON. Parse JSON ONLY from the
+# text/done channel — never from thinking. The LLM call sites to wrap are:
+#   1. dict_ai.propose_mapping(...)        (sheet + column mapping proposal)
+#   2. dict_ai.infer_missing_formats(...)  (field type inference)
+#   3. each batch agent in the `for batch in batches:` loop
+# Keep this buffered /generate endpoint as-is for non-streaming clients.
+
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_dqc(
     dictionary: UploadFile = File(..., description="Field dictionary (.xlsx)"),
