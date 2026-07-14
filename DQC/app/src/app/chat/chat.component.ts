@@ -1,8 +1,8 @@
-import { Component, EventEmitter, Output } from '@angular/core';
+import { Component, EventEmitter, NgZone, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DqcService } from '../services/dqc.service';
-import { ChatMessage, InspectResponse } from '../models/dqc.model';
+import { ChatMessage, InspectResponse, PlanItem, StreamEvent } from '../models/dqc.model';
 
 @Component({
   selector: 'app-chat',
@@ -29,7 +29,7 @@ export class ChatComponent {
   selectedSheet: string | null = null;
   columnMapping: Record<string, string | null> | null = null;
 
-  constructor(private dqcService: DqcService) {}
+  constructor(private dqcService: DqcService, private zone: NgZone) {}
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -109,16 +109,6 @@ export class ChatComponent {
     });
   }
 
-  // TODO(streaming-reasoning): once DqcService.generateStream() exists,
-  // switch generate() to it: subscribe to the event stream and
-  //   - on 'step':     push an assistant message for the step name;
-  //   - on 'thinking': append the delta to a collapsible "razonamiento"
-  //                    section of the current step's bubble (new optional
-  //                    `thinking?: string` field on ChatMessage);
-  //   - on 'answer'/'result': fill the bubble's normal content/dqcs.
-  // fetch() callbacks run outside Angular, so apply updates inside
-  // NgZone.run() (or signals) so the chat re-renders per token, and keep
-  // the messages list auto-scrolled to the bottom while streaming.
   generate(): void {
     const text = this.instructions.trim();
     if ((!text && !this.testsFile) || !this.dictionaryFile || this.isLoading) return;
@@ -129,22 +119,23 @@ export class ChatComponent {
     this.messages.push({ role: 'user', content: parts.join('\n\n') });
     this.isLoading = true;
 
-    this.dqcService
-      .generate(this.dictionaryFile, text, this.tableName,
-                this.selectedSheet ?? undefined, this.columnMapping ?? undefined,
-                this.testsFile ?? undefined)
-      .subscribe({
-        next: (res) => {
-          const count = res.dqcs.length;
-          const summary = count > 0
-            ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} (${res.dictionary_fields} campos, hoja "${res.sheet_used}"${res.formats_inferred ? `, ${res.formats_inferred} formatos inferidos` : ''}). Revisa el panel izquierdo.`
-            : res.context_summary;
+    // Plan-mode generation: the backend first splits the rules into a JSON
+    // action plan, then executes one generation agent per plan item. The
+    // plan renders as a live checklist that ticks off item by item.
+    let planMsg: ChatMessage | null = null;
 
-          this.messages.push({ role: 'assistant', content: summary, dqcs: res.dqcs });
-          this.isLoading = false;
-          if (count > 0) this.dqcGenerated.emit();
-        },
-        error: (err) => {
+    this.dqcService
+      .generateStream(this.dictionaryFile, text, this.tableName,
+                      this.selectedSheet ?? undefined, this.columnMapping ?? undefined,
+                      this.testsFile ?? undefined)
+      // fetch() resolves outside Angular's zone — re-enter it so the
+      // checklist repaints on every event
+      .subscribe({
+        next: (ev: StreamEvent) => this.zone.run(() => this.onStreamEvent(ev, {
+          setPlan: (m) => { planMsg = m; },
+          getPlan: () => planMsg,
+        })),
+        error: (err) => this.zone.run(() => {
           const detail = err.error?.detail;
           if (detail?.needs_sheet_selection) {
             // backend could not pick a sheet on its own — ask here
@@ -161,7 +152,41 @@ export class ChatComponent {
             });
           }
           this.isLoading = false;
-        },
+        }),
+        complete: () => this.zone.run(() => { this.isLoading = false; }),
       });
+  }
+
+  private onStreamEvent(
+    ev: StreamEvent,
+    planRef: { setPlan: (m: ChatMessage) => void; getPlan: () => ChatMessage | null },
+  ): void {
+    if (ev.type === 'plan') {
+      const items: PlanItem[] = ev.data.items ?? [];
+      const msg: ChatMessage = {
+        role: 'assistant',
+        content: `Plan de generación — ${items.length} DQC${items.length !== 1 ? 's' : ''}:`,
+        plan: items,
+      };
+      planRef.setPlan(msg);
+      this.messages.push(msg);
+    } else if (ev.type === 'item') {
+      const plan = planRef.getPlan()?.plan;
+      const item = plan?.find((p) => p.id === ev.data.id);
+      if (item) {
+        item.estado = ev.data.estado;
+        if (ev.data.dqcs) item.dqcs = ev.data.dqcs;
+        if (ev.data.error) item.error = ev.data.error;
+      }
+    } else if (ev.type === 'done') {
+      const d = ev.data;
+      const count = d.dqcs?.length ?? 0;
+      const summary = count > 0
+        ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} (${d.dictionary_fields} campos, hoja "${d.sheet_used}"${d.formats_inferred ? `, ${d.formats_inferred} formatos inferidos` : ''}). Revisa el panel izquierdo.`
+        : d.context_summary;
+      this.messages.push({ role: 'assistant', content: summary, dqcs: d.dqcs ?? [] });
+      if (count > 0) this.dqcGenerated.emit();
+    }
+    // 'meta' needs no UI — the plan message carries the useful context
   }
 }

@@ -145,6 +145,19 @@ Responde SOLO con JSON: {"dqcs": [...]}. Cada objeto:
 """
 
 
+PLAN_SYSTEM_PROMPT = """\
+Eres un experto en calidad de datos para reporting regulatorio bancario.
+Recibes una lista de instrucciones en lenguaje natural que describen reglas
+DQC. Tu tarea es SEPARARLAS en reglas individuales (una instrucción puede
+contener varias reglas) y proponer un plan de acción breve para cada una.
+
+Responde SOLO con JSON:
+{"plan": [{"id": 1, "regla": "<la regla, reformulada breve y clara>",
+           "accion": "<qué control DQC se construirá: tipo de check, campos implicados>"}]}
+
+No omitas ninguna regla. Mantén el orden recibido."""
+
+
 _SEV_MAP = {"bloqueante": "HIGH", "advertencia": "MED", "informativo": "LOW"}
 _CAT_MAP = {
     "formula": "formula", "consistencia": "consistencia",
@@ -271,54 +284,29 @@ def _require_xlsx(dictionary: UploadFile) -> None:
         raise HTTPException(status_code=400, detail="dictionary must be an Excel file (.xlsx)")
 
 
-# ── Generation ──────────────────────────────────────────────────────────────
+def _parse_mapping_form(column_mapping: str | None) -> dict | None:
+    if not column_mapping:
+        return None
+    from fastapi import HTTPException
+    try:
+        parsed = json.loads(column_mapping)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="column_mapping must be JSON")
+    return parsed if isinstance(parsed, dict) else None
 
-# TODO(streaming-reasoning): add a POST /generate_stream twin of this endpoint
-# that streams the pipeline live to the chat UI over Server-Sent Events:
-#   return StreamingResponse(gen(), media_type="text/event-stream")
-#   (or the `sse-starlette` package for proper event framing/heartbeats)
-# The generator should emit one `event: step` (e.g. "propose_mapping",
-# "infer_formats", "batch 2/5") BEFORE each LLM call below, then relay the
-# ("thinking", delta) / ("text", delta) events from llm_client.chat_stream()
-# as `event: thinking` / `event: answer` SSE messages, and finish each step
-# with `event: result` carrying the parsed JSON. Parse JSON ONLY from the
-# text/done channel — never from thinking. The LLM call sites to wrap are:
-#   1. dict_ai.propose_mapping(...)        (sheet + column mapping proposal)
-#   2. dict_ai.infer_missing_formats(...)  (field type inference)
-#   3. each batch agent in the `for batch in batches:` loop
-# Keep this buffered /generate endpoint as-is for non-streaming clients.
 
-@router.post("/generate", response_model=GenerateResponse)
-async def generate_dqc(
-    dictionary: UploadFile = File(..., description="Field dictionary (.xlsx)"),
-    instructions: str = Form("", description="DQC rules, one per line"),
-    instructions_file: UploadFile | None = File(
-        None, description="Natural-language test list (.txt/.md/.csv/.xlsx)"),
-    table_name: str = Form("mylib.ciclos_recuperacion"),
-    sheet: str | None = Form(None, description="Workbook sheet holding the dictionary"),
-    column_mapping: str | None = Form(None, description="JSON role->header mapping"),
-    batch_size: int = Form(5, description="Instructions per generation agent"),
-    infer_formats: bool = Form(True, description="LLM-infer missing field types"),
-) -> GenerateResponse:
-    """Generate DQCs from an Excel field dictionary + NL instructions.
+def _resolve_dictionary_context(
+    raw: bytes,
+    sheet: str | None,
+    mapping: dict | None,
+    infer_formats: bool,
+) -> tuple[list, str | None, str, int, int]:
+    """Shared /generate + /generate_stream preamble: resolve sheet/mapping
+    (422 when the user must choose), parse the dictionary, infer formats.
 
-    Context-window discipline: instructions are processed in batches and
-    each batch is ONE fresh, stateless agent call that receives only the
-    dictionary fields relevant to it (never more than the char budget).
+    Returns (fields, sheet, mapping_source, formats_inferred, agents_used).
     """
     from fastapi import HTTPException
-
-    _require_xlsx(dictionary)
-    raw = await dictionary.read()
-
-    mapping: dict | None = None
-    if column_mapping:
-        try:
-            parsed = json.loads(column_mapping)
-            if isinstance(parsed, dict):
-                mapping = parsed
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="column_mapping must be JSON")
 
     agents_used = 0
     mapping_source = "user" if (sheet or mapping) else "heuristic"
@@ -365,16 +353,22 @@ async def generate_dqc(
         formats_inferred = dict_ai.infer_missing_formats(fields, get_client())
         agents_used += -(-untyped // 25)  # ceil(untyped / batch)
 
-    # typed rules + uploaded test list, deduplicated in order
+    return fields, sheet, mapping_source, formats_inferred, agents_used
+
+
+def _collect_rules(instructions: str, file_name: str | None,
+                   file_bytes: bytes | None) -> list[str]:
+    """Typed rules + uploaded test list, deduplicated in order (400 if none)."""
+    from fastapi import HTTPException
+
     instr_lines = _split_instructions(instructions)
-    if instructions_file is not None and instructions_file.filename:
-        file_rules = dict_ai.read_instructions_upload(
-            instructions_file.filename, await instructions_file.read())
+    if file_name and file_bytes is not None:
+        file_rules = dict_ai.read_instructions_upload(file_name, file_bytes)
         if not file_rules:
             raise HTTPException(
                 status_code=400,
                 detail=f"Could not read any rules from "
-                       f"'{instructions_file.filename}' — expected one "
+                       f"'{file_name}' — expected one "
                        f"natural-language test per line/row.")
         seen = {ln for ln in instr_lines}
         instr_lines += [r for r in file_rules if r not in seen]
@@ -382,6 +376,106 @@ async def generate_dqc(
         raise HTTPException(
             status_code=400,
             detail="Provide instructions (textarea) or upload a test list")
+    return instr_lines
+
+
+def _run_generation_agent(batch: list[str], fields: list, table_name: str,
+                          offset: int = 0) -> list[DQCItem]:
+    """ONE fresh, stateless generation agent for a batch of rules, fed only
+    the dictionary fields relevant to it. Raises on LLM failure."""
+    relevant = dict_ai.select_relevant_fields(fields, batch)
+    dict_text, sent = dict_ai.fields_to_text(relevant)
+    user_prompt = (
+        f"Tabla objetivo: {table_name}\n\n"
+        f"DICCIONARIO DE CAMPOS ({sent} campos relevantes de {len(fields)}):\n"
+        f"{dict_text}\n\n"
+        f"INSTRUCCIONES DQC ({len(batch)} reglas):\n"
+        + "\n".join(f"{offset + i + 1}. {ln}" for i, ln in enumerate(batch))
+    )
+    result = get_client().chat_json(
+        system=DQC_SYSTEM_PROMPT, user=user_prompt, max_tokens=4096)
+    return _parse_dqc_items(result)
+
+
+def _plan_rules(instr_lines: list[str], client) -> list[dict]:
+    """ONE planner agent splits the raw rules into an ordered action plan
+    (one entry per DQC to build). Falls back to one item per input line."""
+    fallback = [{"id": i + 1, "regla": ln,
+                 "accion": "Generar el control DQC correspondiente"}
+                for i, ln in enumerate(instr_lines)]
+    user = "\n".join(f"{i + 1}. {ln}" for i, ln in enumerate(instr_lines))
+    try:
+        result = client.chat_json(
+            system=PLAN_SYSTEM_PROMPT,
+            user=user[:dict_ai.PROMPT_CHAR_BUDGET],
+            max_tokens=2048)
+    except Exception as exc:  # noqa: BLE001 — planning is best-effort
+        logger.warning("plan agent failed: %s", exc)
+        return fallback
+    raw_items = result.get("plan") if isinstance(result, dict) else None
+    if not isinstance(raw_items, list):
+        return fallback
+    plan: list[dict] = []
+    for entry in raw_items:
+        if not isinstance(entry, dict):
+            continue
+        regla = str(entry.get("regla") or "").strip()
+        if not regla:
+            continue
+        plan.append({"id": len(plan) + 1, "regla": regla,
+                     "accion": str(entry.get("accion") or "").strip()})
+    return plan or fallback
+
+
+# ── Generation ──────────────────────────────────────────────────────────────
+
+# TODO(streaming-reasoning): add a POST /generate_stream twin of this endpoint
+# that streams the pipeline live to the chat UI over Server-Sent Events:
+#   return StreamingResponse(gen(), media_type="text/event-stream")
+#   (or the `sse-starlette` package for proper event framing/heartbeats)
+# The generator should emit one `event: step` (e.g. "propose_mapping",
+# "infer_formats", "batch 2/5") BEFORE each LLM call below, then relay the
+# ("thinking", delta) / ("text", delta) events from llm_client.chat_stream()
+# as `event: thinking` / `event: answer` SSE messages, and finish each step
+# with `event: result` carrying the parsed JSON. Parse JSON ONLY from the
+# text/done channel — never from thinking. The LLM call sites to wrap are:
+#   1. dict_ai.propose_mapping(...)        (sheet + column mapping proposal)
+#   2. dict_ai.infer_missing_formats(...)  (field type inference)
+#   3. each batch agent in the `for batch in batches:` loop
+# Keep this buffered /generate endpoint as-is for non-streaming clients.
+
+@router.post("/generate", response_model=GenerateResponse)
+async def generate_dqc(
+    dictionary: UploadFile = File(..., description="Field dictionary (.xlsx)"),
+    instructions: str = Form("", description="DQC rules, one per line"),
+    instructions_file: UploadFile | None = File(
+        None, description="Natural-language test list (.txt/.md/.csv/.xlsx)"),
+    table_name: str = Form("mylib.ciclos_recuperacion"),
+    sheet: str | None = Form(None, description="Workbook sheet holding the dictionary"),
+    column_mapping: str | None = Form(None, description="JSON role->header mapping"),
+    batch_size: int = Form(5, description="Instructions per generation agent"),
+    infer_formats: bool = Form(True, description="LLM-infer missing field types"),
+) -> GenerateResponse:
+    """Generate DQCs from an Excel field dictionary + NL instructions.
+
+    Context-window discipline: instructions are processed in batches and
+    each batch is ONE fresh, stateless agent call that receives only the
+    dictionary fields relevant to it (never more than the char budget).
+    """
+    _require_xlsx(dictionary)
+    raw = await dictionary.read()
+
+    mapping = _parse_mapping_form(column_mapping)
+    fields, sheet, mapping_source, formats_inferred, agents_used = (
+        _resolve_dictionary_context(raw, sheet, mapping, infer_formats))
+
+    file_bytes = None
+    if instructions_file is not None and instructions_file.filename:
+        file_bytes = await instructions_file.read()
+    instr_lines = _collect_rules(
+        instructions,
+        instructions_file.filename if instructions_file else None,
+        file_bytes)
 
     # one fresh agent per instruction batch, fed only the relevant fields
     dqcs: list[DQCItem] = []
@@ -389,25 +483,16 @@ async def generate_dqc(
     batches = dict_ai.plan_batches(instr_lines, batch_size)
     offset = 0
     for batch in batches:
-        relevant = dict_ai.select_relevant_fields(fields, batch)
-        dict_text, sent = dict_ai.fields_to_text(relevant)
-        user_prompt = (
-            f"Tabla objetivo: {table_name}\n\n"
-            f"DICCIONARIO DE CAMPOS ({sent} campos relevantes de {len(fields)}):\n"
-            f"{dict_text}\n\n"
-            f"INSTRUCCIONES DQC ({len(batch)} reglas):\n"
-            + "\n".join(f"{offset + i + 1}. {ln}" for i, ln in enumerate(batch))
-        )
-        offset += len(batch)
         try:
-            result = get_client().chat_json(
-                system=DQC_SYSTEM_PROMPT, user=user_prompt, max_tokens=4096)
+            items = _run_generation_agent(batch, fields, table_name, offset)
             agents_used += 1
         except Exception as exc:  # noqa: BLE001 — a batch failing must not kill the run
             logger.error("LLM batch failed: %s", exc)
             errors.append(str(exc))
+            offset += len(batch)
             continue
-        dqcs.extend(_parse_dqc_items(result))
+        offset += len(batch)
+        dqcs.extend(items)
 
     _dedupe_ids(dqcs)
     try:
@@ -446,6 +531,124 @@ def _dedupe_ids(items: list[DQCItem]) -> None:
             item.dqc_id = f"{base}_{seen[base]}"
         else:
             seen[base] = 1
+
+
+# ── Plan-mode generation (SSE) ───────────────────────────────────────────────
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.post("/generate_stream")
+async def generate_dqc_stream(
+    dictionary: UploadFile = File(..., description="Field dictionary (.xlsx)"),
+    instructions: str = Form("", description="DQC rules, one per line"),
+    instructions_file: UploadFile | None = File(
+        None, description="Natural-language test list (.txt/.md/.csv/.xlsx)"),
+    table_name: str = Form("mylib.ciclos_recuperacion"),
+    sheet: str | None = Form(None, description="Workbook sheet holding the dictionary"),
+    column_mapping: str | None = Form(None, description="JSON role->header mapping"),
+    infer_formats: bool = Form(True, description="LLM-infer missing field types"),
+):
+    """Plan-mode twin of /generate, streamed over Server-Sent Events.
+
+    ONE planner agent first separates the instructions into an ordered JSON
+    action plan (one entry per DQC to build); then one fresh generation
+    agent runs per plan item so the UI can tick items off live, Claude-Code
+    style. Event sequence::
+
+        meta  {dictionary_fields, sheet_used, formats_inferred}
+        plan  {items: [{id, regla, accion, estado: "pendiente"}]}
+        item  {id, estado: "en_curso"}
+        item  {id, estado: "completado", dqcs: [...]} | {id, estado: "error", error}
+        ...                                  (item pair repeats per plan entry)
+        done  {dqcs, context_summary, dictionary_fields, sheet_used,
+               mapping_source, formats_inferred, agents_used}
+
+    Pre-stream validation errors (bad file, ambiguous sheet) surface as the
+    same 400/422 responses /generate raises.
+    """
+    from fastapi.responses import StreamingResponse
+
+    _require_xlsx(dictionary)
+    raw = await dictionary.read()
+
+    mapping = _parse_mapping_form(column_mapping)
+    fields, sheet, mapping_source, formats_inferred, agents_used = (
+        _resolve_dictionary_context(raw, sheet, mapping, infer_formats))
+
+    file_bytes = None
+    if instructions_file is not None and instructions_file.filename:
+        file_bytes = await instructions_file.read()
+    instr_lines = _collect_rules(
+        instructions,
+        instructions_file.filename if instructions_file else None,
+        file_bytes)
+
+    def event_stream():
+        agents = agents_used
+        yield _sse("meta", {
+            "dictionary_fields": len(fields),
+            "sheet_used": sheet or "",
+            "formats_inferred": formats_inferred,
+        })
+
+        plan = _plan_rules(instr_lines, get_client())
+        agents += 1
+        yield _sse("plan", {"items": [
+            {**p, "estado": "pendiente"} for p in plan
+        ]})
+
+        dqcs: list[DQCItem] = []
+        errors: list[str] = []
+        for entry in plan:
+            yield _sse("item", {"id": entry["id"], "estado": "en_curso"})
+            try:
+                items = _run_generation_agent(
+                    [entry["regla"]], fields, table_name, entry["id"] - 1)
+                agents += 1
+            except Exception as exc:  # noqa: BLE001 — one rule failing must not kill the run
+                logger.error("LLM plan item %d failed: %s", entry["id"], exc)
+                errors.append(str(exc))
+                yield _sse("item", {"id": entry["id"], "estado": "error",
+                                    "error": str(exc)})
+                continue
+            dqcs.extend(items)
+            yield _sse("item", {"id": entry["id"], "estado": "completado",
+                                "dqcs": [i.model_dump() for i in items]})
+
+        _dedupe_ids(dqcs)
+        try:
+            saved = _persist_dqc_items(dqcs)
+            logger.info("persisted %d/%d DQCs", len(saved), len(dqcs))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("persist failed: %s", exc)
+
+        summary = (
+            f"Se generaron {len(dqcs)} DQCs a partir de un plan de "
+            f"{len(plan)} regla(s) ({len(fields)} campos del diccionario, "
+            f"hoja '{sheet}'"
+            + (f", {formats_inferred} formato(s) inferido(s)" if formats_inferred else "")
+            + ")."
+        )
+        if errors and not dqcs:
+            summary = f"Error al generar DQCs: {errors[0]}"
+
+        yield _sse("done", {
+            "dqcs": [d.model_dump() for d in dqcs],
+            "context_summary": summary,
+            "dictionary_fields": len(fields),
+            "sheet_used": sheet or "",
+            "mapping_source": mapping_source,
+            "formats_inferred": formats_inferred,
+            "agents_used": agents,
+        })
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Validation pipeline ───────────────────────────────────────────────────────

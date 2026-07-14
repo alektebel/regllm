@@ -40,10 +40,28 @@ export interface InspectResponse {
   options: string[];
 }
 
+/** one entry of the LLM's DQC action plan, ticked off live as it executes */
+export interface PlanItem {
+  id: number;
+  regla: string;
+  accion: string;
+  estado: 'pendiente' | 'en_curso' | 'completado' | 'error';
+  dqcs?: DqcItem[];
+  error?: string;
+}
+
+/** typed SSE frame from POST /generate_stream */
+export interface StreamEvent {
+  type: 'meta' | 'plan' | 'item' | 'done' | string;
+  data: any;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   dqcs?: DqcItem[];
+  /** live DQC action plan rendered as a checklist */
+  plan?: PlanItem[];
   /** sheet names rendered as clickable answers to an assistant question */
   options?: string[];
   /** sheet the LLM proposed after inspection (highlighted among options) */

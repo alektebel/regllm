@@ -28,6 +28,35 @@
             </div>
           }
 
+          @if (msg.plan && msg.plan.length > 0) {
+            <div class="plan-list">
+              @for (p of msg.plan; track p.id) {
+                <div class="plan-item" [attr.data-estado]="p.estado">
+                  <span class="plan-status">
+                    @switch (p.estado) {
+                      @case ('completado') { ✓ }
+                      @case ('error') { ✗ }
+                      @case ('en_curso') { <span class="plan-spinner"></span> }
+                      @default { ○ }
+                    }
+                  </span>
+                  <div class="plan-body">
+                    <span class="plan-regla">{{ p.regla }}</span>
+                    @if (p.accion) {
+                      <span class="plan-accion">{{ p.accion }}</span>
+                    }
+                    @if (p.estado === 'completado' && p.dqcs && p.dqcs.length > 0) {
+                      <span class="plan-count">{{ p.dqcs.length }} DQC{{ p.dqcs.length > 1 ? 's' : '' }} generado{{ p.dqcs.length > 1 ? 's' : '' }}</span>
+                    }
+                    @if (p.error) {
+                      <span class="plan-error">{{ p.error }}</span>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
           @if (msg.dqcs && msg.dqcs.length > 0) {
             <div class="dqc-list">
               @for (dqc of msg.dqcs; track dqc.dqc_id) {
