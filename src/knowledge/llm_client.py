@@ -679,43 +679,57 @@ class LocalLLMClient:
         max_tokens: int,
         json_mode: bool,
     ) -> ChatResponse:
-        # For thinking-capable models (qwen3*) in non-JSON mode, disable
-        # thinking to prevent <think> tokens consuming the output budget.
-        # In JSON mode, skip /no_think — it causes empty output with format:json.
-        # Instead we let the model think and strip tags from the result.
+        # For thinking-capable models (qwen3*, deepseek-r1) disable reasoning
+        # with Ollama's native `think: false` request field — unlike the old
+        # /no_think prompt hack it also works alongside format:json, where
+        # letting the model think burned minutes of hidden <think> tokens per
+        # call (and could exhaust the whole budget, yielding empty output).
         #
         # TODO(streaming-reasoning): for a streaming variant, POST /api/chat
-        # with `"stream": true, "think": true` (instead of /no_think). Ollama
-        # then delivers each chunk with the reasoning in `message.thinking`
-        # SEPARATE from `message.content`, so JSON mode stays clean — no
-        # <think> tags to strip. Iterate the ndjson lines with
-        # `httpx.stream(...)` and yield ("thinking", delta) / ("text", delta)
-        # events for chat_stream(). Docs: ollama/docs/api.md, "thinking".
-        msgs = list(messages)
-        if self._is_thinking_model() and not json_mode:
-            msgs = _inject_no_think(msgs)
-        msgs = _inject_spanish(msgs)
-
-        # Thinking models need extra token budget for <think> tokens in JSON mode;
-        # the think content is stripped from the final output.
-        predict = max_tokens
-        if json_mode and self._is_thinking_model():
-            predict = max_tokens + 4096
+        # with `"stream": true, "think": true`. Ollama then delivers each
+        # chunk with the reasoning in `message.thinking` SEPARATE from
+        # `message.content`, so JSON mode stays clean — no <think> tags to
+        # strip. Iterate the ndjson lines with `httpx.stream(...)` and yield
+        # ("thinking", delta) / ("text", delta) events for chat_stream().
+        # Docs: ollama/docs/api.md, "thinking".
+        msgs = _inject_spanish(list(messages))
+        thinking = self._is_thinking_model()
 
         payload: dict[str, Any] = {
             "model": self.ollama_model,
             "messages": msgs,
             "stream": False,
-            "options": {"temperature": temperature, "num_predict": predict},
+            "options": {"temperature": temperature, "num_predict": max_tokens},
         }
         if json_mode:
             payload["format"] = "json"
-        r = httpx.post(
-            f"{self.ollama_url}/api/chat",
-            json=payload,
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
+        if thinking:
+            payload["think"] = False
+
+        try:
+            r = httpx.post(
+                f"{self.ollama_url}/api/chat",
+                json=payload,
+                timeout=self.timeout,
+            )
+            r.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if not (thinking and exc.response.status_code == 400):
+                raise
+            # Ollama < 0.9 rejects the `think` field — fall back to the old
+            # behaviour: /no_think prompt in plain mode; in JSON mode let the
+            # model think with extra budget and strip the tags afterwards.
+            payload.pop("think", None)
+            if json_mode:
+                payload["options"]["num_predict"] = max_tokens + 4096
+            else:
+                payload["messages"] = _inject_no_think(msgs)
+            r = httpx.post(
+                f"{self.ollama_url}/api/chat",
+                json=payload,
+                timeout=self.timeout,
+            )
+            r.raise_for_status()
         data = r.json()
         text = _strip_think_tags(data.get("message", {}).get("content", ""))
         return ChatResponse(text=text, backend="ollama", model=self.ollama_model, raw=data)
