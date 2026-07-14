@@ -206,6 +206,32 @@ def test_inspect_endpoint_proposes_sheet(client, monkeypatch):
     assert {s["name"] for s in body["sheets"]} == {"Notas", "DICCIONARIO"}
 
 
+def test_inspect_legacy_xls_returns_400_not_500(client):
+    # .xls passes the extension check but openpyxl cannot read the legacy
+    # binary format — must be a clear 400, not an unhandled 500
+    resp = client.post("/dqc/inspect_dictionary", files={"dictionary": (
+        "datos.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64,
+        "application/vnd.ms-excel")})
+    assert resp.status_code == 400
+    assert ".xls antiguo" in resp.json()["detail"]
+
+
+def test_inspect_corrupt_xlsx_returns_400_not_500(client):
+    resp = client.post("/dqc/inspect_dictionary",
+                       files=_upload(b"not really a zip"))
+    assert resp.status_code == 400
+    assert "No se pudo leer el Excel" in resp.json()["detail"]
+
+
+def test_generate_corrupt_xlsx_returns_400_not_500(client, monkeypatch):
+    fake = _FakeClient([{}])
+    monkeypatch.setattr(dqc_router, "get_client", lambda: fake)
+    monkeypatch.setattr(dqc_router, "get_inspect_client", lambda: fake)
+    resp = client.post("/dqc/generate", data={"instructions": "PD <= 1"},
+                       files=_upload(b"not really a zip"))
+    assert resp.status_code == 400
+
+
 def test_generate_asks_when_sheets_ambiguous(client, monkeypatch):
     fake = _FakeClient([{"sheet": "HOJA1", "column_mapping": {"field": "Field"},
                          "confidence": 0.4,

@@ -79,9 +79,14 @@ export class ChatComponent {
           });
         }
       },
-      error: () => {
-        // inspection is best-effort; generation can still ask via 422
+      error: (err) => {
         this.isInspecting = false;
+        const detail = err.error?.detail;
+        if (typeof detail === 'string') {
+          // unreadable workbook (.xls antiguo, corrupto, con contraseña…)
+          this.messages.push({ role: 'assistant', content: detail });
+        }
+        // otherwise inspection stays best-effort; generation can ask via 422
       },
     });
   }

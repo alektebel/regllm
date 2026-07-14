@@ -251,11 +251,17 @@ async def inspect_dictionary(
     LLM agent propose which sheet is the field dictionary and how its
     columns map. When confidence is low the response carries a `question`
     for the chat UI; the user's click resolves it (no free-form parsing)."""
+    from fastapi import HTTPException
+
     _require_xlsx(dictionary)
     raw = await dictionary.read()
-    inspection = dict_ai.inspect_workbook(raw)
+    try:
+        inspection = dict_ai.inspect_workbook(raw)
+    except Exception as exc:  # noqa: BLE001 — unreadable workbook is a user error, not a 500
+        raise HTTPException(
+            status_code=400,
+            detail=_workbook_read_error(dictionary.filename, exc))
     if not inspection.sheets:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="Workbook has no sheets")
 
     # sheet + column mapping is a small structured task — run it on the
@@ -284,6 +290,16 @@ def _require_xlsx(dictionary: UploadFile) -> None:
         raise HTTPException(status_code=400, detail="dictionary must be an Excel file (.xlsx)")
 
 
+def _workbook_read_error(filename: str | None, exc: Exception) -> str:
+    """User-facing detail for a workbook openpyxl could not load."""
+    name = (filename or "").lower()
+    if name.endswith(".xls"):
+        return ("El formato .xls antiguo no está soportado. Abre el fichero "
+                "en Excel, guárdalo como .xlsx y vuelve a subirlo.")
+    return (f"No se pudo leer el Excel ({exc.__class__.__name__}). Comprueba "
+            "que es un .xlsx válido y que no está protegido con contraseña.")
+
+
 def _parse_mapping_form(column_mapping: str | None) -> dict | None:
     if not column_mapping:
         return None
@@ -300,6 +316,7 @@ def _resolve_dictionary_context(
     sheet: str | None,
     mapping: dict | None,
     infer_formats: bool,
+    filename: str | None = None,
 ) -> tuple[list, str | None, str, int, int]:
     """Shared /generate + /generate_stream preamble: resolve sheet/mapping
     (422 when the user must choose), parse the dictionary, infer formats.
@@ -311,7 +328,11 @@ def _resolve_dictionary_context(
     agents_used = 0
     mapping_source = "user" if (sheet or mapping) else "heuristic"
     if not sheet:
-        inspection = dict_ai.inspect_workbook(raw)
+        try:
+            inspection = dict_ai.inspect_workbook(raw)
+        except Exception as exc:  # noqa: BLE001 — unreadable workbook is a user error
+            raise HTTPException(
+                status_code=400, detail=_workbook_read_error(filename, exc))
         # ask only when there is a real choice: several sheets, at least
         # one plausible, and the heuristics cannot separate them (a single
         # or empty sheet falls through to parsing and its 400)
@@ -339,7 +360,11 @@ def _resolve_dictionary_context(
         else:
             sheet = inspection.best.name if inspection.best else None
 
-    fields = dict_ai.parse_dictionary(raw, sheet=sheet, mapping=mapping)
+    try:
+        fields = dict_ai.parse_dictionary(raw, sheet=sheet, mapping=mapping)
+    except Exception as exc:  # noqa: BLE001 — unreadable workbook is a user error
+        raise HTTPException(
+            status_code=400, detail=_workbook_read_error(filename, exc))
     if not fields:
         raise HTTPException(
             status_code=400,
@@ -467,7 +492,8 @@ async def generate_dqc(
 
     mapping = _parse_mapping_form(column_mapping)
     fields, sheet, mapping_source, formats_inferred, agents_used = (
-        _resolve_dictionary_context(raw, sheet, mapping, infer_formats))
+        _resolve_dictionary_context(raw, sheet, mapping, infer_formats,
+                                    dictionary.filename))
 
     file_bytes = None
     if instructions_file is not None and instructions_file.filename:
@@ -575,7 +601,8 @@ async def generate_dqc_stream(
 
     mapping = _parse_mapping_form(column_mapping)
     fields, sheet, mapping_source, formats_inferred, agents_used = (
-        _resolve_dictionary_context(raw, sheet, mapping, infer_formats))
+        _resolve_dictionary_context(raw, sheet, mapping, infer_formats,
+                                    dictionary.filename))
 
     file_bytes = None
     if instructions_file is not None and instructions_file.filename:
