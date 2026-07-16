@@ -30,6 +30,7 @@ export class DqcService {
     sheet?: string,
     columnMapping?: Record<string, string | null>,
     instructionsFile?: File,
+    dataFile?: File,
   ): Observable<StreamEvent> {
     const form = new FormData();
     form.append('dictionary', dictionary);
@@ -38,6 +39,7 @@ export class DqcService {
     if (sheet) form.append('sheet', sheet);
     if (columnMapping) form.append('column_mapping', JSON.stringify(columnMapping));
     if (instructionsFile) form.append('instructions_file', instructionsFile);
+    if (dataFile) form.append('data_file', dataFile);
 
     return new Observable<StreamEvent>((observer) => {
       const controller = new AbortController();

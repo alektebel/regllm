@@ -332,17 +332,33 @@
 .plan-item[data-estado="en_curso"]   { border-color: #6c7bbf; }
 .plan-item[data-estado="completado"] { border-color: rgba(46,204,113,0.4); }
 .plan-item[data-estado="error"]      { border-color: rgba(231,76,60,0.5); }
+.plan-item[data-estado="ambigua"]    { border-color: rgba(243,156,18,0.5); }
 
-.plan-status {
+/* square checkbox, Claude-Code-plan style */
+.plan-box {
   flex-shrink: 0;
-  width: 18px;
-  text-align: center;
-  font-size: 13px;
-  line-height: 1.4;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border: 1.5px solid #444;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
-.plan-item[data-estado="completado"] .plan-status { color: #2ecc71; }
-.plan-item[data-estado="error"]      .plan-status { color: #e74c3c; }
-.plan-item[data-estado="pendiente"]  .plan-status { color: #666; }
+.plan-item[data-estado="completado"] .plan-box {
+  border-color: #2ecc71; color: #2ecc71; background: rgba(46,204,113,0.12);
+}
+.plan-item[data-estado="error"] .plan-box {
+  border-color: #e74c3c; color: #e74c3c; background: rgba(231,76,60,0.12);
+}
+.plan-item[data-estado="ambigua"] .plan-box {
+  border-color: #f39c12; color: #f39c12; background: rgba(243,156,18,0.12);
+}
+.plan-item[data-estado="en_curso"] .plan-box { border-color: #6c7bbf; }
 
 .plan-spinner {
   display: inline-block;
@@ -365,6 +381,34 @@
 .plan-accion { font-size: 11px; color: #777; }
 .plan-count  { font-size: 11px; color: #2ecc71; }
 .plan-error  { font-size: 11px; color: #e74c3c; }
+.plan-fase   { font-size: 11px; color: #6c7bbf; font-style: italic; }
+.plan-falta  { font-size: 11px; color: #f39c12; }
+
+.plan-previd {
+  font-size: 10px;
+  color: #7ec8e3;
+  background: rgba(126,200,227,0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 6px;
+}
+
+/* sample violating cases from the data Excel */
+.plan-examples {
+  margin-top: 6px;
+  overflow-x: auto;
+  border: 1px solid #2a2a40;
+  border-radius: 4px;
+}
+.plan-examples table { border-collapse: collapse; font-size: 10px; width: 100%; }
+.plan-examples th, .plan-examples td {
+  padding: 3px 8px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #1e1e35;
+}
+.plan-examples th { color: #888; background: #0a0a14; font-weight: 600; }
+.plan-examples td { color: #aaa; }
 
 /* ── DQC code blocks in chat ── */
 .dqc-list {

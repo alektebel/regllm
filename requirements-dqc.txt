@@ -3,7 +3,7 @@
 # .github/workflows/deploy.yml + DQC/terraform (REGLLM_ROUTERS=dqc).
 #
 # Deliberately excludes torch, kuzu, chromadb, scikit-learn, umap-learn,
-# pandas, openpyxl: those back the SAS field-diff explainer, the interactive
+# pandas: those back the SAS field-diff explainer, the interactive
 # knowledge-graph builder, and the embedding/tabular routers, none of which
 # are mounted or reachable when REGLLM_ROUTERS=dqc. See docs/DEPLOYMENT.md.
 #
@@ -24,3 +24,7 @@ networkx>=3.3
 httpx>=0.27
 pyyaml>=6.0
 boto3>=1.34
+
+# Excel parsing — the DQC router reads the field-dictionary workbook and the
+# extracted-cases workbook (dqc_dictionary.py / dqc_react.py)
+openpyxl>=3.1

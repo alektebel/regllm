@@ -21,6 +21,8 @@ export class ChatComponent {
   dictionaryName = '';
   testsFile: File | null = null;
   testsFileName = '';
+  dataFile: File | null = null;
+  dataFileName = '';
   isLoading = false;
   isInspecting = false;
 
@@ -91,6 +93,21 @@ export class ChatComponent {
     });
   }
 
+  onDataFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.dataFile = file;
+    this.dataFileName = file?.name ?? '';
+    if (file) {
+      this.messages.push({
+        role: 'assistant',
+        content: `Excel de datos "${file.name}" cargado. Las consultas ` +
+          `generadas se ejecutarán sobre estos casos (columna DQC_ID → ` +
+          `precisión y recall si las reglas llevan id previo).`,
+      });
+    }
+  }
+
   onTestsFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] ?? null;
@@ -132,7 +149,7 @@ export class ChatComponent {
     this.dqcService
       .generateStream(this.dictionaryFile, text, this.tableName,
                       this.selectedSheet ?? undefined, this.columnMapping ?? undefined,
-                      this.testsFile ?? undefined)
+                      this.testsFile ?? undefined, this.dataFile ?? undefined)
       // fetch() resolves outside Angular's zone — re-enter it so the
       // checklist repaints on every event
       .subscribe({
@@ -162,6 +179,16 @@ export class ChatComponent {
       });
   }
 
+  faseLabel(p: PlanItem): string {
+    const labels: Record<string, string> = {
+      suficiencia: 'verificando información…',
+      generacion: 'generando consulta SAS…',
+      validacion: 'validando consulta…',
+    };
+    const base = labels[p.fase ?? ''] ?? 'procesando…';
+    return p.intento && p.intento > 1 ? `${base} (intento ${p.intento})` : base;
+  }
+
   private onStreamEvent(
     ev: StreamEvent,
     planRef: { setPlan: (m: ChatMessage) => void; getPlan: () => ChatMessage | null },
@@ -180,15 +207,29 @@ export class ChatComponent {
       const item = plan?.find((p) => p.id === ev.data.id);
       if (item) {
         item.estado = ev.data.estado;
+        item.fase = ev.data.fase;
+        item.intento = ev.data.intento;
+        if (ev.data.falta) item.falta = ev.data.falta;
+        if (ev.data.campos) item.campos = ev.data.campos;
+        if (ev.data.validacion) item.validacion = ev.data.validacion;
         if (ev.data.dqcs) item.dqcs = ev.data.dqcs;
         if (ev.data.error) item.error = ev.data.error;
       }
     } else if (ev.type === 'done') {
       const d = ev.data;
       const count = d.dqcs?.length ?? 0;
-      const summary = count > 0
+      let summary = count > 0
         ? `Se generaron ${count} DQC${count > 1 ? 's' : ''} (${d.dictionary_fields} campos, hoja "${d.sheet_used}"${d.formats_inferred ? `, ${d.formats_inferred} formatos inferidos` : ''}). Revisa el panel izquierdo.`
         : d.context_summary;
+      const ev2 = d.evaluacion;
+      if (ev2) {
+        summary += ` Evaluación sobre ${ev2.casos} casos: ${ev2.tests_comprobados} test${ev2.tests_comprobados !== 1 ? 's' : ''} comprobado${ev2.tests_comprobados !== 1 ? 's' : ''}`;
+        if (ev2.precision_media != null) {
+          summary += `, precisión media ${(ev2.precision_media * 100).toFixed(0)}%, recall medio ${(ev2.recall_medio * 100).toFixed(0)}%`;
+        }
+        if (ev2.ambiguas) summary += `, ${ev2.ambiguas} regla(s) ambigua(s)`;
+        summary += '.';
+      }
       this.messages.push({ role: 'assistant', content: summary, dqcs: d.dqcs ?? [] });
       if (count > 0) this.dqcGenerated.emit();
     }

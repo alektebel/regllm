@@ -22,6 +22,7 @@ from src.knowledge import get_client, get_inspect_client
 from training.dq import checks_db
 
 from . import dqc_dictionary as dict_ai
+from . import dqc_react as react
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/dqc", tags=["dqc"])
 
 class DQCItem(BaseModel):
     dqc_id: str = ""
+    prev_id: str = ""              # previous/official id given by the user
     variable: str = ""
     descripcion: str = ""
     tipo: str = ""
@@ -210,6 +212,7 @@ def _persist_dqc_items(items: list[DQCItem]) -> list[str]:
             try:
                 cid = checks_db.insert_check(
                     conn,
+                    rule_id=it.prev_id or None,
                     name=(it.dqc_id or "dqc").lower(),
                     description=it.descripcion,
                     severity=sev,
@@ -571,29 +574,37 @@ async def generate_dqc_stream(
     instructions: str = Form("", description="DQC rules, one per line"),
     instructions_file: UploadFile | None = File(
         None, description="Natural-language test list (.txt/.md/.csv/.xlsx)"),
+    data_file: UploadFile | None = File(
+        None, description="Extracted cases Excel to execute the DQCs against"),
     table_name: str = Form("mylib.ciclos_recuperacion"),
     sheet: str | None = Form(None, description="Workbook sheet holding the dictionary"),
     column_mapping: str | None = Form(None, description="JSON role->header mapping"),
     infer_formats: bool = Form(True, description="LLM-infer missing field types"),
 ):
-    """Plan-mode twin of /generate, streamed over Server-Sent Events.
+    """Plan-mode ReAct generation, streamed over Server-Sent Events.
 
-    ONE planner agent first separates the instructions into an ordered JSON
-    action plan (one entry per DQC to build); then one fresh generation
-    agent runs per plan item so the UI can tick items off live, Claude-Code
-    style. Event sequence::
+    ONE planner agent separates the instructions into an ordered action
+    plan; then each plan item runs a fresh-context ReAct loop
+    (sufficiency check → SAS generation → static+dynamic validation →
+    correction, see ``dqc_react``) so the UI can tick items off live.
+    Rules may carry a previous DQC id (``DQC_X: regla`` / ``[DQC_X] regla``).
+    When ``data_file`` (extracted cases Excel) is uploaded, each accepted
+    query is executed against it: example violating cases stream back, and
+    a label column (DQC_ID/ID_DQC/…) plus previous ids yield precision and
+    recall per DQC. Event sequence::
 
-        meta  {dictionary_fields, sheet_used, formats_inferred}
-        plan  {items: [{id, regla, accion, estado: "pendiente"}]}
-        item  {id, estado: "en_curso"}
-        item  {id, estado: "completado", dqcs: [...]} | {id, estado: "error", error}
-        ...                                  (item pair repeats per plan entry)
-        done  {dqcs, context_summary, dictionary_fields, sheet_used,
-               mapping_source, formats_inferred, agents_used}
+        meta  {dictionary_fields, sheet_used, formats_inferred, casos}
+        plan  {items: [{id, regla, accion, prev_id, estado: "pendiente"}]}
+        item  {id, estado: "en_curso", fase: "suficiencia"|"generacion"|"validacion", intento}
+        item  {id, estado: "ambigua", falta, campos}
+              | {id, estado: "completado", dqcs, validacion?}
+              | {id, estado: "error", error}
+        done  {dqcs, context_summary, ..., evaluacion?}
 
     Pre-stream validation errors (bad file, ambiguous sheet) surface as the
     same 400/422 responses /generate raises.
     """
+    from fastapi import HTTPException
     from fastapi.responses import StreamingResponse
 
     _require_xlsx(dictionary)
@@ -612,37 +623,137 @@ async def generate_dqc_stream(
         instructions_file.filename if instructions_file else None,
         file_bytes)
 
+    cases = None
+    if data_file is not None and data_file.filename:
+        data_bytes = await data_file.read()
+        try:
+            cases = react.load_cases(data_bytes, table_name)
+        except Exception as exc:  # noqa: BLE001 — unreadable cases file is a user error
+            raise HTTPException(
+                status_code=400,
+                detail=_workbook_read_error(data_file.filename, exc))
+
+    # previous DQC ids ("DQC_X: regla") are extracted BEFORE planning and
+    # re-attached by position when the planner keeps one item per line
+    prev_ids = []
+    clean_lines = []
+    for ln in instr_lines:
+        pid, rest = react.split_prev_id(ln)
+        prev_ids.append(pid)
+        clean_lines.append(rest)
+
     def event_stream():
         agents = agents_used
         yield _sse("meta", {
             "dictionary_fields": len(fields),
             "sheet_used": sheet or "",
             "formats_inferred": formats_inferred,
+            "casos": cases.n_rows if cases else 0,
         })
 
-        plan = _plan_rules(instr_lines, get_client())
+        plan = _plan_rules(clean_lines, get_client())
         agents += 1
+        if len(plan) == len(clean_lines):
+            for p, pid in zip(plan, prev_ids):
+                p["prev_id"] = pid or ""
+        else:
+            for p in plan:
+                p["prev_id"] = ""
         yield _sse("plan", {"items": [
             {**p, "estado": "pendiente"} for p in plan
         ]})
 
         dqcs: list[DQCItem] = []
         errors: list[str] = []
+        ambiguas = 0
+        precisions: list[float] = []
+        recalls: list[float] = []
+        comprobados = 0
+
         for entry in plan:
-            yield _sse("item", {"id": entry["id"], "estado": "en_curso"})
-            try:
-                items = _run_generation_agent(
-                    [entry["regla"]], fields, table_name, entry["id"] - 1)
-                agents += 1
-            except Exception as exc:  # noqa: BLE001 — one rule failing must not kill the run
-                logger.error("LLM plan item %d failed: %s", entry["id"], exc)
-                errors.append(str(exc))
-                yield _sse("item", {"id": entry["id"], "estado": "error",
-                                    "error": str(exc)})
+            eid = entry["id"]
+
+            # ── 1. sufficiency: do we have everything, or is it ambiguous?
+            yield _sse("item", {"id": eid, "estado": "en_curso",
+                                "fase": "suficiencia"})
+            suf = react.check_sufficiency(entry["regla"], fields, get_client())
+            agents += 1
+            if not suf["suficiente"]:
+                ambiguas += 1
+                yield _sse("item", {"id": eid, "estado": "ambigua",
+                                    "falta": suf["falta"],
+                                    "campos": suf["campos"]})
                 continue
+
+            # ── 2-4. generate SAS → validate → correct (fresh agent each try)
+            items: list[DQCItem] = []
+            validacion: dict | None = None
+            feedback: list[str] | None = None
+            last_errors: list[str] = []
+            for intento in range(1, react.MAX_ATTEMPTS + 1):
+                yield _sse("item", {"id": eid, "estado": "en_curso",
+                                    "fase": "generacion", "intento": intento})
+                try:
+                    result = react.generate_sas(
+                        entry["regla"], fields, table_name, get_client(),
+                        campos=suf["campos"], feedback=feedback)
+                    agents += 1
+                except Exception as exc:  # noqa: BLE001
+                    last_errors = [str(exc)]
+                    feedback = last_errors
+                    continue
+                items = _parse_dqc_items(result)
+                if not items:
+                    last_errors = ["la respuesta no contenía ningún DQC"]
+                    feedback = last_errors
+                    continue
+
+                yield _sse("item", {"id": eid, "estado": "en_curso",
+                                    "fase": "validacion", "intento": intento})
+                val_errors = react.static_validate(
+                    items[0].regla_sql, fields, table_name)
+                validacion = {"estatica": "ok" if not val_errors else "error",
+                              "ejecutada": False}
+                if not val_errors and cases is not None:
+                    run = react.run_query(cases, items[0].regla_sql, table_name)
+                    if not run["ok"]:
+                        val_errors = [run["error"]]
+                    else:
+                        comprobados += 1
+                        validacion.update({
+                            "ejecutada": True,
+                            "n_casos": run["n_casos"],
+                            "columnas": run["columnas"],
+                            "ejemplos": run["ejemplos"],
+                        })
+                        m = react.metrics(cases, run["casos"],
+                                          entry.get("prev_id"))
+                        if m:
+                            validacion.update(m)
+                            precisions.append(m["precision"])
+                            recalls.append(m["recall"])
+                if val_errors:
+                    last_errors = val_errors
+                    feedback = val_errors
+                    items = []
+                    continue
+                break
+
+            if not items:
+                error = "; ".join(last_errors) or "sin resultado"
+                errors.append(error)
+                yield _sse("item", {"id": eid, "estado": "error",
+                                    "error": f"No validado tras "
+                                             f"{react.MAX_ATTEMPTS} intentos: "
+                                             f"{error}"})
+                continue
+
+            for it in items:
+                it.prev_id = entry.get("prev_id") or ""
             dqcs.extend(items)
-            yield _sse("item", {"id": entry["id"], "estado": "completado",
-                                "dqcs": [i.model_dump() for i in items]})
+            yield _sse("item", {"id": eid, "estado": "completado",
+                                "dqcs": [i.model_dump() for i in items],
+                                "validacion": validacion})
 
         _dedupe_ids(dqcs)
         try:
@@ -656,10 +767,23 @@ async def generate_dqc_stream(
             f"{len(plan)} regla(s) ({len(fields)} campos del diccionario, "
             f"hoja '{sheet}'"
             + (f", {formats_inferred} formato(s) inferido(s)" if formats_inferred else "")
+            + (f", {ambiguas} regla(s) ambigua(s)" if ambiguas else "")
             + ")."
         )
-        if errors and not dqcs:
+        if errors and not dqcs and not ambiguas:
             summary = f"Error al generar DQCs: {errors[0]}"
+
+        evaluacion = None
+        if cases is not None:
+            evaluacion = {
+                "casos": cases.n_rows,
+                "tests_comprobados": comprobados,
+                "ambiguas": ambiguas,
+                "precision_media": round(sum(precisions) / len(precisions), 3)
+                if precisions else None,
+                "recall_medio": round(sum(recalls) / len(recalls), 3)
+                if recalls else None,
+            }
 
         yield _sse("done", {
             "dqcs": [d.model_dump() for d in dqcs],
@@ -669,6 +793,7 @@ async def generate_dqc_stream(
             "mapping_source": mapping_source,
             "formats_inferred": formats_inferred,
             "agents_used": agents,
+            "evaluacion": evaluacion,
         })
 
     return StreamingResponse(

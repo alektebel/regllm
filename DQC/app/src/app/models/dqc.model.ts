@@ -40,12 +40,33 @@ export interface InspectResponse {
   options: string[];
 }
 
+/** query validation outcome for one plan item (ReAct pipeline) */
+export interface PlanValidation {
+  estatica: 'ok' | 'error';
+  ejecutada: boolean;
+  n_casos?: number;
+  columnas?: string[];
+  ejemplos?: Record<string, string>[];
+  precision?: number;
+  recall?: number;
+  esperados?: number;
+  aciertos?: number;
+}
+
 /** one entry of the LLM's DQC action plan, ticked off live as it executes */
 export interface PlanItem {
   id: number;
   regla: string;
   accion: string;
-  estado: 'pendiente' | 'en_curso' | 'completado' | 'error';
+  prev_id?: string;
+  estado: 'pendiente' | 'en_curso' | 'completado' | 'error' | 'ambigua';
+  /** ReAct phase while en_curso: suficiencia | generacion | validacion */
+  fase?: string;
+  intento?: number;
+  /** justification of the missing info when estado === 'ambigua' */
+  falta?: string;
+  campos?: string[];
+  validacion?: PlanValidation;
   dqcs?: DqcItem[];
   error?: string;
 }
