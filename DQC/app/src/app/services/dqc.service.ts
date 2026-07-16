@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   GenerateResponse, CheckRecord, CountsResponse, DashboardResponse,
-  InspectResponse, StreamEvent,
+  EvaluateResponse, InspectResponse, StreamEvent,
 } from '../models/dqc.model';
 
 @Injectable({ providedIn: 'root' })
@@ -97,6 +97,16 @@ export class DqcService {
     if (columnMapping) form.append('column_mapping', JSON.stringify(columnMapping));
     if (instructionsFile) form.append('instructions_file', instructionsFile);
     return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, form);
+  }
+
+  /** Run the stored DQC queries against an extracted-cases Excel (no LLM). */
+  evaluate(dataFile: File, tableName = 'mylib.ciclos_recuperacion',
+           status?: 'pending' | 'validated' | 'rejected'): Observable<EvaluateResponse> {
+    const form = new FormData();
+    form.append('data_file', dataFile);
+    form.append('table_name', tableName);
+    if (status) form.append('status', status);
+    return this.http.post<EvaluateResponse>(`${this.apiUrl}/evaluate`, form);
   }
 
   counts(): Observable<CountsResponse> {

@@ -222,6 +222,25 @@
 .input-panel textarea::placeholder { color: #555; white-space: pre-line; }
 .input-panel textarea:focus { border-color: #6c7bbf; }
 
+.actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.evaluate-btn {
+  padding: 10px 24px;
+  background: transparent;
+  color: #6c7bbf;
+  border: 1px solid #6c7bbf;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.evaluate-btn:hover:not(:disabled) { background: rgba(108,123,191,0.15); }
+.evaluate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .generate-btn {
   align-self: flex-end;
   padding: 10px 24px;

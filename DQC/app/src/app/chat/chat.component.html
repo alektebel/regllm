@@ -96,6 +96,54 @@
             </div>
           }
 
+          @if (msg.evalResults && msg.evalResults.length > 0) {
+            <div class="plan-list">
+              @for (r of msg.evalResults; track r.check_id) {
+                <div class="plan-item" [attr.data-estado]="r.ok ? 'completado' : 'error'">
+                  <span class="plan-box">{{ r.ok ? '✓' : '✗' }}</span>
+                  <div class="plan-body">
+                    <span class="plan-regla">
+                      @if (r.prev_id) {
+                        <code class="plan-previd">{{ r.prev_id }}</code>
+                      }
+                      {{ r.name }}
+                    </span>
+                    @if (r.ok) {
+                      <span class="plan-count">
+                        {{ r.n_casos }} caso{{ r.n_casos !== 1 ? 's' : '' }} detectado{{ r.n_casos !== 1 ? 's' : '' }}
+                        @if (r.precision != null) {
+                          · P {{ (r.precision! * 100).toFixed(0) }}%
+                          · R {{ (r.recall! * 100).toFixed(0) }}%
+                          ({{ r.esperados }} esperado{{ r.esperados !== 1 ? 's' : '' }})
+                        }
+                      </span>
+                      @if (r.ejemplos.length > 0) {
+                        <div class="plan-examples">
+                          <table>
+                            <thead>
+                              <tr>
+                                @for (c of r.columnas; track c) { <th>{{ c }}</th> }
+                              </tr>
+                            </thead>
+                            <tbody>
+                              @for (row of r.ejemplos; track $index) {
+                                <tr>
+                                  @for (c of r.columnas; track c) { <td>{{ row[c] }}</td> }
+                                </tr>
+                              }
+                            </tbody>
+                          </table>
+                        </div>
+                      }
+                    } @else {
+                      <span class="plan-error">{{ r.error }}</span>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
           @if (msg.dqcs && msg.dqcs.length > 0) {
             <div class="dqc-list">
               @for (dqc of msg.dqcs; track dqc.dqc_id) {
@@ -178,11 +226,21 @@ Toda hipoteca debe tener COLATERAL_TIPO = HIPOTECA"
       [disabled]="isLoading || isInspecting"
     ></textarea>
 
-    <button
-      class="generate-btn"
-      (click)="generate()"
-      [disabled]="isLoading || isInspecting || (!instructions.trim() && !testsFile) || !dictionaryFile">
-      Generar DQCs
-    </button>
+    <div class="actions-row">
+      @if (dataFile) {
+        <button
+          class="evaluate-btn"
+          (click)="evaluateData()"
+          [disabled]="isLoading || isInspecting">
+          Evaluar Excel de datos
+        </button>
+      }
+      <button
+        class="generate-btn"
+        (click)="generate()"
+        [disabled]="isLoading || isInspecting || (!instructions.trim() && !testsFile) || !dictionaryFile">
+        Generar DQCs
+      </button>
+    </div>
   </div>
 </div>

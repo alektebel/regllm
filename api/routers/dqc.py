@@ -97,6 +97,29 @@ class CheckRecord(BaseModel):
     validated_at: str | None = None
 
 
+class EvalResult(BaseModel):
+    check_id: str
+    name: str
+    prev_id: str | None = None
+    ok: bool
+    error: str = ""
+    n_casos: int = 0
+    columnas: list[str] = []
+    ejemplos: list[dict] = []
+    precision: float | None = None
+    recall: float | None = None
+    esperados: int | None = None
+
+
+class EvaluateResponse(BaseModel):
+    casos: int
+    resultados: list[EvalResult]
+    evaluados: int                 # queries that executed successfully
+    fallidos: int                  # queries that errored on the cases
+    precision_media: float | None = None
+    recall_medio: float | None = None
+
+
 class StatusUpdate(BaseModel):
     status: str  # "validated" | "rejected"
 
@@ -287,10 +310,11 @@ async def inspect_dictionary(
     )
 
 
-def _require_xlsx(dictionary: UploadFile) -> None:
-    if not dictionary.filename or not dictionary.filename.lower().endswith((".xlsx", ".xls")):
+def _require_xlsx(upload: UploadFile, what: str = "dictionary") -> None:
+    if not upload.filename or not upload.filename.lower().endswith((".xlsx", ".xls")):
         from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="dictionary must be an Excel file (.xlsx)")
+        raise HTTPException(status_code=400,
+                            detail=f"{what} must be an Excel file (.xlsx)")
 
 
 def _workbook_read_error(filename: str | None, exc: Exception) -> str:
@@ -800,6 +824,74 @@ async def generate_dqc_stream(
         event_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Cases evaluation of stored DQCs ──────────────────────────────────────────
+
+@router.post("/evaluate", response_model=EvaluateResponse)
+async def evaluate_checks(
+    data_file: UploadFile = File(..., description="Extracted cases Excel"),
+    table_name: str = Form("mylib.ciclos_recuperacion"),
+    status: str | None = Form(None, description="pending|validated|rejected; all visible if empty"),
+) -> EvaluateResponse:
+    """Execute the stored DQC queries against an extracted-cases Excel.
+
+    No LLM involved: each check's SQL runs on the cases (in-memory SQLite);
+    the response carries example violating rows per check and, when the
+    check has a previous id (``rule_id``) matching the cases' DQC_ID label
+    column, its precision/recall against the historical flags."""
+    from fastapi import HTTPException
+
+    _require_xlsx(data_file, what="data_file")
+    raw = await data_file.read()
+    try:
+        cases = react.load_cases(raw, table_name)
+    except Exception as exc:  # noqa: BLE001 — unreadable workbook is a user error
+        raise HTTPException(
+            status_code=400,
+            detail=_workbook_read_error(data_file.filename, exc))
+
+    conn = _db()
+    try:
+        checks = checks_db.list_checks(conn, status=status or None, visible=True)
+    finally:
+        conn.close()
+
+    resultados: list[EvalResult] = []
+    precisions: list[float] = []
+    recalls: list[float] = []
+    for c in checks:
+        run = react.run_query(cases, c["sql"], table_name)
+        if not run["ok"]:
+            resultados.append(EvalResult(
+                check_id=c["check_id"], name=c["name"],
+                prev_id=c.get("rule_id"), ok=False, error=run["error"]))
+            continue
+        result = EvalResult(
+            check_id=c["check_id"], name=c["name"],
+            prev_id=c.get("rule_id"), ok=True,
+            n_casos=run["n_casos"], columnas=run["columnas"],
+            ejemplos=run["ejemplos"])
+        m = react.metrics(cases, run["casos"], c.get("rule_id"))
+        if m:
+            result.precision = m["precision"]
+            result.recall = m["recall"]
+            result.esperados = m["esperados"]
+            precisions.append(m["precision"])
+            recalls.append(m["recall"])
+        resultados.append(result)
+
+    evaluados = sum(1 for r in resultados if r.ok)
+    return EvaluateResponse(
+        casos=cases.n_rows,
+        resultados=resultados,
+        evaluados=evaluados,
+        fallidos=len(resultados) - evaluados,
+        precision_media=round(sum(precisions) / len(precisions), 3)
+        if precisions else None,
+        recall_medio=round(sum(recalls) / len(recalls), 3)
+        if recalls else None,
     )
 
 

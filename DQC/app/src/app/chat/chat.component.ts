@@ -141,10 +141,10 @@ export class ChatComponent {
     this.messages.push({ role: 'user', content: parts.join('\n\n') });
     this.isLoading = true;
 
-    // Plan-mode generation: the backend first splits the rules into a JSON
-    // action plan, then executes one generation agent per plan item. The
-    // plan renders as a live checklist that ticks off item by item.
-    let planMsg: ChatMessage | null = null;
+    // Plan-mode ReAct generation: the backend splits the rules into an
+    // action plan, then runs the verify→generate→validate loop per item.
+    // The plan renders as a live checklist that ticks off item by item.
+    this.activePlan = null;
 
     this.dqcService
       .generateStream(this.dictionaryFile, text, this.tableName,
@@ -153,10 +153,7 @@ export class ChatComponent {
       // fetch() resolves outside Angular's zone — re-enter it so the
       // checklist repaints on every event
       .subscribe({
-        next: (ev: StreamEvent) => this.zone.run(() => this.onStreamEvent(ev, {
-          setPlan: (m) => { planMsg = m; },
-          getPlan: () => planMsg,
-        })),
+        next: (ev: StreamEvent) => this.zone.run(() => this.onStreamEvent(ev)),
         error: (err) => this.zone.run(() => {
           const detail = err.error?.detail;
           if (detail?.needs_sheet_selection) {
@@ -179,6 +176,41 @@ export class ChatComponent {
       });
   }
 
+  /** Run the already-stored DQCs against the uploaded cases Excel (no LLM). */
+  evaluateData(): void {
+    if (!this.dataFile || this.isLoading) return;
+    this.messages.push({ role: 'user', content: `Evaluar Excel de datos: ${this.dataFileName}` });
+    this.isLoading = true;
+
+    this.dqcService.evaluate(this.dataFile, this.tableName).subscribe({
+      next: (res) => {
+        let summary = `Evaluación sobre ${res.casos} casos: ` +
+          `${res.evaluados} DQC${res.evaluados !== 1 ? 's' : ''} ejecutado${res.evaluados !== 1 ? 's' : ''}` +
+          (res.fallidos ? `, ${res.fallidos} con error` : '');
+        if (res.precision_media != null) {
+          summary += `. Precisión media ${(res.precision_media * 100).toFixed(0)}%, ` +
+            `recall medio ${((res.recall_medio ?? 0) * 100).toFixed(0)}%`;
+        }
+        summary += '.';
+        this.messages.push({
+          role: 'assistant',
+          content: res.resultados.length ? summary
+            : 'No hay DQCs almacenados que evaluar. Genera algunos primero.',
+          evalResults: res.resultados,
+        });
+        this.isLoading = false;
+      },
+      error: (err) => {
+        const detail = err.error?.detail;
+        this.messages.push({
+          role: 'assistant',
+          content: `Error al evaluar: ${typeof detail === 'string' ? detail : err.message || 'No se pudo conectar con el servidor'}`,
+        });
+        this.isLoading = false;
+      },
+    });
+  }
+
   faseLabel(p: PlanItem): string {
     const labels: Record<string, string> = {
       suficiencia: 'verificando información…',
@@ -189,22 +221,20 @@ export class ChatComponent {
     return p.intento && p.intento > 1 ? `${base} (intento ${p.intento})` : base;
   }
 
-  private onStreamEvent(
-    ev: StreamEvent,
-    planRef: { setPlan: (m: ChatMessage) => void; getPlan: () => ChatMessage | null },
-  ): void {
+  /** plan checklist of the stream currently in flight */
+  private activePlan: PlanItem[] | null = null;
+
+  private onStreamEvent(ev: StreamEvent): void {
     if (ev.type === 'plan') {
       const items: PlanItem[] = ev.data.items ?? [];
-      const msg: ChatMessage = {
+      this.activePlan = items;
+      this.messages.push({
         role: 'assistant',
         content: `Plan de generación — ${items.length} DQC${items.length !== 1 ? 's' : ''}:`,
         plan: items,
-      };
-      planRef.setPlan(msg);
-      this.messages.push(msg);
+      });
     } else if (ev.type === 'item') {
-      const plan = planRef.getPlan()?.plan;
-      const item = plan?.find((p) => p.id === ev.data.id);
+      const item = this.activePlan?.find((p) => p.id === ev.data.id);
       if (item) {
         item.estado = ev.data.estado;
         item.fase = ev.data.fase;

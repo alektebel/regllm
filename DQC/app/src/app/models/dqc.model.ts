@@ -77,12 +77,38 @@ export interface StreamEvent {
   data: any;
 }
 
+/** one stored DQC executed against the cases Excel (POST /evaluate) */
+export interface EvalResult {
+  check_id: string;
+  name: string;
+  prev_id?: string | null;
+  ok: boolean;
+  error?: string;
+  n_casos: number;
+  columnas: string[];
+  ejemplos: Record<string, string>[];
+  precision?: number | null;
+  recall?: number | null;
+  esperados?: number | null;
+}
+
+export interface EvaluateResponse {
+  casos: number;
+  resultados: EvalResult[];
+  evaluados: number;
+  fallidos: number;
+  precision_media?: number | null;
+  recall_medio?: number | null;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   dqcs?: DqcItem[];
   /** live DQC action plan rendered as a checklist */
   plan?: PlanItem[];
+  /** results of evaluating stored DQCs against a cases Excel */
+  evalResults?: EvalResult[];
   /** sheet names rendered as clickable answers to an assistant question */
   options?: string[];
   /** sheet the LLM proposed after inspection (highlighted among options) */
