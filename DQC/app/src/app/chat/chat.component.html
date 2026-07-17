@@ -67,6 +67,11 @@
                           · P {{ (p.validacion!.precision! * 100).toFixed(0) }}%
                           · R {{ (p.validacion!.recall! * 100).toFixed(0) }}%
                         }
+                        @if (p.validacion?.juez_ok) {
+                          <span class="plan-judge" [title]="p.validacion?.juez_motivo || ''">
+                            · juez ✓
+                          </span>
+                        }
                       </span>
                       @if (p.validacion?.ejemplos && p.validacion!.ejemplos!.length > 0) {
                         <div class="plan-examples">
@@ -225,6 +230,23 @@ ECL = PD_ESTIMADA * LGD_ESTIMADA * EAD_TOTAL
 Toda hipoteca debe tener COLATERAL_TIPO = HIPOTECA"
       [disabled]="isLoading || isInspecting"
     ></textarea>
+
+    <div class="options-row">
+      <label class="opt-check" [class.disabled]="!dataFile"
+             title="Muestrea valores reales del Excel de datos en el prompt de generación para que las comparaciones de dominio usen valores que existen. Requiere Excel de datos.">
+        <input type="checkbox" [(ngModel)]="useGrounding" name="useGrounding"
+               [disabled]="isLoading || isInspecting || !dataFile" />
+        Grounding con valores reales
+        <span class="opt-tag">experimental</span>
+      </label>
+      <label class="opt-check"
+             title="Un agente juez revisa cada consulta aceptada: ¿implementa exactamente la regla? Un rechazo vuelve al bucle de corrección.">
+        <input type="checkbox" [(ngModel)]="useJudge" name="useJudge"
+               [disabled]="isLoading || isInspecting" />
+        Juez semántico
+        <span class="opt-tag">experimental</span>
+      </label>
+    </div>
 
     <div class="actions-row">
       @if (dataFile) {

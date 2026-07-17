@@ -51,6 +51,10 @@ export interface PlanValidation {
   recall?: number;
   esperados?: number;
   aciertos?: number;
+  /** semantic judge verdict (experimental flag) */
+  juez_ok?: boolean;
+  juez_motivo?: string;
+  juez_confianza?: number;
 }
 
 /** one entry of the LLM's DQC action plan, ticked off live as it executes */

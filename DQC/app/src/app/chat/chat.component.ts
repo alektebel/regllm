@@ -26,6 +26,10 @@ export class ChatComponent {
   isLoading = false;
   isInspecting = false;
 
+  // experimental anti-hallucination features, off by default
+  useGrounding = false;   // sample real domain values into the prompt
+  useJudge = false;       // LLM-as-judge semantic review per DQC
+
   // dictionary intelligence state: the LLM's sheet/mapping proposal,
   // confirmed or overridden by the user via the option buttons
   selectedSheet: string | null = null;
@@ -149,7 +153,8 @@ export class ChatComponent {
     this.dqcService
       .generateStream(this.dictionaryFile, text, this.tableName,
                       this.selectedSheet ?? undefined, this.columnMapping ?? undefined,
-                      this.testsFile ?? undefined, this.dataFile ?? undefined)
+                      this.testsFile ?? undefined, this.dataFile ?? undefined,
+                      { valueGrounding: this.useGrounding, semanticJudge: this.useJudge })
       // fetch() resolves outside Angular's zone — re-enter it so the
       // checklist repaints on every event
       .subscribe({
@@ -214,8 +219,10 @@ export class ChatComponent {
   faseLabel(p: PlanItem): string {
     const labels: Record<string, string> = {
       suficiencia: 'verificando información…',
+      grounding: 'muestreando valores reales…',
       generacion: 'generando consulta SAS…',
       validacion: 'validando consulta…',
+      juicio: 'juez semántico revisando…',
     };
     const base = labels[p.fase ?? ''] ?? 'procesando…';
     return p.intento && p.intento > 1 ? `${base} (intento ${p.intento})` : base;

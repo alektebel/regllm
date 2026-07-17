@@ -97,7 +97,7 @@ def _parse_sse(body: str) -> list[tuple[str, dict]]:
     return events
 
 
-def _post(client, instructions, with_data=False, files_extra=None):
+def _post(client, instructions, with_data=False, files_extra=None, extra=None):
     files = {"dictionary": ("d.xlsx", _make_dict_xlsx(),
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
     if with_data:
@@ -105,11 +105,11 @@ def _post(client, instructions, with_data=False, files_extra=None):
                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if files_extra:
         files.update(files_extra)
-    return client.post(
-        "/dqc/generate_stream",
-        data={"instructions": instructions, "sheet": "Sheet",
-              "column_mapping": json.dumps({"field": "Field", "type": "Type"})},
-        files=files)
+    data = {"instructions": instructions, "sheet": "Sheet",
+            "column_mapping": json.dumps({"field": "Field", "type": "Type"})}
+    if extra:
+        data.update(extra)
+    return client.post("/dqc/generate_stream", data=data, files=files)
 
 
 _GOOD_SQL = "SELECT * FROM mylib.ciclos_recuperacion WHERE PD_ESTIMADA > 1"
@@ -298,6 +298,103 @@ def test_execution_error_feeds_correction_loop(client, monkeypatch,
     last_item = [d for e, d in events if e == "item"][-1]
     assert last_item["estado"] == "completado"
     assert "falla al ejecutarse" in fake.calls[-1]["user"]
+
+
+# ── optional features: value grounding + semantic judge (off by default) ────
+
+def test_grounding_injects_real_values_into_prompt(client, monkeypatch,
+                                                   isolated_checks_db):
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "PD <= 1", "accion": "rango"}]},
+        _suf(),
+        _dqc(),
+    ])
+    _wire(monkeypatch, fake)
+
+    events = _parse_sse(_post(client, "PD <= 1", with_data=True,
+                              extra={"value_grounding": "true"}).text)
+    fases = [d.get("fase") for e, d in events if e == "item"
+             and d["estado"] == "en_curso"]
+    assert "grounding" in fases
+    gen_call = fake.calls[-1]["user"]           # the generation prompt
+    assert "VALORES REALES OBSERVADOS" in gen_call
+    assert "'1.5'" in gen_call                  # a real PD value from the Excel
+    assert [d for e, d in events if e == "item"][-1]["estado"] == "completado"
+
+
+def test_grounding_off_by_default_no_prompt_change(client, monkeypatch,
+                                                   isolated_checks_db):
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "PD <= 1", "accion": "rango"}]},
+        _suf(),
+        _dqc(),
+    ])
+    _wire(monkeypatch, fake)
+    events = _parse_sse(_post(client, "PD <= 1", with_data=True).text)
+    assert all(d.get("fase") != "grounding" for e, d in events if e == "item")
+    assert "VALORES REALES" not in fake.calls[-1]["user"]
+
+
+def test_judge_approves_and_annotates(client, monkeypatch, isolated_checks_db):
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "PD <= 1", "accion": "rango"}]},
+        _suf(),
+        _dqc(),
+        {"correcto": True, "confianza": 0.9, "motivo": "implementa la regla"},
+    ])
+    _wire(monkeypatch, fake)
+
+    events = _parse_sse(_post(client, "PD <= 1",
+                              extra={"semantic_judge": "true"}).text)
+    fases = [d.get("fase") for e, d in events if e == "item"
+             and d["estado"] == "en_curso"]
+    assert "juicio" in fases
+    completed = [d for e, d in events if e == "item"][-1]
+    assert completed["estado"] == "completado"
+    assert completed["validacion"]["juez_ok"] is True
+    assert completed["validacion"]["juez_motivo"] == "implementa la regla"
+    # planner + sufficiency + generation + judge
+    assert events[-1][1]["agents_used"] == 4
+
+
+def test_judge_rejection_feeds_correction_loop(client, monkeypatch,
+                                               isolated_checks_db):
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "PD <= 1", "accion": "rango"}]},
+        _suf(),
+        _dqc("SELECT * FROM mylib.ciclos_recuperacion WHERE PD_ESTIMADA < 1"),
+        {"correcto": False, "confianza": 0.8,
+         "motivo": "el sentido está invertido: selecciona las que cumplen"},
+        _dqc(),
+        {"correcto": True, "confianza": 0.9, "motivo": "ok"},
+    ])
+    _wire(monkeypatch, fake)
+
+    events = _parse_sse(_post(client, "PD <= 1",
+                              extra={"semantic_judge": "true"}).text)
+    item_events = [d for e, d in events if e == "item"]
+    gen_intentos = [d["intento"] for d in item_events
+                    if d.get("fase") == "generacion"]
+    assert gen_intentos == [1, 2]
+    assert item_events[-1]["estado"] == "completado"
+    # calls: 0 planner, 1 sufficiency, 2 gen#1, 3 judge#1, 4 gen#2 (corrective)
+    corrective_call = fake.calls[4]["user"]
+    assert "juez semántico" in corrective_call and "invertido" in corrective_call
+
+
+def test_default_run_unaffected_by_new_features(client, monkeypatch,
+                                                isolated_checks_db):
+    # exact same event sequence and agent count as before the flags existed
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "PD <= 1", "accion": "rango"}]},
+        _suf(),
+        _dqc(),
+    ])
+    _wire(monkeypatch, fake)
+    events = _parse_sse(_post(client, "PD <= 1").text)
+    kinds = [e for e, _ in events]
+    assert kinds == ["meta", "plan", "item", "item", "item", "item", "done"]
+    assert events[-1][1]["agents_used"] == 3
 
 
 # ── unit: previous-id extraction ─────────────────────────────────────────────

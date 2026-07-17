@@ -148,9 +148,11 @@ Responde SOLO con JSON: {"dqcs": [<un único objeto>]}. Esquema del objeto:
 
 def generate_sas(rule: str, fields: list, table_name: str, client,
                  campos: list[str] | None = None,
-                 feedback: list[str] | None = None) -> Any:
+                 feedback: list[str] | None = None,
+                 valores: dict[str, list[str]] | None = None) -> Any:
     """One fresh generation agent; ``feedback`` carries validation errors
-    from the previous attempt for the correction loop."""
+    from the previous attempt for the correction loop; ``valores`` carries
+    sampled real domain values (value grounding)."""
     hint = [rule] + ([" ".join(campos)] if campos else [])
     relevant = dict_ai.select_relevant_fields(fields, hint)
     dict_text, sent = dict_ai.fields_to_text(relevant)
@@ -160,6 +162,8 @@ def generate_sas(rule: str, fields: list, table_name: str, client,
         f"{dict_text}\n\n"
         f"REGLA DQC:\n{rule}"
     )
+    if valores:
+        user += "\n\n" + values_text(valores)
     if feedback:
         user += (
             "\n\nLA CONSULTA ANTERIOR FALLÓ LA VALIDACIÓN:\n- "
@@ -169,6 +173,93 @@ def generate_sas(rule: str, fields: list, table_name: str, client,
     return client.chat_json(system=SAS_GEN_SYSTEM,
                             user=user[:dict_ai.PROMPT_CHAR_BUDGET],
                             max_tokens=2048)
+
+
+# ── optional: value grounding (sample real domain values into the prompt) ───
+
+MAX_GROUNDING_FIELDS = 10
+MAX_GROUNDING_VALUES = 8
+
+
+def sample_values(ctx: "CasesContext", campos: list[str]) -> dict[str, list[str]]:
+    """Distinct real values per field from the cases Excel, for grounding the
+    generation prompt so domain comparisons use values that actually exist
+    (semantic value grounding). Purely local — no LLM involved."""
+    headers_lower = {h.lower(): h for h in ctx.headers}
+    out: dict[str, list[str]] = {}
+    for name in campos[:MAX_GROUNDING_FIELDS]:
+        col = headers_lower.get(str(name).lower())
+        if not col:
+            continue
+        try:
+            rows = ctx.conn.execute(
+                f'SELECT DISTINCT "{col}" FROM "{ctx.table}" '
+                f'WHERE "{col}" IS NOT NULL LIMIT ?',
+                (MAX_GROUNDING_VALUES,)).fetchall()
+        except Exception:  # noqa: BLE001 — grounding is best-effort
+            continue
+        vals = [str(r[0])[:30] for r in rows
+                if r[0] is not None and str(r[0]).strip() != ""]
+        if vals:
+            out[col] = vals
+    return out
+
+
+def values_text(valores: dict[str, list[str]]) -> str:
+    lines = [f"- {campo}: " + ", ".join(f"'{v}'" for v in vals)
+             for campo, vals in valores.items()]
+    return ("VALORES REALES OBSERVADOS EN LOS DATOS (cuando compares contra "
+            "literales de dominio, usa EXACTAMENTE estos valores):\n"
+            + "\n".join(lines))
+
+
+# ── optional: semantic judge (does the query implement THIS rule?) ──────────
+
+JUDGE_SYSTEM = """\
+Eres un revisor experto de controles de calidad de datos bancarios. Recibes
+una regla DQC en lenguaje natural y la consulta generada para implementarla.
+La consulta ya es sintácticamente válida; tu trabajo es juzgar la SEMÁNTICA:
+- ¿La condición implementa EXACTAMENTE la regla (umbral, sentido, campos)?
+- ¿Selecciona las filas que VIOLAN la regla (no las que la cumplen)?
+- ¿Falta algún caso límite evidente (nulos, signo, unidades %)?
+
+Responde SOLO JSON:
+{"correcto": true|false, "confianza": 0.0-1.0,
+ "motivo": "<explicación breve de por qué es correcta o qué está mal>"}"""
+
+
+def judge_dqc(rule: str, sql: str, descripcion: str, condicion_error: str,
+              ejemplos: list[dict] | None, client) -> dict:
+    """LLM-as-judge semantic check (CHESS-style unit tester). A failure to
+    judge accepts the query — the judge only ever adds scrutiny."""
+    user = (f"REGLA DQC:\n{rule}\n\nCONTROL GENERADO:\n"
+            f"descripcion: {descripcion}\n"
+            f"condicion_error: {condicion_error}\n"
+            f"SQL:\n{sql}")
+    if ejemplos:
+        import json as _json
+        user += ("\n\nEJEMPLOS DE FILAS QUE DEVUELVE SOBRE DATOS REALES:\n"
+                 + _json.dumps(ejemplos[:3], ensure_ascii=False))
+    try:
+        result = client.chat_json(system=JUDGE_SYSTEM,
+                                  user=user[:dict_ai.PROMPT_CHAR_BUDGET],
+                                  max_tokens=512)
+    except Exception as exc:  # noqa: BLE001 — judge unavailable ⇒ accept
+        logger.warning("semantic judge failed: %s", exc)
+        return {"correcto": True, "confianza": 0.0,
+                "motivo": "juez no disponible"}
+    if not isinstance(result, dict):
+        return {"correcto": True, "confianza": 0.0,
+                "motivo": "respuesta de juez no interpretable"}
+    try:
+        confianza = float(result.get("confianza") or 0.0)
+    except (TypeError, ValueError):
+        confianza = 0.0
+    return {
+        "correcto": bool(result.get("correcto", True)),
+        "confianza": confianza,
+        "motivo": str(result.get("motivo") or "").strip(),
+    }
 
 
 # ── 3a. static validation (schema + field existence) ─────────────────────────

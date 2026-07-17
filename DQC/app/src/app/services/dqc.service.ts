@@ -31,6 +31,7 @@ export class DqcService {
     columnMapping?: Record<string, string | null>,
     instructionsFile?: File,
     dataFile?: File,
+    opts?: { valueGrounding?: boolean; semanticJudge?: boolean },
   ): Observable<StreamEvent> {
     const form = new FormData();
     form.append('dictionary', dictionary);
@@ -40,6 +41,8 @@ export class DqcService {
     if (columnMapping) form.append('column_mapping', JSON.stringify(columnMapping));
     if (instructionsFile) form.append('instructions_file', instructionsFile);
     if (dataFile) form.append('data_file', dataFile);
+    if (opts?.valueGrounding) form.append('value_grounding', 'true');
+    if (opts?.semanticJudge) form.append('semantic_judge', 'true');
 
     return new Observable<StreamEvent>((observer) => {
       const controller = new AbortController();

@@ -604,6 +604,12 @@ async def generate_dqc_stream(
     sheet: str | None = Form(None, description="Workbook sheet holding the dictionary"),
     column_mapping: str | None = Form(None, description="JSON role->header mapping"),
     infer_formats: bool = Form(True, description="LLM-infer missing field types"),
+    value_grounding: bool = Form(
+        False, description="Experimental: sample real domain values from the "
+                           "cases Excel into the generation prompt"),
+    semantic_judge: bool = Form(
+        False, description="Experimental: LLM-as-judge semantic review of "
+                           "each accepted query"),
 ):
     """Plan-mode ReAct generation, streamed over Server-Sent Events.
 
@@ -709,6 +715,15 @@ async def generate_dqc_stream(
                                     "campos": suf["campos"]})
                 continue
 
+            # ── optional value grounding: sample real domain values once per
+            # rule so the generator compares against values that exist
+            valores = None
+            if value_grounding and cases is not None:
+                yield _sse("item", {"id": eid, "estado": "en_curso",
+                                    "fase": "grounding"})
+                valores = react.sample_values(
+                    cases, suf["campos"] or [f.name for f in fields])
+
             # ── 2-4. generate SAS → validate → correct (fresh agent each try)
             items: list[DQCItem] = []
             validacion: dict | None = None
@@ -720,7 +735,8 @@ async def generate_dqc_stream(
                 try:
                     result = react.generate_sas(
                         entry["regla"], fields, table_name, get_client(),
-                        campos=suf["campos"], feedback=feedback)
+                        campos=suf["campos"], feedback=feedback,
+                        valores=valores)
                     agents += 1
                 except Exception as exc:  # noqa: BLE001
                     last_errors = [str(exc)]
@@ -761,6 +777,25 @@ async def generate_dqc_stream(
                     feedback = val_errors
                     items = []
                     continue
+
+                # ── optional semantic judge: the query runs, but does it
+                # implement THIS rule? A rejection feeds the correction loop.
+                if semantic_judge:
+                    yield _sse("item", {"id": eid, "estado": "en_curso",
+                                        "fase": "juicio", "intento": intento})
+                    juicio = react.judge_dqc(
+                        entry["regla"], items[0].regla_sql,
+                        items[0].descripcion, items[0].condicion_error,
+                        validacion.get("ejemplos"), get_client())
+                    agents += 1
+                    if not juicio["correcto"]:
+                        last_errors = [f"juez semántico: {juicio['motivo']}"]
+                        feedback = last_errors
+                        items = []
+                        continue
+                    validacion["juez_ok"] = True
+                    validacion["juez_motivo"] = juicio["motivo"]
+                    validacion["juez_confianza"] = juicio["confianza"]
                 break
 
             if not items:
