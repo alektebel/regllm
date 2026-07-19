@@ -153,3 +153,20 @@ validated-checks SQLite (wiped on every ECS task replacement — an EFS mount
 or a DynamoDB-backed store is the fix), auth/TLS in front of the
 internet-facing ALB, and running the eval harness against a staged endpoint
 as a deploy gate.
+
+## Azure deployment (Container Apps)
+
+`DQC/azure/deploy.sh` is the Azure mirror of `DQC/cdk/deploy.sh`: one
+Container App with the same two sidecar containers (api + nginx frontend
+sharing localhost, demo Excels bundled), managed HTTPS ingress, images
+built server-side with `az acr build` (no local Docker). The LLM backend
+is Azure OpenAI via the client's `azure` backend
+(`REGLLM_LLM=azure` + `AZURE_OPENAI_ENDPOINT/API_KEY/DEPLOYMENT`);
+without those variables it deploys with the stub backend and can be
+re-pointed later with `az containerapp update`. One command after
+`az login`:
+
+    AZURE_OPENAI_ENDPOINT=https://<res>.openai.azure.com \
+    AZURE_OPENAI_API_KEY=... ./DQC/azure/deploy.sh
+
+Teardown: `az group delete --name regllm-dqc-rg --yes`.

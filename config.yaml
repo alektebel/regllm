@@ -25,6 +25,12 @@ llm:
   # gguf_n_gpu_layers: 0     # >0 to offload layers to GPU
   # bedrock_model_id: "eu.amazon.nova-micro-v1:0"
   # bedrock_region: "eu-west-1"
+  # For Azure OpenAI (managed, Azure deployments — see DQC/azure/deploy.sh),
+  # set backend: "azure" and the keys below (or the AZURE_OPENAI_* env vars):
+  # azure_endpoint: "https://<resource>.openai.azure.com"
+  # azure_api_key: "..."          # prefer the AZURE_OPENAI_API_KEY env var
+  # azure_deployment: "gpt-4o-mini"
+  # azure_api_version: "2024-06-01"
   timeout: 300
 
   # ── Excel inspection / sheet-mapping step ──────────────────────────────

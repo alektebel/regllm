@@ -161,6 +161,23 @@ class LocalLLMClient:
             or "eu-west-1"
         )
         self._bedrock_client = None
+        # Azure OpenAI (managed, for Azure deployments — see DQC/azure/)
+        self.azure_endpoint = (
+            os.getenv("AZURE_OPENAI_ENDPOINT")
+            or _LLM_CFG.get("azure_endpoint") or ""
+        )
+        self.azure_api_key = (
+            os.getenv("AZURE_OPENAI_API_KEY")
+            or _LLM_CFG.get("azure_api_key") or ""
+        )
+        self.azure_deployment = (
+            os.getenv("AZURE_OPENAI_DEPLOYMENT")
+            or _LLM_CFG.get("azure_deployment") or "gpt-4o-mini"
+        )
+        self.azure_api_version = (
+            os.getenv("AZURE_OPENAI_API_VERSION")
+            or _LLM_CFG.get("azure_api_version") or "2024-06-01"
+        )
         # Standalone GGUF (llama-cpp-python) — see module docstring. Distinct
         # from OLLAMA_MODEL=*.gguf, which registers the file into a running
         # Ollama server instead of loading it in-process.
@@ -247,6 +264,14 @@ class LocalLLMClient:
                 return "stub"
             self._backend = "bedrock"
             return "bedrock"
+        if self.prefer == "azure":
+            if not (self.azure_endpoint and self.azure_api_key):
+                logger.error("REGLLM_LLM=azure but AZURE_OPENAI_ENDPOINT / "
+                             "AZURE_OPENAI_API_KEY are not set")
+                self._backend = "stub"
+                return "stub"
+            self._backend = "azure"
+            return "azure"
         if self.prefer in ("auto", "litert") and self._probe_litert():
             self._backend = "litert"
             return "litert"
@@ -645,7 +670,41 @@ class LocalLLMClient:
             return self._chat_gguf(messages, temperature, max_tokens, json_mode)
         if backend == "bedrock":
             return self._chat_bedrock(messages, temperature, max_tokens, json_mode)
+        if backend == "azure":
+            return self._chat_azure(messages, temperature, max_tokens, json_mode)
         return self._chat_stub(messages, json_mode)
+
+    def _chat_azure(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool,
+    ) -> ChatResponse:
+        """Azure OpenAI chat completions (deployment-scoped endpoint,
+        api-key header). Same OpenAI message shape the rest of the client
+        uses; json_mode maps to response_format json_object."""
+        url = (f"{self.azure_endpoint.rstrip('/')}/openai/deployments/"
+               f"{self.azure_deployment}/chat/completions")
+        payload: dict[str, Any] = {
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        r = httpx.post(
+            url,
+            params={"api-version": self.azure_api_version},
+            headers={"api-key": self.azure_api_key},
+            json=payload,
+            timeout=self.timeout,
+        )
+        r.raise_for_status()
+        data = r.json()
+        text = data["choices"][0]["message"]["content"] or ""
+        return ChatResponse(text=text, backend="azure",
+                            model=self.azure_deployment, raw=data)
 
     def _chat_litert(
         self,
