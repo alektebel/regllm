@@ -73,6 +73,8 @@ export interface PlanItem {
   validacion?: PlanValidation;
   dqcs?: DqcItem[];
   error?: string;
+  /** client-side: case-details table expanded */
+  expanded?: boolean;
 }
 
 /** typed SSE frame from POST /generate_stream */
@@ -94,6 +96,8 @@ export interface EvalResult {
   precision?: number | null;
   recall?: number | null;
   esperados?: number | null;
+  /** client-side: case-details table expanded */
+  expanded?: boolean;
 }
 
 export interface EvaluateResponse {

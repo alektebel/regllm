@@ -36,7 +36,7 @@ from . import dqc_dictionary as dict_ai
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 3          # generation + correction rounds per rule
-MAX_EXAMPLE_ROWS = 5      # violating cases surfaced to the UI
+MAX_EXAMPLE_ROWS = 50     # violating cases surfaced to the UI (expandable)
 MAX_EXAMPLE_COLS = 8
 MAX_FETCH_ROWS = 500      # hard cap when executing a query on the cases
 

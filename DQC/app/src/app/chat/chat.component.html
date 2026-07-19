@@ -31,7 +31,9 @@
           @if (msg.plan && msg.plan.length > 0) {
             <div class="plan-list">
               @for (p of msg.plan; track p.id) {
-                <div class="plan-item" [attr.data-estado]="p.estado">
+                <div class="plan-item" [attr.data-estado]="p.estado"
+                     [class.clickable]="hasCases(p)"
+                     (click)="hasCases(p) && (p.expanded = !p.expanded)">
                   <span class="plan-box">
                     @switch (p.estado) {
                       @case ('completado') { ✓ }
@@ -72,8 +74,13 @@
                             · juez ✓
                           </span>
                         }
+                        @if (hasCases(p)) {
+                          <span class="plan-toggle">
+                            {{ p.expanded ? '▾ ocultar casos' : '▸ ver casos' }}
+                          </span>
+                        }
                       </span>
-                      @if (p.validacion?.ejemplos && p.validacion!.ejemplos!.length > 0) {
+                      @if (p.expanded && hasCases(p)) {
                         <div class="plan-examples">
                           <table>
                             <thead>
@@ -90,6 +97,11 @@
                             </tbody>
                           </table>
                         </div>
+                        @if ((p.validacion!.n_casos ?? 0) > p.validacion!.ejemplos!.length) {
+                          <span class="plan-more">
+                            Mostrando {{ p.validacion!.ejemplos!.length }} de {{ p.validacion!.n_casos }} casos.
+                          </span>
+                        }
                       }
                     }
                     @if (p.error) {
@@ -104,7 +116,9 @@
           @if (msg.evalResults && msg.evalResults.length > 0) {
             <div class="plan-list">
               @for (r of msg.evalResults; track r.check_id) {
-                <div class="plan-item" [attr.data-estado]="r.ok ? 'completado' : 'error'">
+                <div class="plan-item" [attr.data-estado]="r.ok ? 'completado' : 'error'"
+                     [class.clickable]="r.ejemplos.length > 0"
+                     (click)="r.ejemplos.length > 0 && (r.expanded = !r.expanded)">
                   <span class="plan-box">{{ r.ok ? '✓' : '✗' }}</span>
                   <div class="plan-body">
                     <span class="plan-regla">
@@ -121,8 +135,13 @@
                           · R {{ (r.recall! * 100).toFixed(0) }}%
                           ({{ r.esperados }} esperado{{ r.esperados !== 1 ? 's' : '' }})
                         }
+                        @if (r.ejemplos.length > 0) {
+                          <span class="plan-toggle">
+                            {{ r.expanded ? '▾ ocultar casos' : '▸ ver casos' }}
+                          </span>
+                        }
                       </span>
-                      @if (r.ejemplos.length > 0) {
+                      @if (r.expanded && r.ejemplos.length > 0) {
                         <div class="plan-examples">
                           <table>
                             <thead>
@@ -139,6 +158,11 @@
                             </tbody>
                           </table>
                         </div>
+                        @if (r.n_casos > r.ejemplos.length) {
+                          <span class="plan-more">
+                            Mostrando {{ r.ejemplos.length }} de {{ r.n_casos }} casos.
+                          </span>
+                        }
                       }
                     } @else {
                       <span class="plan-error">{{ r.error }}</span>

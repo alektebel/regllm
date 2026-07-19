@@ -265,6 +265,10 @@ export class ChatComponent implements OnInit {
     });
   }
 
+  hasCases(p: PlanItem): boolean {
+    return (p.validacion?.ejemplos?.length ?? 0) > 0;
+  }
+
   faseLabel(p: PlanItem): string {
     const labels: Record<string, string> = {
       suficiencia: 'verificando información…',

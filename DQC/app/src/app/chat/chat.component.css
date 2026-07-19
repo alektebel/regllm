@@ -251,6 +251,20 @@
 
 .plan-judge { color: #7ec8e3; cursor: help; }
 
+.plan-item.clickable { cursor: pointer; }
+.plan-item.clickable:hover { background: #171732; }
+.plan-toggle {
+  color: #6c7bbf;
+  font-weight: 600;
+  margin-left: 6px;
+  user-select: none;
+}
+.plan-more {
+  font-size: 10px;
+  color: #666;
+  margin-top: 2px;
+}
+
 .actions-row {
   display: flex;
   justify-content: flex-end;
