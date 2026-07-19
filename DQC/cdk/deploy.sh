@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Deploy the RegLLM DQC stack to AWS from a clean account.
 #
-# This script is self-contained: it bootstraps CDK, deploys the stack
-# (which creates a new VPC, ECR repos, ALB, ECS cluster + service), then
-# builds and pushes the API and frontend Docker images, and finally
-# triggers an ECS redeploy so the tasks pull the freshly built images.
+# This script is self-contained: it resolves the account's default VPC
+# (creating one if absent), bootstraps CDK, deploys the stack (ECR repos,
+# ALB, ECS cluster + service inside that VPC), builds and pushes the API
+# and frontend Docker images (the frontend bundles the demo dictionary and
+# cases Excels under /assets/demo, auto-loaded by the UI on startup), and
+# finally triggers an ECS redeploy so the tasks pull the fresh images.
 #
 # Prerequisites:
 #   - aws CLI configured (credentials + region) for the target account
@@ -14,6 +16,8 @@
 # Override defaults via environment variables:
 #   AWS_REGION=eu-west-1       AWS region
 #   PROJECT=regllm-dqc         resource name prefix
+#   VPC_ID=vpc-...             deploy into this VPC (default: default VPC)
+#   SUBNET_IDS=subnet-a,...    subnets for ALB+tasks (default: all in VPC)
 #   GEMINI_API_KEY=...         Google Gemini key (switches backend to gemini)
 #   GEMINI_MODEL=gemini-2.5-pro
 set -euo pipefail
@@ -41,6 +45,29 @@ ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 [[ -n "$ACCOUNT" ]] || { echo "✗ AWS authentication failed"; exit 1; }
 echo "• account: $ACCOUNT  region: $AWS_REGION"
 
+# ── Resolve VPC + subnets (the stack looks up an existing VPC) ─────────────
+# Override with VPC_ID / SUBNET_IDS env vars; defaults to the default VPC.
+if [[ -z "${VPC_ID:-}" ]]; then
+    VPC_ID="$(aws ec2 describe-vpcs --region "$AWS_REGION" \
+        --filters Name=isDefault,Values=true \
+        --query 'Vpcs[0].VpcId' --output text)"
+    if [[ -z "$VPC_ID" || "$VPC_ID" == "None" ]]; then
+        echo "• no default VPC found — creating one…"
+        aws ec2 create-default-vpc --region "$AWS_REGION" >/dev/null
+        VPC_ID="$(aws ec2 describe-vpcs --region "$AWS_REGION" \
+            --filters Name=isDefault,Values=true \
+            --query 'Vpcs[0].VpcId' --output text)"
+    fi
+fi
+if [[ -z "${SUBNET_IDS:-}" ]]; then
+    SUBNET_IDS="$(aws ec2 describe-subnets --region "$AWS_REGION" \
+        --filters "Name=vpc-id,Values=$VPC_ID" \
+        --query 'Subnets[].SubnetId' --output text | tr '[:space:]' ',' | sed 's/,\+$//')"
+fi
+[[ -n "$VPC_ID" && "$VPC_ID" != "None" && -n "$SUBNET_IDS" ]] \
+    || { echo "✗ could not resolve VPC/subnets (set VPC_ID and SUBNET_IDS)"; exit 1; }
+echo "• vpc: $VPC_ID  subnets: $SUBNET_IDS"
+
 cd "$REPO_ROOT/DQC/cdk"
 pip install -q -r requirements.txt
 
@@ -59,7 +86,10 @@ fi
 echo "• deploying CDK stack…"
 cdk deploy --app "python3 app.py" \
     -c "aws_region=${AWS_REGION}" \
+    -c "aws_account=${ACCOUNT}" \
     -c "project=${PROJECT}" \
+    -c "vpc_id=${VPC_ID}" \
+    -c "subnet_ids=${SUBNET_IDS}" \
     "${GEMINI_ARGS[@]}" \
     --require-approval never
 

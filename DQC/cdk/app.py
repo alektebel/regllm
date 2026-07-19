@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """CDK app entry point for RegLLM DQC.
 
-The stack is self-contained (creates its own VPC). Optional context overrides:
+The stack deploys into an EXISTING VPC (`-c vpc_id=...` required;
+`DQC/cdk/deploy.sh` resolves the account's default VPC automatically).
+Context overrides:
 
+    -c vpc_id=vpc-...            # required: VPC to deploy into
+    -c subnet_ids=subnet-a,...   # subnets for ALB + tasks
+    -c aws_account=123456789012  # required for the VPC lookup
     -c project=regllm-dqc
     -c aws_region=eu-west-1
     -c gemini_api_key=...        # switches LLM backend to gemini

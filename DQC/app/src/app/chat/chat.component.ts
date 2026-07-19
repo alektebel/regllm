@@ -1,4 +1,4 @@
-import { Component, EventEmitter, NgZone, Output } from '@angular/core';
+import { Component, EventEmitter, NgZone, OnInit, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DqcService } from '../services/dqc.service';
@@ -11,7 +11,7 @@ import { ChatMessage, InspectResponse, PlanItem, StreamEvent } from '../models/d
   templateUrl: './chat.component.html',
   styleUrls: ['./chat.component.css'],
 })
-export class ChatComponent {
+export class ChatComponent implements OnInit {
   @Output() dqcGenerated = new EventEmitter<void>();
 
   messages: ChatMessage[] = [];
@@ -36,6 +36,55 @@ export class ChatComponent {
   columnMapping: Record<string, string | null> | null = null;
 
   constructor(private dqcService: DqcService, private zone: NgZone) {}
+
+  ngOnInit(): void {
+    this.loadDemoAssets();
+  }
+
+  /** Preload the bundled demo dictionary + cases Excel so the app starts
+   * ready to generate. Silent no-op when the assets are absent (e.g. a
+   * deployment that strips them) or the user already picked files. */
+  private async loadDemoAssets(): Promise<void> {
+    const fetchAsset = async (path: string, name: string): Promise<File | null> => {
+      try {
+        const resp = await fetch(path);
+        if (!resp.ok) return null;
+        const blob = await resp.blob();
+        return new File([blob], name, {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    const [dict, casos] = await Promise.all([
+      fetchAsset('assets/demo/diccionario_demo.xlsx', 'diccionario_demo.xlsx'),
+      fetchAsset('assets/demo/casos_demo.xlsx', 'casos_demo.xlsx'),
+    ]);
+    this.zone.run(() => {
+      if (this.dictionaryFile || this.dataFile) return;  // user was faster
+      if (dict) {
+        this.dictionaryFile = dict;
+        this.dictionaryName = dict.name;
+      }
+      if (casos) {
+        this.dataFile = casos;
+        this.dataFileName = casos.name;
+      }
+      const loaded: string[] = [];
+      if (dict) loaded.push(`diccionario: ${dict.name}`);
+      if (casos) loaded.push(`casos: ${casos.name}`);
+      if (loaded.length) {
+        this.messages.push({
+          role: 'assistant',
+          content: `Datos de ejemplo cargados (${loaded.join(', ')}). ` +
+            'Puedes sustituirlos seleccionando tus propios ficheros.',
+        });
+      }
+      if (dict) this.inspectDictionary(dict);
+    });
+  }
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
