@@ -225,8 +225,9 @@ def _parse_dqc_items(result: Any) -> list[DQCItem]:
     return items
 
 
-def _persist_dqc_items(items: list[DQCItem]) -> list[str]:
-    ids: list[str] = []
+def _persist_dqc_items(items: list[DQCItem]) -> list[tuple[DQCItem, str]]:
+    """Insert items; returns (item, check_id) pairs for the ones stored."""
+    ids: list[tuple[DQCItem, str]] = []
     conn = _db()
     try:
         for it in items:
@@ -252,12 +253,47 @@ def _persist_dqc_items(items: list[DQCItem]) -> list[str]:
                     periodicidad=it.periodicidad,
                     justificacion=it.justificacion,
                 )
-                ids.append(cid)
+                ids.append((it, cid))
             except sqlite3.IntegrityError as exc:
                 logger.warning("DQC persist clash: %s", exc)
     finally:
         conn.close()
     return ids
+
+
+# ── last-evaluation cases per check (feeds the sidebar detail panel) ─────────
+
+_EVAL_CASES_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS check_eval_cases (
+    check_id     TEXT PRIMARY KEY,
+    payload      TEXT NOT NULL,
+    evaluated_at TEXT NOT NULL
+)"""
+
+_CASE_KEYS = ("n_casos", "columnas", "ejemplos", "precision", "recall",
+              "esperados")
+
+
+def _save_check_cases(entries: list[tuple[str, dict]]) -> None:
+    """Upsert the latest detected-cases payload for each check_id."""
+    if not entries:
+        return
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    conn = _db()
+    try:
+        conn.execute(_EVAL_CASES_SCHEMA)
+        for check_id, data in entries:
+            payload = {k: data[k] for k in _CASE_KEYS if data.get(k) is not None}
+            conn.execute(
+                "INSERT OR REPLACE INTO check_eval_cases VALUES (?, ?, ?)",
+                (check_id, json.dumps(payload, ensure_ascii=False), now))
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001 — cases cache is best-effort
+        logger.warning("saving eval cases failed: %s", exc)
+    finally:
+        conn.close()
 
 
 def _split_instructions(text: str) -> list[str]:
@@ -699,6 +735,7 @@ async def generate_dqc_stream(
         precisions: list[float] = []
         recalls: list[float] = []
         comprobados = 0
+        validaciones: dict[int, dict] = {}   # id(item) → executed validation
 
         for entry in plan:
             eid = entry["id"]
@@ -809,6 +846,8 @@ async def generate_dqc_stream(
 
             for it in items:
                 it.prev_id = entry.get("prev_id") or ""
+                if validacion and validacion.get("ejecutada"):
+                    validaciones[id(it)] = validacion
             dqcs.extend(items)
             yield _sse("item", {"id": eid, "estado": "completado",
                                 "dqcs": [i.model_dump() for i in items],
@@ -818,6 +857,9 @@ async def generate_dqc_stream(
         try:
             saved = _persist_dqc_items(dqcs)
             logger.info("persisted %d/%d DQCs", len(saved), len(dqcs))
+            _save_check_cases([(cid, validaciones[id(it)])
+                               for it, cid in saved
+                               if id(it) in validaciones])
         except Exception as exc:  # noqa: BLE001
             logger.warning("persist failed: %s", exc)
 
@@ -917,6 +959,8 @@ async def evaluate_checks(
             recalls.append(m["recall"])
         resultados.append(result)
 
+    _save_check_cases([(r.check_id, r.model_dump()) for r in resultados if r.ok])
+
     evaluados = sum(1 for r in resultados if r.ok)
     return EvaluateResponse(
         casos=cases.n_rows,
@@ -928,6 +972,24 @@ async def evaluate_checks(
         recall_medio=round(sum(recalls) / len(recalls), 3)
         if recalls else None,
     )
+
+
+@router.get("/checks/{check_id}/cases")
+def check_cases(check_id: str) -> dict:
+    """Latest detected-cases payload for one stored check (from the last
+    generation run or /evaluate). {"available": false} when never executed."""
+    conn = _db()
+    try:
+        conn.execute(_EVAL_CASES_SCHEMA)
+        row = conn.execute(
+            "SELECT payload, evaluated_at FROM check_eval_cases "
+            "WHERE check_id = ?", (check_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return {"available": False}
+    return {"available": True, "evaluated_at": row["evaluated_at"],
+            **json.loads(row["payload"])}
 
 
 # ── Validation pipeline ───────────────────────────────────────────────────────

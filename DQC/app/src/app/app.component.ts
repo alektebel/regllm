@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChatComponent } from './chat/chat.component';
 import { DqcService } from './services/dqc.service';
-import { CheckRecord } from './models/dqc.model';
+import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
 
 @Component({
   selector: 'app-root',
@@ -100,6 +100,48 @@ import { CheckRecord } from './models/dqc.model';
 
             <h4>Consulta SQL</h4>
             <pre class="sql-block">{{ selected.sql }}</pre>
+
+            @if (selectedCases?.available) {
+              <h4>
+                Casos detectados ({{ selectedCases!.n_casos }})
+                @if (selectedCases!.precision != null) {
+                  <span class="cases-pr">
+                    P {{ (selectedCases!.precision! * 100).toFixed(0) }}% ·
+                    R {{ (selectedCases!.recall! * 100).toFixed(0) }}%
+                    ({{ selectedCases!.esperados }} esperados)
+                  </span>
+                }
+              </h4>
+              @if (selectedCases!.ejemplos && selectedCases!.ejemplos!.length > 0) {
+                <div class="cases-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        @for (c of selectedCases!.columnas; track c) { <th>{{ c }}</th> }
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (row of selectedCases!.ejemplos; track $index) {
+                        <tr>
+                          @for (c of selectedCases!.columnas; track c) { <td>{{ row[c] }}</td> }
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+                <p class="cases-meta">
+                  @if ((selectedCases!.n_casos ?? 0) > selectedCases!.ejemplos!.length) {
+                    Mostrando {{ selectedCases!.ejemplos!.length }} de {{ selectedCases!.n_casos }} casos.
+                  }
+                  Última evaluación: {{ selectedCases!.evaluated_at }}
+                </p>
+              }
+            } @else if (selectedCases && !selectedCases.available) {
+              <p class="cases-meta">
+                Sin casos registrados — este DQC aún no se ha ejecutado sobre
+                un Excel de datos (usa "Evaluar Excel de datos" en el chat).
+              </p>
+            }
 
             <div class="detail-meta">
               @if (selected.condicion_error) {
@@ -237,12 +279,26 @@ import { CheckRecord } from './models/dqc.model';
     .meta-row strong { color: #ccc; }
     .field-tag { font-size: 11px; background: #1e1e35; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
     .justification { font-style: italic; color: #888; }
+    .cases-pr { font-size: 11px; color: #4caf50; text-transform: none; margin-left: 8px; }
+    .cases-table {
+      overflow-x: auto; border: 1px solid #2a2a40; border-radius: 6px;
+      margin: 0 0 6px; max-height: 260px; overflow-y: auto;
+    }
+    .cases-table table { border-collapse: collapse; font-size: 11px; width: 100%; }
+    .cases-table th, .cases-table td {
+      padding: 4px 10px; text-align: left; white-space: nowrap;
+      border-bottom: 1px solid #1e1e35;
+    }
+    .cases-table th { color: #888; background: #0a0a14; font-weight: 600; position: sticky; top: 0; }
+    .cases-table td { color: #aaa; }
+    .cases-meta { font-size: 11px; color: #666; margin: 0 0 16px; }
     .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   `],
 })
 export class AppComponent implements OnInit, OnDestroy {
   checks: CheckRecord[] = [];
   selected: CheckRecord | null = null;
+  selectedCases: CheckCasesResponse | null = null;
   filter: 'all' | 'pending' | 'validated' | 'rejected' = 'all';
   copiedAll = false;
   copyAllMsg = '';
@@ -269,7 +325,19 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   select(c: CheckRecord): void {
-    this.selected = this.selected?.check_id === c.check_id ? null : c;
+    if (this.selected?.check_id === c.check_id) {
+      this.selected = null;
+      this.selectedCases = null;
+      return;
+    }
+    this.selected = c;
+    this.selectedCases = null;
+    this.dqc.checkCases(c.check_id).subscribe({
+      next: (cases) => {
+        if (this.selected?.check_id === c.check_id) this.selectedCases = cases;
+      },
+      error: () => { /* cases are optional detail */ },
+    });
   }
 
   sevClass(sev: string): string {

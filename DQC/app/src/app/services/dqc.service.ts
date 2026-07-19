@@ -2,8 +2,8 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
-  GenerateResponse, CheckRecord, CountsResponse, DashboardResponse,
-  EvaluateResponse, InspectResponse, StreamEvent,
+  GenerateResponse, CheckCasesResponse, CheckRecord, CountsResponse,
+  DashboardResponse, EvaluateResponse, InspectResponse, StreamEvent,
 } from '../models/dqc.model';
 
 @Injectable({ providedIn: 'root' })
@@ -119,6 +119,11 @@ export class DqcService {
   list(status?: 'pending' | 'validated' | 'rejected'): Observable<CheckRecord[]> {
     const q = status ? `?status=${status}` : '';
     return this.http.get<CheckRecord[]>(`${this.apiUrl}/checks${q}`);
+  }
+
+  /** Last detected cases for one stored check (sidebar detail panel). */
+  checkCases(checkId: string): Observable<CheckCasesResponse> {
+    return this.http.get<CheckCasesResponse>(`${this.apiUrl}/checks/${checkId}/cases`);
   }
 
   setStatus(checkId: string, status: 'validated' | 'rejected'): Observable<CheckRecord> {

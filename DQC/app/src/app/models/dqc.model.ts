@@ -100,6 +100,18 @@ export interface EvalResult {
   expanded?: boolean;
 }
 
+/** GET /checks/{id}/cases — last detected cases for a stored check */
+export interface CheckCasesResponse {
+  available: boolean;
+  evaluated_at?: string;
+  n_casos?: number;
+  columnas?: string[];
+  ejemplos?: Record<string, string>[];
+  precision?: number | null;
+  recall?: number | null;
+  esperados?: number | null;
+}
+
 export interface EvaluateResponse {
   casos: number;
   resultados: EvalResult[];

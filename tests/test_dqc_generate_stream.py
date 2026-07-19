@@ -277,8 +277,13 @@ def test_cases_excel_gives_examples_and_metrics(client, monkeypatch,
 
     # previous id persisted as rule_id
     conn = sqlite3.connect(isolated_checks_db)
-    rows = conn.execute("SELECT rule_id FROM checks").fetchall()
-    assert rows == [("DQC_PD_001",)]
+    rows = conn.execute("SELECT rule_id, check_id FROM checks").fetchall()
+    assert [r[0] for r in rows] == ["DQC_PD_001"]
+
+    # executed validation persisted → sidebar cases endpoint serves it
+    cases = client.get(f"/dqc/checks/{rows[0][1]}/cases").json()
+    assert cases["available"] is True and cases["n_casos"] == 2
+    assert cases["precision"] == 1.0
 
 
 def test_execution_error_feeds_correction_loop(client, monkeypatch,

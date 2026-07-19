@@ -114,6 +114,27 @@ def test_evaluate_no_checks_is_empty_not_error(client, isolated_checks_db):
     assert body["resultados"] == [] and body["evaluados"] == 0
 
 
+def test_evaluate_persists_cases_for_sidebar(client, isolated_checks_db):
+    _insert("SELECT * FROM mylib.ciclos_recuperacion WHERE PD_ESTIMADA > 1",
+            rule_id="DQC_PD_001")
+    check_id = _post(client).json()["resultados"][0]["check_id"]
+
+    resp = client.get(f"/dqc/checks/{check_id}/cases")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is True
+    assert body["n_casos"] == 2
+    assert body["precision"] == 1.0
+    assert len(body["ejemplos"]) == 2
+    assert body["evaluated_at"]
+
+
+def test_check_cases_unavailable_before_any_evaluation(client,
+                                                       isolated_checks_db):
+    assert client.get("/dqc/checks/chk_nope/cases").json() == {
+        "available": False}
+
+
 def test_evaluate_corrupt_data_file_is_400(client, isolated_checks_db):
     resp = client.post("/dqc/evaluate", files={
         "data_file": ("casos.xlsx", b"not a zip",
