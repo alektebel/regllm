@@ -126,3 +126,57 @@ branch, see [`demo/README.md`](../demo/README.md).
 
 An Azure equivalent (Container Apps + Azure OpenAI) exists at
 `DQC/azure/deploy.sh` — see [`docs/DEPLOYMENT.md`](DEPLOYMENT.md).
+
+---
+
+## Further reading — understanding this deployment deeply
+
+A learning path, in dependency order:
+
+**1. Containers (what the images are)**
+- Docker overview + Dockerfile reference — <https://docs.docker.com/get-started/> ·
+  <https://docs.docker.com/reference/dockerfile/> (multi-stage builds are
+  what keeps the API image slim; compare with our root `Dockerfile`).
+- nginx as reverse proxy — <https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/>
+  (the `dqc` container is exactly this: static Angular + `/api` proxy).
+
+**2. AWS compute & networking (where they run)**
+- ECS core concepts + Fargate — <https://docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html>
+  (task definitions, services, why sidecars share localhost).
+- Application Load Balancer — <https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html>
+  (target groups, health checks — the reason the service shows unhealthy
+  until images exist).
+- ECR — <https://docs.aws.amazon.com/AmazonECR/latest/userguide/what-is-ecr.html>
+- VPC fundamentals — <https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html>
+  (default VPC, public subnets, security groups — everything `deploy.sh`
+  auto-resolves).
+
+**3. Infrastructure as code (how it's declared)**
+- CDK v2 Developer Guide (Python) — <https://docs.aws.amazon.com/cdk/v2/guide/home.html>
+  (constructs, context, `cdk bootstrap`/`deploy`/`destroy`; then read
+  `DQC/cdk/stacks/dqc_stack.py` top to bottom — it is a 200-line direct
+  translation of everything above).
+
+**4. Bedrock (the managed LLM)**
+- Bedrock User Guide — <https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html>
+  (model access, the Converse/ConverseStream API our client uses,
+  cross-region inference profiles — why the IAM policy needs both ARNs).
+- Bedrock pricing — <https://aws.amazon.com/bedrock/pricing/>
+
+**5. The application stack (what's inside)**
+- FastAPI — <https://fastapi.tiangolo.com/> (routers, UploadFile/Form,
+  `StreamingResponse`; plus MDN on Server-Sent Events —
+  <https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events> —
+  for the `/generate_stream` protocol).
+- Angular standalone components + built-in control flow —
+  <https://angular.dev/guide/components> ·
+  <https://angular.dev/guide/templates/control-flow> — and the dev-server
+  proxy used by `run_local.sh` —
+  <https://angular.dev/tools/cli/serve#proxying-to-a-backend-server>.
+
+**6. This repo's own docs (how it all connects)**
+- `docs/REACT_PIPELINE.md` — the agent pipeline, its abstractions, and the
+  agents/data-quality reading list (ReAct, ReFoRCE, CHESS, Gartner ADQ,
+  BCBS 239).
+- `docs/DEPLOYMENT.md` — the slim-image strategy and the Azure mirror.
+- `demo/README.md` — the branch-by-branch walkthrough.
