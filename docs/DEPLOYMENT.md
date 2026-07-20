@@ -170,3 +170,13 @@ re-pointed later with `az containerapp update`. One command after
     AZURE_OPENAI_API_KEY=... ./DQC/azure/deploy.sh
 
 Teardown: `az group delete --name regllm-dqc-rg --yes`.
+
+## Local development against Bedrock
+
+`scripts/run_local.sh` runs the full app on your machine with the LLM
+served by AWS Bedrock through your local credentials (`aws configure`):
+backend on :8000 (`REGLLM_LLM=bedrock`, Nova Micro by default), Angular
+dev server on :4200 proxying `/api`. Overrides:
+`BEDROCK_MODEL_ID`/`BEDROCK_REGION` for another model,
+`REGLLM_LLM=ollama|stub` to skip AWS entirely. One-time Bedrock setup:
+enable the model under console → Bedrock → Model access.
