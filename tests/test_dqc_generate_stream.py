@@ -402,6 +402,67 @@ def test_default_run_unaffected_by_new_features(client, monkeypatch,
     assert events[-1][1]["agents_used"] == 3
 
 
+# ── decision trace (feeds the binary-tree view; persisted for audit) ────────
+
+def test_completed_item_carries_decision_trace(client, monkeypatch,
+                                               isolated_checks_db):
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "PD <= 1", "accion": "rango"}]},
+        _suf(),
+        _dqc(),
+    ])
+    _wire(monkeypatch, fake)
+    events = _parse_sse(_post(client, "DQC_PD_001: PD <= 1",
+                              with_data=True).text)
+    completed = [d for e, d in events if e == "item"
+                 and d["estado"] == "completado"][0]
+    pasos = [t["paso"] for t in completed["trace"]]
+    assert pasos == ["suficiencia", "generacion", "validacion", "resultado"]
+    assert completed["trace"][0]["resultado"] == "si"
+    assert completed["trace"][-1]["n_casos"] == 2
+
+    # trace persisted with the check → served by the cases endpoint
+    import sqlite3 as _sql
+    conn = _sql.connect(isolated_checks_db)
+    check_id = conn.execute("SELECT check_id FROM checks").fetchone()[0]
+    cases = client.get(f"/dqc/checks/{check_id}/cases").json()
+    assert [t["paso"] for t in cases["trace"]] == pasos
+
+
+def test_ambiguous_item_trace_records_the_no_branch(client, monkeypatch,
+                                                    isolated_checks_db):
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "colateral válido", "accion": "?"}]},
+        _suf(campos=(), ok=False, falta="no hay campo de colateral"),
+    ])
+    _wire(monkeypatch, fake)
+    events = _parse_sse(_post(client, "colateral válido").text)
+    amb = [d for e, d in events if e == "item" and d["estado"] == "ambigua"][0]
+    assert [t["paso"] for t in amb["trace"]] == ["suficiencia", "resultado"]
+    assert amb["trace"][0]["resultado"] == "no"
+    assert amb["trace"][1]["estado"] == "ambigua"
+
+
+def test_correction_loop_trace_records_failed_validation(client, monkeypatch,
+                                                         isolated_checks_db):
+    bad = _dqc("SELECT * FROM mylib.ciclos_recuperacion WHERE CAMPO_FALSO > 1")
+    fake = _FakeClient([
+        {"plan": [{"id": 1, "regla": "PD <= 1", "accion": "rango"}]},
+        _suf(),
+        bad,
+        _dqc(),
+    ])
+    _wire(monkeypatch, fake)
+    events = _parse_sse(_post(client, "PD <= 1").text)
+    completed = [d for e, d in events if e == "item"
+                 and d["estado"] == "completado"][0]
+    pasos = [(t["paso"], t.get("resultado")) for t in completed["trace"]]
+    assert pasos == [("suficiencia", "si"),
+                     ("generacion", None), ("validacion", "no"),
+                     ("generacion", None), ("validacion", "si"),
+                     ("resultado", None)]
+
+
 # ── unit: previous-id extraction ─────────────────────────────────────────────
 
 def test_split_prev_id_formats():

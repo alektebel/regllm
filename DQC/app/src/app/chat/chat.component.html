@@ -53,6 +53,17 @@
                     @if (p.accion) {
                       <span class="plan-accion">{{ p.accion }}</span>
                     }
+                    @if (p.tree) {
+                      <button class="tree-btn"
+                              (click)="p.treeOpen = !p.treeOpen; $event.stopPropagation()">
+                        {{ p.treeOpen ? '▾ ocultar árbol' : '▸ árbol de decisión' }}
+                      </button>
+                      @if (p.treeOpen) {
+                        <div class="dqc-tree" (click)="$event.stopPropagation()">
+                          <ng-container *ngTemplateOutlet="tnodeTpl; context: { $implicit: p.tree }" />
+                        </div>
+                      }
+                    }
                     @if (p.estado === 'en_curso') {
                       <span class="plan-fase">{{ faseLabel(p) }}</span>
                     }
@@ -219,6 +230,39 @@
       </div>
     }
   </div>
+
+  <!-- recursive binary decision-tree node (root on top) -->
+  <ng-template #tnodeTpl let-node>
+    <div class="tnode-wrap">
+      <div class="tnode" [attr.data-estado]="node.estado" [attr.data-kind]="node.kind"
+           [title]="node.detail || ''">
+        {{ node.label }}
+        @if (node.detail) { <span class="tnode-detail">{{ node.detail }}</span> }
+      </div>
+      @if (node.kind === 'decision' && (node.yes || node.no || node.taken || node.estado === 'activo')) {
+        <div class="tchildren">
+          <div class="tbranch" [class.taken]="node.taken === 'yes'" [class.dim]="node.taken === 'no'">
+            <span class="tedge"></span>
+            <span class="tedge-label">Sí</span>
+            @if (node.yes) {
+              <ng-container *ngTemplateOutlet="tnodeTpl; context: { $implicit: node.yes }" />
+            } @else { <div class="tstub">·</div> }
+          </div>
+          <div class="tbranch" [class.taken]="node.taken === 'no'" [class.dim]="node.taken === 'yes'">
+            <span class="tedge"></span>
+            <span class="tedge-label">No</span>
+            @if (node.no) {
+              <ng-container *ngTemplateOutlet="tnodeTpl; context: { $implicit: node.no }" />
+            } @else { <div class="tstub">·</div> }
+          </div>
+        </div>
+      }
+      @if (node.kind === 'action' && node.next) {
+        <span class="tedge taken-solo"></span>
+        <ng-container *ngTemplateOutlet="tnodeTpl; context: { $implicit: node.next }" />
+      }
+    </div>
+  </ng-template>
 
   <div class="input-panel">
     <div class="file-row">

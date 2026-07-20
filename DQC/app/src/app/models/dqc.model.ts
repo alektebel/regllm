@@ -57,6 +57,31 @@ export interface PlanValidation {
   juez_confianza?: number;
 }
 
+/** one node of the per-DQC decision tree (root on top, animated live) */
+export interface TreeNode {
+  label: string;
+  kind: 'decision' | 'action' | 'leaf';
+  estado: 'activo' | 'hecho' | 'ok' | 'fallo';
+  detail?: string;
+  /** which branch the pipeline took on a decision node */
+  taken?: 'yes' | 'no';
+  yes?: TreeNode;
+  no?: TreeNode;
+  /** unary chain for action nodes */
+  next?: TreeNode;
+}
+
+/** one server-side decision-trace step (persisted for audit) */
+export interface TraceStep {
+  paso: 'suficiencia' | 'generacion' | 'validacion' | 'juicio' | 'resultado' | string;
+  pregunta?: string;
+  resultado?: 'si' | 'no';
+  detalle?: string;
+  intento?: number;
+  estado?: string;
+  n_casos?: number | null;
+}
+
 /** one entry of the LLM's DQC action plan, ticked off live as it executes */
 export interface PlanItem {
   id: number;
@@ -75,6 +100,14 @@ export interface PlanItem {
   error?: string;
   /** client-side: case-details table expanded */
   expanded?: boolean;
+  /** live decision tree (built from the stream events) */
+  tree?: TreeNode;
+  treeOpen?: boolean;
+  /** server-side decision trace, delivered with the terminal event */
+  trace?: TraceStep[];
+  /** internal tree-builder cursors */
+  _pending?: TreeNode;
+  _tail?: TreeNode;
 }
 
 /** typed SSE frame from POST /generate_stream */

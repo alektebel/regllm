@@ -2,7 +2,7 @@ import { Component, EventEmitter, NgZone, OnInit, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DqcService } from '../services/dqc.service';
-import { ChatMessage, InspectResponse, PlanItem, StreamEvent } from '../models/dqc.model';
+import { ChatMessage, InspectResponse, PlanItem, StreamEvent, TreeNode } from '../models/dqc.model';
 
 @Component({
   selector: 'app-chat',
@@ -265,6 +265,67 @@ export class ChatComponent implements OnInit {
     });
   }
 
+  /** Build the per-DQC binary decision tree (root on top) from the stream
+   * events, mirroring the ReAct loop: ¿información suficiente? → generar
+   * consulta → ¿consulta válida? → (¿el juez la aprueba?) → casos. A failed
+   * decision hangs the next attempt off its "No" branch, so the correction
+   * loop reads as a descending chain. */
+  private updateTree(item: PlanItem, d: any): void {
+    const resolve = (side: 'yes' | 'no', child: TreeNode) => {
+      const dec = item._pending!;
+      dec.taken = side;
+      dec.estado = 'hecho';
+      dec[side] = child;
+      item._pending = undefined;
+      item._tail = child;
+    };
+
+    if (d.estado === 'en_curso' && d.fase === 'suficiencia') {
+      item.tree = { label: '¿Información suficiente?', kind: 'decision', estado: 'activo' };
+      item.treeOpen = item.treeOpen ?? true;
+      item._pending = item.tree;
+      item._tail = item.tree;
+    } else if (d.estado === 'ambigua' && item._pending) {
+      resolve('no', { label: 'Regla ambigua', kind: 'leaf', estado: 'fallo', detail: d.falta });
+    } else if (d.estado === 'en_curso' && d.fase === 'generacion') {
+      const gen: TreeNode = {
+        label: `Generar consulta SAS${d.intento > 1 ? ` (intento ${d.intento})` : ''}`,
+        kind: 'action', estado: 'activo',
+      };
+      if (item._pending) {
+        // suficiencia → Sí; a failed validity/judge decision → No (retry)
+        resolve(item._pending.label.includes('suficiente') ? 'yes' : 'no', gen);
+      } else if (item._tail) {
+        item._tail.next = gen;
+        item._tail = gen;
+      }
+    } else if (d.estado === 'en_curso' && d.fase === 'validacion' && item._tail) {
+      item._tail.estado = 'hecho';
+      const dec: TreeNode = { label: '¿Consulta válida?', kind: 'decision', estado: 'activo' };
+      item._tail.next = dec;
+      item._pending = dec;
+      item._tail = dec;
+    } else if (d.estado === 'en_curso' && d.fase === 'juicio' && item._pending) {
+      const dec: TreeNode = { label: '¿El juez la aprueba?', kind: 'decision', estado: 'activo' };
+      resolve('yes', dec);
+      item._pending = dec;
+    } else if (d.estado === 'completado' && item._pending) {
+      const n = d.validacion?.n_casos;
+      resolve('yes', {
+        label: n != null
+          ? `${n} caso${n !== 1 ? 's' : ''} detectado${n !== 1 ? 's' : ''}`
+          : 'DQC validado',
+        kind: 'leaf', estado: 'ok',
+        detail: d.validacion?.precision != null
+          ? `P ${(d.validacion.precision * 100).toFixed(0)}% · R ${(d.validacion.recall * 100).toFixed(0)}%`
+          : undefined,
+      });
+    } else if (d.estado === 'error' && item._pending) {
+      resolve('no', { label: 'Agotados los intentos', kind: 'leaf',
+                      estado: 'fallo', detail: d.error });
+    }
+  }
+
   hasCases(p: PlanItem): boolean {
     return (p.validacion?.ejemplos?.length ?? 0) > 0;
   }
@@ -304,6 +365,8 @@ export class ChatComponent implements OnInit {
         if (ev.data.validacion) item.validacion = ev.data.validacion;
         if (ev.data.dqcs) item.dqcs = ev.data.dqcs;
         if (ev.data.error) item.error = ev.data.error;
+        if (ev.data.trace) item.trace = ev.data.trace;
+        this.updateTree(item, ev.data);
       }
     } else if (ev.type === 'done') {
       const d = ev.data;

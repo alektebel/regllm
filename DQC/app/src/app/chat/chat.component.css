@@ -472,6 +472,89 @@
 .plan-examples th { color: #888; background: #0a0a14; font-weight: 600; }
 .plan-examples td { color: #aaa; }
 
+/* ── per-DQC binary decision tree (root on top, animated) ── */
+.tree-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  color: #6c7bbf;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dqc-tree {
+  margin-top: 8px;
+  padding: 12px 8px;
+  border: 1px solid #2a2a40;
+  border-radius: 6px;
+  background: #0d0d1c;
+  overflow-x: auto;
+  cursor: default;
+}
+
+.tnode-wrap { display: flex; flex-direction: column; align-items: center; }
+
+.tnode {
+  position: relative;
+  padding: 5px 12px;
+  border: 1px solid #5a69a8;
+  border-radius: 6px;
+  background: #12122a;
+  color: #ccc;
+  font-size: 11px;
+  text-align: center;
+  max-width: 220px;
+  animation: tree-pop 0.25s ease-out;
+}
+.tnode[data-kind="decision"] { border-radius: 14px; }
+.tnode[data-estado="activo"] {
+  border-color: #6c7bbf;
+  animation: tree-pop 0.25s ease-out, tree-pulse 1.2s ease-in-out infinite;
+}
+.tnode[data-estado="ok"]    { border-color: #2ecc71; color: #2ecc71; }
+.tnode[data-estado="fallo"] { border-color: #e74c3c; color: #e74c3c; }
+
+.tnode-detail {
+  display: block;
+  font-size: 9px;
+  color: #777;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tchildren { display: flex; gap: 22px; align-items: flex-start; }
+
+.tbranch { display: flex; flex-direction: column; align-items: center; }
+.tbranch.dim { opacity: 0.35; }
+
+.tedge { width: 1px; height: 10px; background: #2a2a40; }
+.tedge.taken-solo { background: #6c7bbf; }
+.tbranch.taken .tedge { background: #6c7bbf; }
+.tedge-label { font-size: 9px; color: #666; margin: 1px 0 3px; }
+.tbranch.taken .tedge-label { color: #6c7bbf; font-weight: 700; }
+
+.tstub {
+  color: #444;
+  font-size: 10px;
+  border: 1px dashed #2a2a40;
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+
+@keyframes tree-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+@keyframes tree-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(108,123,191,0.35); }
+  50%      { box-shadow: 0 0 0 6px rgba(108,123,191,0); }
+}
+
 /* ── DQC code blocks in chat ── */
 .dqc-list {
   display: flex;

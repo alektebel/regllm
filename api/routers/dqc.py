@@ -271,7 +271,7 @@ CREATE TABLE IF NOT EXISTS check_eval_cases (
 )"""
 
 _CASE_KEYS = ("n_casos", "columnas", "ejemplos", "precision", "recall",
-              "esperados")
+              "esperados", "trace")
 
 
 def _save_check_cases(entries: list[tuple[str, dict]]) -> None:
@@ -736,20 +736,32 @@ async def generate_dqc_stream(
         recalls: list[float] = []
         comprobados = 0
         validaciones: dict[int, dict] = {}   # id(item) → executed validation
+        traces: dict[int, list] = {}         # id(item) → decision trace
 
         for entry in plan:
             eid = entry["id"]
+            # decision trace — the audit record behind the UI's binary tree
+            trace: list[dict] = []
 
             # ── 1. sufficiency: do we have everything, or is it ambiguous?
             yield _sse("item", {"id": eid, "estado": "en_curso",
                                 "fase": "suficiencia"})
             suf = react.check_sufficiency(entry["regla"], fields, get_client())
             agents += 1
+            trace.append({
+                "paso": "suficiencia",
+                "pregunta": "¿Información suficiente?",
+                "resultado": "si" if suf["suficiente"] else "no",
+                "detalle": suf["falta"] or suf["interpretacion"],
+            })
             if not suf["suficiente"]:
                 ambiguas += 1
+                trace.append({"paso": "resultado", "estado": "ambigua",
+                              "detalle": suf["falta"]})
                 yield _sse("item", {"id": eid, "estado": "ambigua",
                                     "falta": suf["falta"],
-                                    "campos": suf["campos"]})
+                                    "campos": suf["campos"],
+                                    "trace": trace})
                 continue
 
             # ── optional value grounding: sample real domain values once per
@@ -769,6 +781,8 @@ async def generate_dqc_stream(
             for intento in range(1, react.MAX_ATTEMPTS + 1):
                 yield _sse("item", {"id": eid, "estado": "en_curso",
                                     "fase": "generacion", "intento": intento})
+                trace.append({"paso": "generacion", "intento": intento,
+                              "accion": "Generar consulta SAS"})
                 try:
                     result = react.generate_sas(
                         entry["regla"], fields, table_name, get_client(),
@@ -778,11 +792,18 @@ async def generate_dqc_stream(
                 except Exception as exc:  # noqa: BLE001
                     last_errors = [str(exc)]
                     feedback = last_errors
+                    trace.append({"paso": "validacion",
+                                  "pregunta": "¿Consulta válida?",
+                                  "resultado": "no", "detalle": str(exc)})
                     continue
                 items = _parse_dqc_items(result)
                 if not items:
                     last_errors = ["la respuesta no contenía ningún DQC"]
                     feedback = last_errors
+                    trace.append({"paso": "validacion",
+                                  "pregunta": "¿Consulta válida?",
+                                  "resultado": "no",
+                                  "detalle": last_errors[0]})
                     continue
 
                 yield _sse("item", {"id": eid, "estado": "en_curso",
@@ -809,6 +830,10 @@ async def generate_dqc_stream(
                             validacion.update(m)
                             precisions.append(m["precision"])
                             recalls.append(m["recall"])
+                trace.append({"paso": "validacion",
+                              "pregunta": "¿Consulta válida?",
+                              "resultado": "no" if val_errors else "si",
+                              "detalle": "; ".join(val_errors)})
                 if val_errors:
                     last_errors = val_errors
                     feedback = val_errors
@@ -825,6 +850,10 @@ async def generate_dqc_stream(
                         items[0].descripcion, items[0].condicion_error,
                         validacion.get("ejemplos"), get_client())
                     agents += 1
+                    trace.append({"paso": "juicio",
+                                  "pregunta": "¿El juez la aprueba?",
+                                  "resultado": "si" if juicio["correcto"] else "no",
+                                  "detalle": juicio["motivo"]})
                     if not juicio["correcto"]:
                         last_errors = [f"juez semántico: {juicio['motivo']}"]
                         feedback = last_errors
@@ -838,28 +867,37 @@ async def generate_dqc_stream(
             if not items:
                 error = "; ".join(last_errors) or "sin resultado"
                 errors.append(error)
+                trace.append({"paso": "resultado", "estado": "error",
+                              "detalle": error})
                 yield _sse("item", {"id": eid, "estado": "error",
                                     "error": f"No validado tras "
                                              f"{react.MAX_ATTEMPTS} intentos: "
-                                             f"{error}"})
+                                             f"{error}",
+                                    "trace": trace})
                 continue
 
+            trace.append({"paso": "resultado", "estado": "completado",
+                          "n_casos": (validacion or {}).get("n_casos")})
             for it in items:
                 it.prev_id = entry.get("prev_id") or ""
                 if validacion and validacion.get("ejecutada"):
                     validaciones[id(it)] = validacion
+                traces[id(it)] = trace
             dqcs.extend(items)
             yield _sse("item", {"id": eid, "estado": "completado",
                                 "dqcs": [i.model_dump() for i in items],
-                                "validacion": validacion})
+                                "validacion": validacion,
+                                "trace": trace})
 
         _dedupe_ids(dqcs)
         try:
             saved = _persist_dqc_items(dqcs)
             logger.info("persisted %d/%d DQCs", len(saved), len(dqcs))
-            _save_check_cases([(cid, validaciones[id(it)])
-                               for it, cid in saved
-                               if id(it) in validaciones])
+            _save_check_cases([
+                (cid, {**validaciones.get(id(it), {}),
+                       "trace": traces.get(id(it), [])})
+                for it, cid in saved
+                if id(it) in validaciones or id(it) in traces])
         except Exception as exc:  # noqa: BLE001
             logger.warning("persist failed: %s", exc)
 
