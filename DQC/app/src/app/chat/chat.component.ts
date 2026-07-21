@@ -330,6 +330,15 @@ export class ChatComponent implements OnInit {
     return (p.validacion?.ejemplos?.length ?? 0) > 0;
   }
 
+  /** One-line, human explanation of why the shown rows were flagged. */
+  caseHint(condicion?: string, descripcion?: string): string {
+    const c = (condicion || '').trim();
+    const d = (descripcion || '').trim();
+    if (c) return `Estas filas se marcan porque cumplen la condición de error: ${c}`;
+    if (d) return `Filas que incumplen la regla: ${d}`;
+    return 'Filas que la consulta marca como incumplimiento de la regla.';
+  }
+
   faseLabel(p: PlanItem): string {
     const labels: Record<string, string> = {
       suficiencia: 'verificando información…',

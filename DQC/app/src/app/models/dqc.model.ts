@@ -121,6 +121,8 @@ export interface EvalResult {
   check_id: string;
   name: string;
   prev_id?: string | null;
+  descripcion?: string;
+  condicion_error?: string;
   ok: boolean;
   error?: string;
   n_casos: number;

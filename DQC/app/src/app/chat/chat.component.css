@@ -445,6 +445,7 @@
 .plan-error  { font-size: 11px; color: #e74c3c; }
 .plan-fase   { font-size: 11px; color: #6c7bbf; font-style: italic; }
 .plan-falta  { font-size: 11px; color: #f39c12; }
+.plan-hint   { font-size: 11px; color: #8a93c4; margin: 4px 0 2px; display: block; }
 
 .plan-previd {
   font-size: 10px;

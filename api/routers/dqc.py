@@ -101,6 +101,8 @@ class EvalResult(BaseModel):
     check_id: str
     name: str
     prev_id: str | None = None
+    descripcion: str = ""
+    condicion_error: str = ""      # human explanation of why a row is flagged
     ok: bool
     error: str = ""
     n_casos: int = 0
@@ -981,11 +983,16 @@ async def evaluate_checks(
         if not run["ok"]:
             resultados.append(EvalResult(
                 check_id=c["check_id"], name=c["name"],
-                prev_id=c.get("rule_id"), ok=False, error=run["error"]))
+                prev_id=c.get("rule_id"),
+                descripcion=c.get("description") or "",
+                condicion_error=c.get("condicion_error") or "",
+                ok=False, error=run["error"]))
             continue
         result = EvalResult(
             check_id=c["check_id"], name=c["name"],
             prev_id=c.get("rule_id"), ok=True,
+            descripcion=c.get("description") or "",
+            condicion_error=c.get("condicion_error") or "",
             n_casos=run["n_casos"], columnas=run["columnas"],
             ejemplos=run["ejemplos"])
         m = react.metrics(cases, run["casos"], c.get("rule_id"))

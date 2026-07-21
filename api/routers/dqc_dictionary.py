@@ -362,29 +362,84 @@ def infer_missing_formats(fields: list[FieldEntry], client,
 
 _WORD_RE = re.compile(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ_0-9]{3,}")
 
+# hybrid weights when a semantic (embedding) channel is available; lexical is
+# kept dominant so an outright-named field always outranks a merely-similar one
+_LEX_WEIGHT = 0.6
+_SEM_WEIGHT = 0.4
+
+
+def _lexical_score(entry: FieldEntry, words: set[str]) -> float:
+    name_n = _norm(entry.name)
+    score = 0
+    if name_n in words:
+        score += 100                     # named outright
+    score += sum(3 for part in name_n.split("_") if part in words)
+    desc_words = {_norm(w) for w in _WORD_RE.findall(entry.description)}
+    score += len(words & desc_words)
+    formula_words = {_norm(w) for w in _WORD_RE.findall(entry.formula)}
+    score += 2 * len(words & formula_words)
+    return float(score)
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = num = den_a = den_b = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        den_a += x * x
+        den_b += y * y
+    if den_a == 0.0 or den_b == 0.0:
+        return 0.0
+    return dot / ((den_a ** 0.5) * (den_b ** 0.5))
+
+
+def _minmax(values: list[float]) -> list[float]:
+    lo, hi = min(values), max(values)
+    if hi - lo < 1e-12:
+        return [0.0] * len(values)
+    return [(v - lo) / (hi - lo) for v in values]
+
 
 def select_relevant_fields(fields: list[FieldEntry], instructions: list[str],
-                           cap: int = MAX_FIELDS_PER_CALL) -> list[FieldEntry]:
-    """Fields worth sending to the agent for THIS instruction batch:
-    every field explicitly named, then the best keyword matches, capped."""
+                           cap: int = MAX_FIELDS_PER_CALL,
+                           embedder=None) -> list[FieldEntry]:
+    """Fields worth sending to the agent for THIS instruction batch.
+
+    Tier-1 schema-linking filter (MARS-SQL style): rank every field and keep
+    the top ``cap``. Lexical scoring (exact name, name parts, description /
+    formula word overlap) is always applied; when ``embedder`` is provided
+    and actually produces vectors, a semantic channel (cosine similarity of
+    the rule against each field's ``name. description``) is blended in so
+    fields that are relevant but share no literal words are still surfaced.
+    Falls back to pure lexical when there is no embedder or it is unavailable
+    (zero vectors), so behaviour is unchanged unless embeddings are on.
+    """
     if len(fields) <= cap:
         return fields
     text = " ".join(instructions)
     words = {_norm(w) for w in _WORD_RE.findall(text)}
-    scored: list[tuple[int, int, FieldEntry]] = []
-    for i, entry in enumerate(fields):
-        name_n = _norm(entry.name)
-        score = 0
-        if name_n in words:
-            score += 100                     # named outright
-        score += sum(3 for part in name_n.split("_") if part in words)
-        desc_words = {_norm(w) for w in _WORD_RE.findall(entry.description)}
-        score += len(words & desc_words)
-        formula_words = {_norm(w) for w in _WORD_RE.findall(entry.formula)}
-        score += 2 * len(words & formula_words)
-        scored.append((score, i, entry))
-    scored.sort(key=lambda t: (-t[0], t[1]))
-    chosen = {id(e) for _, _, e in scored[:cap]}
+    lex = [_lexical_score(e, words) for e in fields]
+
+    sem: list[float] | None = None
+    if embedder is not None:
+        try:
+            field_texts = [f"{e.name}. {e.description}".strip() for e in fields]
+            vecs = embedder.embed([text] + field_texts)
+            query_vec = vecs[0]
+            if any(query_vec):   # non-zero ⇒ embeddings really ran (not stub)
+                sem = [_cosine(query_vec, fv) for fv in vecs[1:]]
+        except Exception as exc:  # noqa: BLE001 — semantic channel is best-effort
+            logger.warning("semantic field filter failed: %s", exc)
+            sem = None
+
+    if sem is None:
+        combined = lex
+    else:
+        lex_n, sem_n = _minmax(lex), _minmax(sem)
+        combined = [_LEX_WEIGHT * l + _SEM_WEIGHT * s
+                    for l, s in zip(lex_n, sem_n)]
+
+    order = sorted(range(len(fields)), key=lambda i: (-combined[i], i))
+    chosen = {id(fields[i]) for i in order[:cap]}
     # keep original dictionary order for the prompt
     return [f for f in fields if id(f) in chosen]
 

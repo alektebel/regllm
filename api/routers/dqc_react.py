@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import re
 import sqlite3
 from typing import Any
@@ -44,6 +45,22 @@ MAX_FETCH_ROWS = 500      # hard cap when executing a query on the cases
 
 _PREV_ID_RE = re.compile(
     r"^\s*(?:\[(?P<braced>[A-Za-z][\w.-]*)\]|(?P<bare>DQC[\w.-]*))\s*[:\-–—]?\s+")
+
+
+def _field_embedder():
+    """Tier-1 semantic field filter embedder, only when opted in via
+    REGLLM_DQC_SEMANTIC_FIELDS. Returns the shared embedding service (which
+    itself degrades to zero vectors when no backend is reachable) or None so
+    field selection stays purely lexical by default."""
+    if (os.getenv("REGLLM_DQC_SEMANTIC_FIELDS") or "").lower() not in (
+            "1", "true", "yes", "on"):
+        return None
+    try:
+        from src.knowledge.embeddings import get_embedding_service
+        return get_embedding_service()
+    except Exception as exc:  # noqa: BLE001 — embeddings optional
+        logger.warning("embedding service unavailable: %s", exc)
+        return None
 
 
 def split_prev_id(line: str) -> tuple[str | None, str]:
@@ -76,7 +93,8 @@ Responde SOLO JSON:
 def check_sufficiency(rule: str, fields: list, client) -> dict:
     """Fresh-context sufficiency agent + deterministic field verification."""
     field_names = {f.name.upper() for f in fields}
-    relevant = dict_ai.select_relevant_fields(fields, [rule])
+    relevant = dict_ai.select_relevant_fields(fields, [rule],
+                                              embedder=_field_embedder())
     dict_text, _ = dict_ai.fields_to_text(relevant)
     user = f"REGLA DQC:\n{rule}\n\nDICCIONARIO DE CAMPOS:\n{dict_text}"
 
@@ -154,7 +172,8 @@ def generate_sas(rule: str, fields: list, table_name: str, client,
     from the previous attempt for the correction loop; ``valores`` carries
     sampled real domain values (value grounding)."""
     hint = [rule] + ([" ".join(campos)] if campos else [])
-    relevant = dict_ai.select_relevant_fields(fields, hint)
+    relevant = dict_ai.select_relevant_fields(fields, hint,
+                                              embedder=_field_embedder())
     dict_text, sent = dict_ai.fields_to_text(relevant)
     user = (
         f"Tabla objetivo: {table_name}\n\n"

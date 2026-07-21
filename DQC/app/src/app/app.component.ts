@@ -113,6 +113,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
                 }
               </h4>
               @if (selectedCases!.ejemplos && selectedCases!.ejemplos!.length > 0) {
+                <p class="cases-hint">{{ caseHint() }}</p>
                 <div class="cases-table">
                   <table>
                     <thead>
@@ -292,6 +293,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
     .cases-table th { color: #888; background: #0a0a14; font-weight: 600; position: sticky; top: 0; }
     .cases-table td { color: #aaa; }
     .cases-meta { font-size: 11px; color: #666; margin: 0 0 16px; }
+    .cases-hint { font-size: 12px; color: #8a93c4; margin: 0 0 6px; }
     .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   `],
 })
@@ -359,6 +361,15 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   onDqcGenerated(): void { this.loadChecks(); }
+
+  /** One-line explanation of why the detected rows were flagged. */
+  caseHint(): string {
+    const c = (this.selected?.condicion_error || '').trim();
+    const d = (this.selected?.description || '').trim();
+    if (c) return `Estas filas se marcan porque cumplen la condición de error: ${c}`;
+    if (d) return `Filas que incumplen la regla: ${d}`;
+    return 'Filas que la consulta marca como incumplimiento de la regla.';
+  }
 
   copyAll(): void {
     this.dqc.dashboard().subscribe({

@@ -92,6 +92,7 @@
                         }
                       </span>
                       @if (p.expanded && hasCases(p)) {
+                        <span class="plan-hint">{{ caseHint(p.dqcs?.[0]?.condicion_error, p.dqcs?.[0]?.descripcion) }}</span>
                         <div class="plan-examples">
                           <table>
                             <thead>
@@ -153,6 +154,7 @@
                         }
                       </span>
                       @if (r.expanded && r.ejemplos.length > 0) {
+                        <span class="plan-hint">{{ caseHint(r.condicion_error, r.descripcion) }}</span>
                         <div class="plan-examples">
                           <table>
                             <thead>

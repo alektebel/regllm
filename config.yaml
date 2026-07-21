@@ -52,6 +52,12 @@ llm:
 # Used both by the ChromaDB-backed knowledge-graph RAG (src/knowledge/
 # vector_store.py) and the dependency-free regulation RAG
 # (src/knowledge/regulation_vector_store.py, scripts/build_regulation_embeddings.py).
+# DQC field retrieval (Tier-1 schema-linking filter). Off by default: field
+# selection is lexical only. Set REGLLM_DQC_SEMANTIC_FIELDS=1 to blend in a
+# semantic channel using the embedding model below, so fields relevant to a
+# rule but sharing no literal words are still surfaced. Needs an embedding
+# backend reachable (Ollama/Bedrock); degrades to lexical if not.
+
 embedding:
   model: "nomic-embed-text"  # local GGUF via Ollama
   dim: 768
