@@ -77,6 +77,38 @@ Separate from IAM — it's a one-time **console** action (next section) that
 enables the model family for the account. Needs `bedrock:*` on whoever
 performs it (an admin), and is independent of the deployer's role.
 
+## 0c. Deploy from AWS CloudShell (no access key needed)
+
+If you can't get an AWS CLI access key/secret (common in locked-down orgs),
+**skip the CLI entirely and deploy from [AWS CloudShell](https://console.aws.amazon.com/cloudshell)**
+— the terminal button in the AWS console top bar. CloudShell runs **as your
+signed-in console identity**, so credentials, `aws`, `git`, Node and Python
+are all already there, and Docker is available too. Nothing to configure.
+
+```bash
+# in CloudShell, region selector = eu-west-1
+git clone <your repo url> regllm && cd regllm
+AWS_REGION=eu-west-1 ./DQC/cdk/deploy.sh
+```
+
+Two caveats specific to CloudShell:
+
+- **1 GB home storage.** The repo + `node_modules` + two Docker image
+  builds can bump the limit. If a build fails on "no space", prune between
+  the two images:
+  ```bash
+  docker system prune -af      # after the API image is pushed, before the frontend
+  df -h ~                       # check headroom
+  ```
+- **Your console identity needs the deployer permissions** in
+  *0b* above (create IAM roles / CloudFormation / ECS / ECR / …). An admin
+  console login has them; a read-only login does not.
+
+> **Alternative without CloudShell:** if you have Docker on your laptop but
+> just can't mint a static key, use **IAM Identity Center (SSO)**:
+> `aws configure sso` gives short-lived credentials with no secret key, and
+> then `deploy.sh` runs locally as normal.
+
 ## 1. Enable the Bedrock model (one-time, console)
 
 AWS console → **Bedrock** → *Model access* (region `eu-west-1`) → enable
