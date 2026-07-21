@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SeeDqcPoc",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:Describe*",
+        "cloudformation:List*",
+        "cloudformation:GetTemplate",
+        "ecs:List*",
+        "ecs:Describe*",
+        "ecr:Describe*",
+        "ecr:List*",
+        "elasticloadbalancing:Describe*",
+        "ec2:Describe*",
+        "logs:Get*",
+        "logs:Describe*",
+        "logs:FilterLogEvents",
+        "logs:StartQuery",
+        "logs:GetQueryResults",
+        "bedrock:ListFoundationModels",
+        "bedrock:GetFoundationModelAvailability"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
