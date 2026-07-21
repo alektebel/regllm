@@ -26,6 +26,57 @@ logs). The URL of the PoC is the ALB's DNS name — no domain needed.
 - IAM permissions to create CloudFormation/ECS/ECR/EC2/IAM/Logs resources
   (admin on a sandbox account is the simple answer for a PoC).
 
+## 0b. Permissions you need
+
+There are **two distinct identities** — don't confuse them:
+
+### A. The deployer (you, running `deploy.sh`)
+
+This identity creates all the infrastructure and pushes the images. On a
+**sandbox account the simplest correct answer is `AdministratorAccess`.**
+If you must scope it down, the stack + CDK bootstrap touch these services:
+
+| Service | Why |
+|---|---|
+| `cloudformation:*` | CDK deploys via a CloudFormation stack |
+| `s3:*` (CDK assets bucket) + `ssm:GetParameter` | `cdk bootstrap` staging |
+| `ecr:*` | create the 2 image repos + `docker push` |
+| `ecs:*` | cluster, task definition, service |
+| `ec2:Describe*`, `ec2:CreateDefaultVpc`, security groups | VPC/subnet lookup + task/ALB SGs |
+| `elasticloadbalancing:*` | the ALB, target group, listener |
+| `logs:*` | the `/ecs/regllm-dqc` log group |
+| **`iam:CreateRole` / `PassRole` / `AttachRolePolicy` / `PutRolePolicy`** | the stack creates the ECS execution + task roles |
+| `bedrock:ListFoundationModels` | (optional) verify the model is enabled |
+
+> **The usual friction point in a corporate account is IAM.** Creating
+> roles (`iam:CreateRole`, `iam:PassRole`) is often blocked. Two ways
+> through: (a) have an admin run `cdk bootstrap` **once** for the
+> account/region, then your deploy only needs the non-IAM services above
+> plus `PassRole` on the two role ARNs; or (b) pre-create the execution
+> and task roles and adapt `dqc_stack.py` to import them with
+> `iam.Role.from_role_arn` instead of creating them.
+
+### B. The app's runtime task role (created for you)
+
+You **don't set this up** — the stack creates it. For reference, the
+running API container is granted exactly:
+
+```
+bedrock:InvokeModel
+bedrock:InvokeModelWithResponseStream
+```
+
+scoped to the inference-profile ARN + foundation-model ARNs (see
+`task_role.add_to_policy` in `DQC/cdk/stacks/dqc_stack.py:104`). Nothing
+else — no S3, no database, no secrets. If you switch to a Claude model,
+the same two actions cover it; only the model id changes.
+
+### C. Account-level: Bedrock model access
+
+Separate from IAM — it's a one-time **console** action (next section) that
+enables the model family for the account. Needs `bedrock:*` on whoever
+performs it (an admin), and is independent of the deployer's role.
+
 ## 1. Enable the Bedrock model (one-time, console)
 
 AWS console → **Bedrock** → *Model access* (region `eu-west-1`) → enable
