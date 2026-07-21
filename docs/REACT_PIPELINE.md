@@ -112,6 +112,13 @@ exactly the tool implementations such an agent would call.
 - Tool landscape survey —
   <https://www.dqlabs.ai/blog/best-data-quality-tools-for-enterprise-use-in-2026-a-practitioners-guide/>
 
+**Post-training (staged SFT→RL for a DB-analysis model):**
+- See `docs/POST_TRAINING_ROADMAP.md` — a phased recipe (cold-start SFT →
+  schema-linking RL → generation RL with execution reward → agentic RL
+  with an abstention reward) tied to `training/dq/` and `DQC/eval/`, with
+  the 2025-2026 text-to-SQL RL literature (Reasoning-SQL, Progress-SQL,
+  TRUST-SQL, Graph-Reward-SQL) and the agentic-RL survey.
+
 **Banking governance (why traceability + human validation matter):**
 - BCBS 239 (risk data aggregation principles — the regulatory root of DQC
   work) — <https://www.bis.org/bcbs/publ/d239.htm>
