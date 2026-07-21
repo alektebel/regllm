@@ -1,5 +1,10 @@
 # RegLLM
 
+> **Deploy the DQC Generator to AWS in 3 commands:**
+> [`DEPLOY_AWS_QUICKSTART.md`](DEPLOY_AWS_QUICKSTART.md) (full guide:
+> [`docs/AWS_POC_SETUP.md`](docs/AWS_POC_SETUP.md)). Run it locally against
+> Bedrock with `./scripts/run_local.sh`.
+
 Related applications for IRB / IFRS 9 regulatory data pipelines:
 
 1. **DQC Generator** (`DQC/`, `api/routers/dqc.py`) — generates structured
