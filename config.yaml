@@ -43,6 +43,12 @@ llm:
   # api_key: "..."                 # REGLLM_API_KEY (prefer the env var)
   # api_key_header: "Authorization"  # REGLLM_API_KEY_HEADER; "x-api-key" for API-Gateway keys
   # api_model: "amazon.nova-micro-v1:0"  # REGLLM_API_MODEL — model name the gateway expects
+  #
+  # Fallback when the preferred backend is unavailable or a call fails
+  # (env: REGLLM_LLM_FALLBACK). "stub" (default) or "gguf" — a local weight
+  # file, needs gguf_model_path below + llama-cpp-python installed. With
+  # "gguf" the app keeps working offline if the remote API/Bedrock is down.
+  # fallback: "gguf"
   timeout: 300
 
   # ── Excel inspection / sheet-mapping step ──────────────────────────────

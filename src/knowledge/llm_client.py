@@ -217,6 +217,12 @@ class LocalLLMClient:
         )
         self._gguf_llama: Any = None
         self.prefer = prefer or os.getenv("REGLLM_LLM") or _LLM_CFG.get("backend") or "auto"
+        # fallback when the preferred backend is unavailable or a call fails.
+        # "stub" (default, safe canned reply) or "gguf" (a local weight file —
+        # needs GGUF_MODEL_PATH + llama-cpp-python).
+        self.fallback = (
+            os.getenv("REGLLM_LLM_FALLBACK") or _LLM_CFG.get("fallback") or "stub"
+        )
         self.timeout = timeout if timeout is not None else _DEFAULT_TIMEOUT
         self._backend: str | None = None
         self._probed = False
@@ -270,6 +276,13 @@ class LocalLLMClient:
 
     # ── Probing ───────────────────────────────────────────────────────────
 
+    def _fallback_backend(self) -> str:
+        """What to use when the preferred backend is unavailable: a local
+        GGUF weight file if configured (REGLLM_LLM_FALLBACK=gguf), else stub."""
+        if self.fallback == "gguf" and self._probe_gguf():
+            return "gguf"
+        return "stub"
+
     def detect_backend(self) -> str:
         if self._probed:
             return self._backend or "stub"
@@ -280,23 +293,23 @@ class LocalLLMClient:
         if self.prefer == "bedrock":
             if _boto3 is None:
                 logger.error("REGLLM_LLM=bedrock but boto3 is not installed")
-                self._backend = "stub"
-                return "stub"
+                self._backend = self._fallback_backend()
+                return self._backend
             self._backend = "bedrock"
             return "bedrock"
         if self.prefer == "azure":
             if not (self.azure_endpoint and self.azure_api_key):
                 logger.error("REGLLM_LLM=azure but AZURE_OPENAI_ENDPOINT / "
                              "AZURE_OPENAI_API_KEY are not set")
-                self._backend = "stub"
-                return "stub"
+                self._backend = self._fallback_backend()
+                return self._backend
             self._backend = "azure"
             return "azure"
         if self.prefer == "api":
             if not self.api_url:
                 logger.error("REGLLM_LLM=api but REGLLM_API_URL is not set")
-                self._backend = "stub"
-                return "stub"
+                self._backend = self._fallback_backend()
+                return self._backend
             self._backend = "api"
             return "api"
         if self.prefer in ("auto", "litert") and self._probe_litert():
@@ -331,11 +344,11 @@ class LocalLLMClient:
                 )
         if self.prefer == "ollama":
             # User explicitly asked for ollama but it's unreachable
-            logger.warning("REGLLM_LLM=ollama but Ollama unreachable; falling back to stub")
+            logger.warning("REGLLM_LLM=ollama but Ollama unreachable; falling back")
         elif self.prefer == "auto":
-            logger.info("No local LLM backend reachable; falling back to stub mode")
-        self._backend = "stub"
-        return "stub"
+            logger.info("No local LLM backend reachable; falling back")
+        self._backend = self._fallback_backend()
+        return self._backend
 
     def _probe_litert(self) -> bool:
         try:
@@ -687,8 +700,27 @@ class LocalLLMClient:
         max_tokens: int = 1024,
         json_mode: bool = False,
     ) -> ChatResponse:
-        """Send a list of OpenAI-format messages and return the response text."""
+        """Send a list of OpenAI-format messages and return the response text.
+
+        If the resolved (remote) backend raises and a GGUF fallback is
+        configured (REGLLM_LLM_FALLBACK=gguf, weights available), the call is
+        retried once locally instead of surfacing the error."""
         backend = self.detect_backend()
+        try:
+            return self._dispatch_chat(backend, messages, temperature,
+                                       max_tokens, json_mode)
+        except Exception as exc:  # noqa: BLE001 — resilience path
+            if backend not in ("gguf", "stub") and self._fallback_backend() == "gguf":
+                logger.warning("backend %s failed (%s) — falling back to gguf",
+                               backend, exc)
+                return self._chat_gguf(messages, temperature, max_tokens, json_mode)
+            raise
+
+    def _dispatch_chat(
+        self, backend: str,
+        messages: list[dict[str, str]],
+        temperature: float, max_tokens: int, json_mode: bool,
+    ) -> ChatResponse:
         if backend == "litert":
             return self._chat_litert(messages, temperature, max_tokens, json_mode)
         if backend == "ollama":

@@ -76,6 +76,31 @@ embeddings, that path would need its own adapter (not wired yet).
   signing with botocore). If that's your setup, say so and it's a small
   addition to `_api_headers`.
 
+## Local GGUF fallback (stay up if the API is down)
+
+By default an unreachable API degrades to the **stub** (a canned reply).
+To keep the app working offline instead, fall back to a **local GGUF
+model**:
+
+```bash
+export REGLLM_LLM_FALLBACK=gguf
+export GGUF_MODEL_PATH=/models/qwen3-4b-instruct.Q4_K_M.gguf
+pip install llama-cpp-python          # the GGUF backend dependency
+```
+
+Then the fallback triggers in two situations:
+
+1. **At startup** — if the API backend is misconfigured (no URL), or
+   Bedrock/`boto3` is unavailable, detection resolves to `gguf` instead of
+   `stub`.
+2. **At call time** — if a live API/Bedrock request raises (gateway 5xx,
+   network drop), the call is **retried once on the local GGUF model**
+   rather than failing the request.
+
+If `REGLLM_LLM_FALLBACK=gguf` but the weights / `llama-cpp-python` aren't
+present, it safely degrades to `stub` (no crash). Config-file equivalent:
+`llm.fallback: "gguf"` + `llm.gguf_model_path: ...`.
+
 ## Verify
 
 ```bash
