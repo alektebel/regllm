@@ -16,7 +16,7 @@
 # Chat/reasoning LLM — maintains the knowledge graph, runs agentic Q&A
 llm:
   model: "regllm-4b-sft"   # SFT tool-calling (~85.8% eval); base: qwen3:4b
-  backend: "auto"            # auto | ollama | litert | gguf | bedrock | stub
+  backend: "auto"            # auto | ollama | litert | gguf | bedrock | azure | api | stub
   ollama_url: "http://localhost:11434"
   litert_url: "http://localhost:9379/v1"
   litert_model: "gemma4-12b,gpu"
@@ -34,6 +34,15 @@ llm:
   # azure_api_key: "..."          # prefer the AZURE_OPENAI_API_KEY env var
   # azure_deployment: "gpt-4o-mini"
   # azure_api_version: "2024-06-01"
+  #
+  # For a generic HTTP inference gateway — an AWS API Gateway fronting
+  # Bedrock, or an OpenAI-compatible gateway (e.g. AWS Bedrock Access
+  # Gateway) — set backend: "api" and the keys below (env vars override).
+  # See docs/REGLLM_API.md.
+  # api_url: "https://<api-id>.execute-api.eu-west-1.amazonaws.com/prod"  # REGLLM_API_URL
+  # api_key: "..."                 # REGLLM_API_KEY (prefer the env var)
+  # api_key_header: "Authorization"  # REGLLM_API_KEY_HEADER; "x-api-key" for API-Gateway keys
+  # api_model: "amazon.nova-micro-v1:0"  # REGLLM_API_MODEL — model name the gateway expects
   timeout: 300
 
   # ── Excel inspection / sheet-mapping step ──────────────────────────────

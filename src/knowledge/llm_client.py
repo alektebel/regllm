@@ -100,7 +100,7 @@ _DEFAULT_TIMEOUT = float(os.getenv("REGLLM_LLM_TIMEOUT", "120"))
 @dataclass
 class ChatResponse:
     text: str
-    backend: str                       # "litert" | "ollama" | "gguf" | "bedrock" | "stub"
+    backend: str                       # litert|ollama|gguf|bedrock|azure|api|stub
     model: str
     raw: dict[str, Any] | None = None
     tool_calls: list[dict[str, Any]] | None = None  # populated by ``chat_tools``
@@ -177,6 +177,26 @@ class LocalLLMClient:
         self.azure_api_version = (
             os.getenv("AZURE_OPENAI_API_VERSION")
             or _LLM_CFG.get("azure_api_version") or "2024-06-01"
+        )
+        # REGLLM_API — a generic HTTP inference gateway (e.g. an AWS API
+        # Gateway fronting Bedrock, or an OpenAI-compatible gateway like AWS
+        # Bedrock Access Gateway). See _chat_api / docs/REGLLM_API.md.
+        self.api_url = (
+            os.getenv("REGLLM_API_URL") or os.getenv("REGLLM_API")
+            or _LLM_CFG.get("api_url") or ""
+        )
+        self.api_key = (
+            os.getenv("REGLLM_API_KEY") or _LLM_CFG.get("api_key") or ""
+        )
+        # header carrying the key; default Bearer auth, override for API-Gateway
+        # style keys with REGLLM_API_KEY_HEADER=x-api-key
+        self.api_key_header = (
+            os.getenv("REGLLM_API_KEY_HEADER")
+            or _LLM_CFG.get("api_key_header") or "Authorization"
+        )
+        self.api_model = (
+            os.getenv("REGLLM_API_MODEL") or _LLM_CFG.get("api_model")
+            or "default"
         )
         # Standalone GGUF (llama-cpp-python) — see module docstring. Distinct
         # from OLLAMA_MODEL=*.gguf, which registers the file into a running
@@ -272,6 +292,13 @@ class LocalLLMClient:
                 return "stub"
             self._backend = "azure"
             return "azure"
+        if self.prefer == "api":
+            if not self.api_url:
+                logger.error("REGLLM_LLM=api but REGLLM_API_URL is not set")
+                self._backend = "stub"
+                return "stub"
+            self._backend = "api"
+            return "api"
         if self.prefer in ("auto", "litert") and self._probe_litert():
             self._backend = "litert"
             return "litert"
@@ -672,7 +699,60 @@ class LocalLLMClient:
             return self._chat_bedrock(messages, temperature, max_tokens, json_mode)
         if backend == "azure":
             return self._chat_azure(messages, temperature, max_tokens, json_mode)
+        if backend == "api":
+            return self._chat_api(messages, temperature, max_tokens, json_mode)
         return self._chat_stub(messages, json_mode)
+
+    def _api_endpoint(self) -> str:
+        """The exact URL to POST to. If REGLLM_API_URL is a bare host/base
+        (no path), append the OpenAI-compatible chat-completions path."""
+        from urllib.parse import urlsplit
+        parts = urlsplit(self.api_url)
+        if parts.path.strip("/") == "":
+            return self.api_url.rstrip("/") + "/v1/chat/completions"
+        return self.api_url
+
+    def _api_headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            if self.api_key_header.lower() == "authorization":
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            else:
+                headers[self.api_key_header] = self.api_key
+        return headers
+
+    def _chat_api(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool,
+    ) -> ChatResponse:
+        """Generic HTTP inference gateway (REGLLM_API), OpenAI chat-completions
+        shape by default. Auth via REGLLM_API_KEY on REGLLM_API_KEY_HEADER
+        (Bearer by default; set to ``x-api-key`` for API-Gateway keys)."""
+        payload: dict[str, Any] = {
+            "model": self.api_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        r = httpx.post(self._api_endpoint(), headers=self._api_headers(),
+                       json=payload, timeout=self.timeout)
+        r.raise_for_status()
+        data = r.json()
+        # OpenAI shape; tolerate a couple of common variants
+        text = ""
+        try:
+            text = data["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError):
+            text = (data.get("output_text")
+                    or data.get("content")
+                    or data.get("completion") or "")
+        return ChatResponse(text=text, backend="api",
+                            model=self.api_model, raw=data)
 
     def _chat_azure(
         self,
