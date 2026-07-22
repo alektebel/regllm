@@ -1,6 +1,6 @@
 {
   "/api": {
-    "target": "http://regllm-dqc-1584456066.eu-west-1.elb.amazonaws.com",
-    "secure": false
+    "target": "YOUR_API_GATEWAY_URL",
+    "secure": true
   }
 }

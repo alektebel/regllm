@@ -17,6 +17,7 @@ project a normalised violation rowset.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import uuid
@@ -27,7 +28,7 @@ from typing import Any
 from training.dq.coherence_rules import PK_COLUMN
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "dq" / "checks.db"
+DEFAULT_DB_PATH = Path(os.getenv("REGLLM_CHECKS_DB", PROJECT_ROOT / "data" / "dq" / "checks.db"))
 
 # Single source of truth for the checks table. Adding columns here is the
 # only change needed to extend the schema (CREATE IF NOT EXISTS is
@@ -40,8 +41,9 @@ CREATE TABLE IF NOT EXISTS checks (
     name                  TEXT NOT NULL,
     description           TEXT,
     severity              TEXT NOT NULL CHECK (severity IN ('HIGH','MED','LOW','bloqueante','advertencia','informativo')),
-    category              TEXT NOT NULL CHECK (category IN ('cross_field','cross_table','cardinality','formula','consistencia','referencial','rango','completitud')),
+    category              TEXT NOT NULL CHECK (category IN ('format','coherence','regulation','reperformance')),
     sql                   TEXT NOT NULL,
+    sas                   TEXT,           -- runnable SAS (PROC SQL exceptions block)
     visible               INTEGER NOT NULL DEFAULT 1,
     status                TEXT NOT NULL DEFAULT 'pending'
                           CHECK (status IN ('pending','validated','rejected')),
@@ -72,25 +74,105 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     return conn
 
 
-# Severity / category normalisation — the LLM emits Spanish
-# ("bloqueante"/"advertencia") and the RL pipeline emits English
-# ("HIGH"/"MED"). Both are accepted by the CHECK constraints; we normalise
-# to the English canonical form on read for the dashboard.
+# Severity normalisation — the LLM emits Spanish ("bloqueante"/"advertencia")
+# and the RL pipeline emits English ("HIGH"/"MED"). Both are accepted by the
+# CHECK constraint; we normalise to the English canonical form on read.
 _SEVERITY_CANON = {
     "bloqueante": "HIGH", "HIGH": "HIGH",
     "advertencia": "MED", "MED": "MED",
     "informativo": "LOW", "LOW": "LOW",
 }
-_CATEGORY_CANON = {
-    "cross_field": "cross_field", "cross_table": "cross_table",
-    "cardinality": "cardinality",
-    "formula": "formula", "consistencia": "consistencia",
-    "referencial": "referencial", "rango": "rango",
-    "completitud": "completitud",
+
+# ── Four-label audit taxonomy ────────────────────────────────────────────────
+# Checks are partitioned into exactly one coarse audit label. `classify_label`
+# is the single source of truth (used by the API on generate and by the
+# migration on legacy rows); the model's own guess is only a hint.
+LABELS = ("format", "coherence", "regulation", "reperformance")
+
+_NO_REG_REF = "Sin referencia en diccionario"
+
+# Legacy fine-grained category / RL-pipeline tipo → coarse audit label. Used to
+# normalise any non-coarse `category` reaching insert_check and to remap rows
+# during the schema migration.
+_LEGACY_CATEGORY_MAP = {
+    "formula": "reperformance",
+    "consistencia": "coherence", "referencial": "coherence",
+    "cross_field": "coherence", "cross_table": "coherence", "cardinality": "coherence",
+    "rango": "format", "completitud": "format",
+    # identity for already-coarse labels
+    "format": "format", "coherence": "coherence",
+    "regulation": "regulation", "reperformance": "reperformance",
 }
+
+
+def normalise_category(category: str | None) -> str:
+    """Map any category (coarse label or legacy fine-grained value) to one of
+    :data:`LABELS`. Unknown values fall back to ``coherence``."""
+    return _LEGACY_CATEGORY_MAP.get((category or "").strip(), "coherence")
+
+
+def classify_label(
+    *,
+    tipo: str | None = None,
+    campos_entrada: list[str] | None = None,
+    referencia_regulatoria: str | None = None,
+    recomputes_formula: bool = False,
+) -> str:
+    """Assign exactly one audit label with precedence
+    ``reperformance > regulation > coherence > format``."""
+    t = (tipo or "").strip().lower()
+    if recomputes_formula or t == "formula":
+        return "reperformance"
+    ref = (referencia_regulatoria or "").strip()
+    if ref and ref != _NO_REG_REF:
+        return "regulation"
+    if len(campos_entrada or []) >= 2 or t in {
+        "consistencia", "referencial", "cross_field", "cross_table", "cardinality",
+    }:
+        return "coherence"
+    return "format"
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring a pre-existing DB up to the current schema: add the ``sas`` column
+    and, if the table still carries the legacy 8-value category CHECK, rebuild
+    it with the 4-label CHECK, remapping each row's category to a coarse label.
+    A brand-new DB (already built from :data:`_SCHEMA`) is a no-op."""
+    info = conn.execute("PRAGMA table_info(checks)").fetchall()
+    if not info:
+        return
+    cols = [r[1] for r in info]
+    ddl = (conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='checks'"
+    ).fetchone() or ("",))[0] or ""
+
+    if "reperformance" in ddl:
+        # Already on the new category CHECK; just ensure the sas column exists.
+        if "sas" not in cols:
+            conn.execute("ALTER TABLE checks ADD COLUMN sas TEXT")
+            conn.commit()
+        return
+
+    # Legacy schema → rebuild with the current _SCHEMA and remap categories.
+    conn.execute("DROP INDEX IF EXISTS idx_checks_status")
+    conn.execute("DROP INDEX IF EXISTS idx_checks_visible")
+    conn.execute("ALTER TABLE checks RENAME TO _checks_legacy")
+    conn.executescript(_SCHEMA)  # fresh `checks`: 4-label CHECK + sas column
+    collist = ", ".join(cols)
+    placeholders = ", ".join("?" for _ in cols)
+    for row in conn.execute(f"SELECT {collist} FROM _checks_legacy").fetchall():
+        d = dict(zip(cols, row))
+        d["category"] = normalise_category(d.get("category"))
+        conn.execute(
+            f"INSERT INTO checks ({collist}) VALUES ({placeholders})",
+            [d[c] for c in cols],
+        )
+    conn.execute("DROP TABLE _checks_legacy")
+    conn.commit()
 
 
 def insert_check(
@@ -101,6 +183,7 @@ def insert_check(
     severity: str,
     category: str,
     sql: str,
+    sas: str | None = None,
     check_id: str | None = None,
     rule_id: str | None = None,
     visible: bool = True,
@@ -119,6 +202,7 @@ def insert_check(
     when ``rule_id`` is set — re-inserting the same trained-check row is
     a no-op so re-running inference doesn't bloat the table."""
     cid = check_id or f"chk_{uuid.uuid4().hex[:12]}"
+    category = normalise_category(category)
     if rule_id:
         existing = conn.execute(
             "SELECT check_id FROM checks WHERE rule_id=? AND sql=?",
@@ -129,12 +213,12 @@ def insert_check(
     campos_json = json.dumps(campos_entrada, ensure_ascii=False) if campos_entrada else None
     conn.execute(
         """INSERT INTO checks
-           (check_id, rule_id, name, description, severity, category, sql,
+           (check_id, rule_id, name, description, severity, category, sql, sas,
             visible, status, reward, variable, tipo, condicion_error,
             campos_entrada, referencia_regulatoria, umbral, periodicidad,
             justificacion, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (cid, rule_id, name, description, severity, category, sql,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (cid, rule_id, name, description, severity, category, sql, sas,
          int(visible), status, reward, variable, tipo, condicion_error,
          campos_json, referencia_regulatoria, umbral, periodicidad,
          justificacion, _now()),
@@ -144,14 +228,18 @@ def insert_check(
 
 
 def set_status(conn: sqlite3.Connection, check_id: str, status: str) -> bool:
-    """Returns True if a row was actually updated."""
+    """Returns True if a row was actually updated.
+
+    A rejection is terminal. Reviewers must create a new proposal rather than
+    validating a DQC they have rejected.
+    """
     if status not in ("pending", "validated", "rejected"):
         raise ValueError(f"invalid status: {status}")
     validated_at = _now() if status == "validated" else None
     cur = conn.execute(
         "UPDATE checks SET status=?, validated_at=COALESCE(?, validated_at) "
-        "WHERE check_id=?",
-        (status, validated_at, check_id),
+        "WHERE check_id=? AND NOT (status='rejected' AND ?='validated')",
+        (status, validated_at, check_id, status),
     )
     conn.commit()
     return cur.rowcount > 0
@@ -234,6 +322,34 @@ def build_dashboard_query(
 def export_validated(conn: sqlite3.Connection) -> list[dict]:
     """All validated checks as plain dicts — fuels the UI's copy-all button."""
     return list_checks(conn, status="validated")
+
+
+# The client runs everything in SAS; generated checks are SAS PROC SQL blocks
+# against this library (see DQC/eval/sas/ciclos_calibrados_pipeline.sas).
+SAS_LIBNAME = "LIBNAME mylib '/data/irb/calibracion';"
+
+
+def build_sas_program(
+    conn: sqlite3.Connection,
+    *,
+    status: str = "validated",
+) -> str | None:
+    """Assemble one runnable SAS program from every check's ``sas`` block: a
+    ``LIBNAME`` header followed by each check's PROC SQL exceptions step (each
+    already ``%PUT``-s its own ``&SQLOBS`` count to the log).
+
+    Returns ``None`` when no check of the requested status carries SAS.
+    """
+    blocks = [r for r in list_checks(conn, status=status) if (r.get("sas") or "").strip()]
+    if not blocks:
+        return None
+    parts = ["/* DQC exceptions program — generated by RegLLM. */", SAS_LIBNAME, ""]
+    for r in blocks:
+        parts.append(f"/* {r['check_id']} — {r['name']} "
+                     f"[{r['severity']}/{r['category']}] */")
+        parts.append((r["sas"] or "").strip())
+        parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
 
 
 def delete_check(conn: sqlite3.Connection, check_id: str) -> bool:

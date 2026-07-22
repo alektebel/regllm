@@ -50,6 +50,10 @@ frontend/node_modules/
 DQC/app/node_modules/
 DQC/app/.angular/
 DQC/app/dist/
+DQC/cdk/cdk.out/
+DQC/cdk/cdk.context.json
+DQC/terraform/.terraform/
+DQC/terraform/.terraform.lock.hcl
 frontend/out/
 frontend/tsconfig.tsbuildinfo
 

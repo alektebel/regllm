@@ -1,4 +1,4 @@
-import { Component, EventEmitter, NgZone, OnInit, Output } from '@angular/core';
+import { Component, EventEmitter, Input, NgZone, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DqcService } from '../services/dqc.service';
@@ -11,8 +11,9 @@ import { ChatMessage, InspectResponse, PlanItem, StreamEvent, TreeNode } from '.
   templateUrl: './chat.component.html',
   styleUrls: ['./chat.component.css'],
 })
-export class ChatComponent implements OnInit {
+export class ChatComponent implements OnInit, OnChanges {
   @Output() dqcGenerated = new EventEmitter<void>();
+  @Input() retryInstructions = '';
 
   messages: ChatMessage[] = [];
   instructions = '';
@@ -39,6 +40,16 @@ export class ChatComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadDemoAssets();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    const retry = changes['retryInstructions'];
+    if (!retry || retry.firstChange || !retry.currentValue) return;
+    this.instructions = retry.currentValue;
+    this.messages.push({
+      role: 'assistant',
+      content: 'Regla reformulada preparada. Pulsa Generar para crear una propuesta nueva; el DQC rechazado seguirá rechazado.',
+    });
   }
 
   /** Preload the bundled demo dictionary + cases Excel so the app starts

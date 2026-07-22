@@ -8,9 +8,13 @@ Two proxy configs ship with the app:
 | Config                  | Forwards `/api/*` to            | Use when                          |
 |-------------------------|---------------------------------|-----------------------------------|
 | `proxy.conf.json`       | `http://localhost:8001` (strips `/api`) | running the backend locally |
-| `proxy.aws.conf.json`   | the AWS ALB (keeps `/api`)      | using a deployed backend          |
+| `proxy.aws.conf.json`   | AWS API Gateway (keeps `/api`)  | using the Lambda backend          |
 
 `npm start` uses `proxy.conf.json` (local backend).
+
+> Set `target` in `proxy.aws.conf.json` to the API Gateway Invoke URL. See
+> [`docs/AWS_LAMBDA_CONSOLE_SETUP.md`](../../docs/AWS_LAMBDA_CONSOLE_SETUP.md)
+> for the console-only backend setup.
 
 ---
 
@@ -76,7 +80,7 @@ npm install
 npx ng serve --proxy-config proxy.aws.conf.json --port 4200 --open
 ```
 
-Edit the `target` in `proxy.aws.conf.json` to change which ALB it hits.
+Edit the `target` in `proxy.aws.conf.json` to change which API Gateway it hits.
 
 ## Production build
 

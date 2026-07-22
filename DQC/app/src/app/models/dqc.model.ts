@@ -1,9 +1,13 @@
+export type DqcCategory = 'format' | 'coherence' | 'regulation' | 'reperformance';
+
 export interface DqcItem {
   dqc_id: string;
   variable: string;
   descripcion: string;
+  categoria: string;
   tipo: string;
   severidad: string;
+  regla_sas: string;
   regla_sql: string;
   condicion_error: string;
   campos_entrada: string[];

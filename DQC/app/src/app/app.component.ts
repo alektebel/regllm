@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ChatComponent } from './chat/chat.component';
 import { DqcService } from './services/dqc.service';
 import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
@@ -7,7 +8,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, ChatComponent],
+  imports: [CommonModule, FormsModule, ChatComponent],
   template: `
     <div class="shell">
       <aside class="sidebar">
@@ -32,7 +33,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
         </div>
 
         <button class="copy-all-btn" (click)="copyAll()" [disabled]="copiedAll">
-          {{ copiedAll ? '✓ Copiado' : (copyAllMsg || 'Copiar todo (consultas + dashboard)') }}
+          {{ copiedAll ? '✓ Copiado' : (copyAllMsg || 'Copiar programa SAS') }}
         </button>
 
         <div class="dqc-list">
@@ -44,9 +45,12 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
                 <span class="sev-dot" [class]="'sev-' + c.severity"></span>
               </div>
               <p class="dqc-item-desc">{{ c.description }}</p>
-              @if (c.variable) {
-                <code class="dqc-item-var">{{ c.variable }}</code>
-              }
+              <div class="dqc-item-tags">
+                <span class="cat-tag" [class]="'cat-' + c.category">#{{ c.category }}</span>
+                @if (c.variable) {
+                  <code class="dqc-item-var">{{ c.variable }}</code>
+                }
+              </div>
             </div>
           } @empty {
             <div class="dqc-empty">
@@ -75,8 +79,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
                   <button class="btn-reject" (click)="setStatus(selected, 'rejected')">Invalidar</button>
                 }
                 @if (selected.status === 'rejected') {
-                  <button class="btn-validate" (click)="setStatus(selected, 'validated')">Revalidar</button>
-                  <button class="btn-delete" (click)="deleteCheck(selected)">Borrar</button>
+                  <span class="terminal-note">El rechazo es definitivo.</span>
                 }
               </div>
             }
@@ -96,6 +99,16 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
 
             @if (selected.description) {
               <p class="detail-desc">{{ selected.description }}</p>
+            }
+
+            @if (selected.status === 'rejected') {
+              <div class="retry-panel">
+                <label for="retry-instructions">Reformular para crear un DQC nuevo</label>
+                <textarea id="retry-instructions" [(ngModel)]="retryInstructions"
+                          placeholder="Describe la regla con otras palabras"></textarea>
+                <button class="btn-retry" [disabled]="!retryInstructions.trim()"
+                        (click)="retryRejected()">Reintentar</button>
+              </div>
             }
 
             <h4>Consulta SQL</h4>
@@ -184,7 +197,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
       }
 
       <main class="main" [class.has-detail]="!!selected">
-        <app-chat (dqcGenerated)="onDqcGenerated()" />
+        <app-chat [retryInstructions]="retryRequest" (dqcGenerated)="onDqcGenerated()" />
       </main>
     </div>
   `,
@@ -237,10 +250,19 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
     .sev-MED  { background: #f9a825; }
     .sev-LOW  { background: #6c7bbf; }
     .dqc-item-desc { margin: 4px 0 0; font-size: 11px; color: #888; }
+    .dqc-item-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
     .dqc-item-var {
       font-size: 10px; color: #e65100; background: rgba(230,81,0,0.1);
-      padding: 1px 6px; border-radius: 3px; margin-top: 4px; display: inline-block;
+      padding: 1px 6px; border-radius: 3px; display: inline-block;
     }
+    .cat-tag {
+      font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px;
+      background: #2a2a40; color: #aaa;
+    }
+    .cat-format        { background: rgba(108,123,191,0.18); color: #9aa8e0; }
+    .cat-coherence     { background: rgba(38,166,154,0.18);  color: #4db6ac; }
+    .cat-regulation    { background: rgba(171,71,188,0.18);  color: #ce93d8; }
+    .cat-reperformance { background: rgba(255,152,0,0.18);   color: #ffb74d; }
     .dqc-empty { text-align: center; color: #666; font-size: 13px; padding: 32px 16px; }
     .detail {
       width: 480px; min-width: 480px; display: flex; flex-direction: column;
@@ -255,6 +277,11 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
     .btn-validate { background: #2e7d32; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
     .btn-reject { background: transparent; color: #c62828; border: 1px solid #c62828; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
     .btn-delete { background: #c62828; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+    .btn-retry { background: #6c7bbf; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    .terminal-note { font-size: 12px; color: #ef5350; }
+    .retry-panel { display: grid; gap: 8px; margin: 0 0 16px; padding: 12px; border: 1px solid #5d2b35; border-radius: 6px; }
+    .retry-panel label { font-size: 12px; color: #ef9a9a; }
+    .retry-panel textarea { min-height: 72px; resize: vertical; background: #0a0a14; border: 1px solid #2a2a40; border-radius: 4px; color: #ddd; padding: 8px; }
     .status-label { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; }
     .status-label[data-status="validated"] { background: rgba(46,125,50,0.15); color: #4caf50; }
     .status-label[data-status="rejected"]  { background: rgba(198,40,40,0.15); color: #ef5350; }
@@ -304,6 +331,8 @@ export class AppComponent implements OnInit, OnDestroy {
   filter: 'all' | 'pending' | 'validated' | 'rejected' = 'all';
   copiedAll = false;
   copyAllMsg = '';
+  retryInstructions = '';
+  retryRequest = '';
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private dqc: DqcService) {}
@@ -354,6 +383,12 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  retryRejected(): void {
+    if (!this.selected || this.selected.status !== 'rejected' || !this.retryInstructions.trim()) return;
+    this.retryRequest = this.retryInstructions.trim();
+    this.retryInstructions = '';
+  }
+
   deleteCheck(c: CheckRecord): void {
     this.dqc.delete(c.check_id).subscribe({
       next: () => { this.selected = null; this.loadChecks(); },
@@ -374,15 +409,13 @@ export class AppComponent implements OnInit, OnDestroy {
   copyAll(): void {
     this.dqc.dashboard().subscribe({
       next: (d) => {
-        const parts: string[] = [];
-        if (d.checks.length) parts.push(d.checks.map(c => c.sql).join('\n\n;\n\n'));
-        if (d.sql) parts.push(d.sql);
-        if (!parts.length) {
-          this.copyAllMsg = 'Sin consultas validadas';
+        const program = d.checks.map(c => c.sql).filter(Boolean).join('\n\n');
+        if (!program) {
+          this.copyAllMsg = 'Sin controles validados';
           setTimeout(() => { this.copyAllMsg = ''; }, 2000);
           return;
         }
-        navigator.clipboard.writeText(parts.join('\n\n;\n\n')).then(() => {
+        navigator.clipboard.writeText(program).then(() => {
           this.copiedAll = true;
           setTimeout(() => { this.copiedAll = false; }, 2000);
         });
