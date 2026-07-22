@@ -17,6 +17,7 @@ project a normalised violation rowset.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import uuid
@@ -27,7 +28,7 @@ from typing import Any
 from training.dq.coherence_rules import PK_COLUMN
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "dq" / "checks.db"
+DEFAULT_DB_PATH = Path(os.getenv("REGLLM_CHECKS_DB", PROJECT_ROOT / "data" / "dq" / "checks.db"))
 
 # Single source of truth for the checks table. Adding columns here is the
 # only change needed to extend the schema (CREATE IF NOT EXISTS is
@@ -144,14 +145,18 @@ def insert_check(
 
 
 def set_status(conn: sqlite3.Connection, check_id: str, status: str) -> bool:
-    """Returns True if a row was actually updated."""
+    """Returns True if a row was actually updated.
+
+    A rejection is terminal. Reviewers must create a new proposal rather than
+    validating a DQC they have rejected.
+    """
     if status not in ("pending", "validated", "rejected"):
         raise ValueError(f"invalid status: {status}")
     validated_at = _now() if status == "validated" else None
     cur = conn.execute(
         "UPDATE checks SET status=?, validated_at=COALESCE(?, validated_at) "
-        "WHERE check_id=?",
-        (status, validated_at, check_id),
+        "WHERE check_id=? AND NOT (status='rejected' AND ?='validated')",
+        (status, validated_at, check_id, status),
     )
     conn.commit()
     return cur.rowcount > 0

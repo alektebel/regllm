@@ -972,6 +972,7 @@ async def evaluate_checks(
     conn = _db()
     try:
         checks = checks_db.list_checks(conn, status=status or None, visible=True)
+        checks = [check for check in checks if check["status"] != "rejected"]
     finally:
         conn.close()
 
@@ -1066,8 +1067,16 @@ def update_check_status(check_id: str, body: StatusUpdate) -> CheckRecord:
     from fastapi import HTTPException
     conn = _db()
     try:
-        if not checks_db.set_status(conn, check_id, body.status):
+        existing = checks_db.get_check(conn, check_id)
+        if not existing:
             raise HTTPException(status_code=404, detail=f"check_id {check_id} not found")
+        if existing["status"] == "rejected" and body.status == "validated":
+            raise HTTPException(
+                status_code=409,
+                detail="A rejected DQC cannot be validated. Generate a new proposal with revised wording.",
+            )
+        if not checks_db.set_status(conn, check_id, body.status):
+            raise HTTPException(status_code=409, detail="DQC status could not be updated")
         row = checks_db.get_check(conn, check_id)
         return CheckRecord(**row)
     finally:

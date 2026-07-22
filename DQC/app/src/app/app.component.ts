@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ChatComponent } from './chat/chat.component';
 import { DqcService } from './services/dqc.service';
 import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
@@ -7,7 +8,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, ChatComponent],
+  imports: [CommonModule, FormsModule, ChatComponent],
   template: `
     <div class="shell">
       <aside class="sidebar">
@@ -75,8 +76,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
                   <button class="btn-reject" (click)="setStatus(selected, 'rejected')">Invalidar</button>
                 }
                 @if (selected.status === 'rejected') {
-                  <button class="btn-validate" (click)="setStatus(selected, 'validated')">Revalidar</button>
-                  <button class="btn-delete" (click)="deleteCheck(selected)">Borrar</button>
+                  <span class="terminal-note">El rechazo es definitivo.</span>
                 }
               </div>
             }
@@ -96,6 +96,16 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
 
             @if (selected.description) {
               <p class="detail-desc">{{ selected.description }}</p>
+            }
+
+            @if (selected.status === 'rejected') {
+              <div class="retry-panel">
+                <label for="retry-instructions">Reformular para crear un DQC nuevo</label>
+                <textarea id="retry-instructions" [(ngModel)]="retryInstructions"
+                          placeholder="Describe la regla con otras palabras"></textarea>
+                <button class="btn-retry" [disabled]="!retryInstructions.trim()"
+                        (click)="retryRejected()">Reintentar</button>
+              </div>
             }
 
             <h4>Consulta SQL</h4>
@@ -184,7 +194,7 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
       }
 
       <main class="main" [class.has-detail]="!!selected">
-        <app-chat (dqcGenerated)="onDqcGenerated()" />
+        <app-chat [retryInstructions]="retryRequest" (dqcGenerated)="onDqcGenerated()" />
       </main>
     </div>
   `,
@@ -255,6 +265,11 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
     .btn-validate { background: #2e7d32; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
     .btn-reject { background: transparent; color: #c62828; border: 1px solid #c62828; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
     .btn-delete { background: #c62828; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+    .btn-retry { background: #6c7bbf; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    .terminal-note { font-size: 12px; color: #ef5350; }
+    .retry-panel { display: grid; gap: 8px; margin: 0 0 16px; padding: 12px; border: 1px solid #5d2b35; border-radius: 6px; }
+    .retry-panel label { font-size: 12px; color: #ef9a9a; }
+    .retry-panel textarea { min-height: 72px; resize: vertical; background: #0a0a14; border: 1px solid #2a2a40; border-radius: 4px; color: #ddd; padding: 8px; }
     .status-label { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; }
     .status-label[data-status="validated"] { background: rgba(46,125,50,0.15); color: #4caf50; }
     .status-label[data-status="rejected"]  { background: rgba(198,40,40,0.15); color: #ef5350; }
@@ -304,6 +319,8 @@ export class AppComponent implements OnInit, OnDestroy {
   filter: 'all' | 'pending' | 'validated' | 'rejected' = 'all';
   copiedAll = false;
   copyAllMsg = '';
+  retryInstructions = '';
+  retryRequest = '';
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private dqc: DqcService) {}
@@ -352,6 +369,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.dqc.setStatus(c.check_id, status).subscribe({
       next: (updated) => { this.selected = updated; this.loadChecks(); },
     });
+  }
+
+  retryRejected(): void {
+    if (!this.selected || this.selected.status !== 'rejected' || !this.retryInstructions.trim()) return;
+    this.retryRequest = this.retryInstructions.trim();
+    this.retryInstructions = '';
   }
 
   deleteCheck(c: CheckRecord): void {
