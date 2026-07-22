@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Deploy the RegLLM DQC stack to AWS from a clean account.
 #
-# This script is self-contained: it resolves the account's default VPC
-# (creating one if absent), bootstraps CDK, deploys the stack (ECR repos,
+# This script is self-contained: it resolves a VPC to deploy into (explicit
+# VPC_ID, else the account default, else the region's only VPC; it will try
+# to create a default VPC but tolerates accounts that can't), bootstraps CDK,
+# deploys the stack (ECR repos,
 # ALB, ECS cluster + service inside that VPC), builds and pushes the API
 # and frontend Docker images (the frontend bundles the demo dictionary and
 # cases Excels under /assets/demo, auto-loaded by the UI on startup), and
@@ -45,27 +47,59 @@ ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 [[ -n "$ACCOUNT" ]] || { echo "✗ AWS authentication failed"; exit 1; }
 echo "• account: $ACCOUNT  region: $AWS_REGION"
 
-# ── Resolve VPC + subnets (the stack looks up an existing VPC) ─────────────
-# Override with VPC_ID / SUBNET_IDS env vars; defaults to the default VPC.
+# ── Resolve VPC + subnets (the stack deploys into an EXISTING VPC) ─────────
+# Resolution order: explicit VPC_ID env → account default VPC → the sole VPC
+# in the region. Creating a VPC needs ec2:CreateDefaultVpc / ec2:CreateVpc,
+# which locked-down accounts (e.g. read-only or SCP-restricted) do not grant,
+# so a create attempt is best-effort: on failure we surface the real reason
+# and fall back to an existing VPC instead of dying on a raw AWS error.
 if [[ -z "${VPC_ID:-}" ]]; then
     VPC_ID="$(aws ec2 describe-vpcs --region "$AWS_REGION" \
         --filters Name=isDefault,Values=true \
-        --query 'Vpcs[0].VpcId' --output text)"
+        --query 'Vpcs[0].VpcId' --output text 2>/dev/null || true)"
+
     if [[ -z "$VPC_ID" || "$VPC_ID" == "None" ]]; then
-        echo "• no default VPC found — creating one…"
-        aws ec2 create-default-vpc --region "$AWS_REGION" >/dev/null
-        VPC_ID="$(aws ec2 describe-vpcs --region "$AWS_REGION" \
-            --filters Name=isDefault,Values=true \
-            --query 'Vpcs[0].VpcId' --output text)"
+        echo "• no default VPC — attempting to create one…"
+        vpc_err="$(mktemp)"
+        if aws ec2 create-default-vpc --region "$AWS_REGION" >/dev/null 2>"$vpc_err"; then
+            VPC_ID="$(aws ec2 describe-vpcs --region "$AWS_REGION" \
+                --filters Name=isDefault,Values=true \
+                --query 'Vpcs[0].VpcId' --output text)"
+        else
+            echo "  ↳ cannot create a default VPC (this account lacks the permission):"
+            sed 's/^/    /' "$vpc_err"
+            echo "• falling back to an existing VPC in $AWS_REGION…"
+            # Collect existing VPCs (space/newline separated) into an array.
+            read -r -a _vpcs <<<"$(aws ec2 describe-vpcs --region "$AWS_REGION" \
+                --query 'Vpcs[].VpcId' --output text 2>/dev/null | tr '\t' ' ')"
+            if [[ "${#_vpcs[@]}" -eq 1 ]]; then
+                VPC_ID="${_vpcs[0]}"
+                echo "  ↳ using the only VPC found: $VPC_ID"
+            elif [[ "${#_vpcs[@]}" -gt 1 ]]; then
+                echo "✗ several VPCs exist and none is default — pick one explicitly:"
+                printf '    VPC_ID=%s ./DQC/cdk/deploy.sh\n' "${_vpcs[@]}"
+                exit 1
+            else
+                echo "✗ no VPC is available and none can be created."
+                echo "  Ask your AWS admin for a VPC + subnet IDs, then re-run with:"
+                echo "    VPC_ID=vpc-xxxx SUBNET_IDS=subnet-a,subnet-b ./DQC/cdk/deploy.sh"
+                exit 1
+            fi
+        fi
+        rm -f "$vpc_err"
     fi
 fi
 if [[ -z "${SUBNET_IDS:-}" ]]; then
     SUBNET_IDS="$(aws ec2 describe-subnets --region "$AWS_REGION" \
         --filters "Name=vpc-id,Values=$VPC_ID" \
-        --query 'Subnets[].SubnetId' --output text | tr '[:space:]' ',' | sed 's/,\+$//')"
+        --query 'Subnets[].SubnetId' --output text 2>/dev/null | tr '[:space:]' ',' | sed 's/,\+$//')"
 fi
-[[ -n "$VPC_ID" && "$VPC_ID" != "None" && -n "$SUBNET_IDS" ]] \
-    || { echo "✗ could not resolve VPC/subnets (set VPC_ID and SUBNET_IDS)"; exit 1; }
+if [[ -z "$VPC_ID" || "$VPC_ID" == "None" || -z "$SUBNET_IDS" ]]; then
+    echo "✗ could not resolve a VPC and its subnets."
+    echo "  Set them explicitly (get the IDs from your admin or the AWS console):"
+    echo "    VPC_ID=vpc-xxxx SUBNET_IDS=subnet-a,subnet-b ./DQC/cdk/deploy.sh"
+    exit 1
+fi
 echo "• vpc: $VPC_ID  subnets: $SUBNET_IDS"
 
 cd "$REPO_ROOT/DQC/cdk"

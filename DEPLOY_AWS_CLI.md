@@ -75,7 +75,7 @@ cd DQC/cdk && cdk destroy --app "python3 app.py" \
 
 | Symptom | Fix |
 |---|---|
-| `deploy` fails on vpc/subnets | `aws ec2 create-default-vpc --region eu-west-1`, re-run. Corporate VPC? prefix with `VPC_ID=vpc-xxx SUBNET_IDS=subnet-a,subnet-b`. |
+| `deploy` fails on vpc/subnets | If you have the permission: `aws ec2 create-default-vpc --region eu-west-1`, re-run. **No permission to create a VPC** (locked-down / read-only account)? Deploy into an existing one your admin gave you: `VPC_ID=vpc-xxx SUBNET_IDS=subnet-a,subnet-b ./DQC/cdk/deploy.sh`. The script now auto-picks the region's only VPC if there's exactly one, and lists the choices if there are several. |
 | Generation errors (`AccessDeniedException`) | model not enabled in `eu-west-1` (step 2). |
 | Health never OK | images weren't pushed on the first try — re-run step 3 (idempotent). |
 | Docker "exec format error" (Apple Silicon) | add `--platform linux/amd64` to the two `docker build` lines in `DQC/cdk/deploy.sh`. |
