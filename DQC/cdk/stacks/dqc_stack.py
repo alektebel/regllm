@@ -40,6 +40,12 @@ class DqcStack(Stack):
             self.node.try_get_context("bedrock_model_id")
             or "eu.amazon.nova-micro-v1:0"
         )
+        # cheap model for the per-upload inspection step; defaults to the
+        # generation model so a single-model setup needs no extra config
+        inspect_bedrock_model_id = (
+            self.node.try_get_context("inspect_bedrock_model_id")
+            or bedrock_model_id
+        )
         cpu = int(self.node.try_get_context("cpu") or 1024)
         memory = int(self.node.try_get_context("memory") or 4096)
 
@@ -159,6 +165,7 @@ class DqcStack(Stack):
                 "REGLLM_LLM": "bedrock",
                 "REGLLM_ROUTERS": "dqc",
                 "BEDROCK_MODEL_ID": bedrock_model_id,
+                "INSPECT_BEDROCK_MODEL_ID": inspect_bedrock_model_id,
                 "BEDROCK_REGION": self.region,
             },
             logging=ecs.LogDriver.aws_logs(

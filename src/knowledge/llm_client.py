@@ -1097,7 +1097,13 @@ def get_inspect_client() -> LocalLLMClient:
             ``inspect_gguf_n_ctx`` (INSPECT_GGUF_N_CTX) and
             ``inspect_gguf_n_gpu_layers`` (INSPECT_GGUF_N_GPU_LAYERS).
 
-    When neither is configured this returns the main :func:`get_client`, so
+        inspect_bedrock_model_id (INSPECT_BEDROCK_MODEL_ID)
+            A cheaper Bedrock model id for the inspection step on an
+            all-Bedrock deployment, so a strong (e.g. Claude) generation
+            model isn't wasted on trivial sheet mapping. Falls back to the
+            main ``bedrock_model_id`` when unset.
+
+    When none is configured this returns the main :func:`get_client`, so
     behaviour is unchanged until a lighter model is set up.
     """
     global _inspect_client
@@ -1107,6 +1113,10 @@ def get_inspect_client() -> LocalLLMClient:
     inspect_gguf = (
         os.getenv("INSPECT_GGUF_MODEL_PATH")
         or _LLM_CFG.get("inspect_gguf_model_path")
+    )
+    inspect_bedrock = (
+        os.getenv("INSPECT_BEDROCK_MODEL_ID")
+        or _LLM_CFG.get("inspect_bedrock_model_id")
     )
     inspect_model = os.getenv("INSPECT_MODEL") or _LLM_CFG.get("inspect_model")
 
@@ -1123,8 +1133,14 @@ def get_inspect_client() -> LocalLLMClient:
             n_gpu = _LLM_CFG.get("inspect_gguf_n_gpu_layers")
         if n_gpu is not None and str(n_gpu) != "":
             client.gguf_n_gpu_layers = int(n_gpu)
+    elif inspect_bedrock:
+        # A cheaper Bedrock model just for inspection (all-Bedrock deploys).
+        client = LocalLLMClient(prefer="bedrock")
+        client.bedrock_model_id = str(inspect_bedrock)
     elif inspect_model:
         # A dedicated (smaller) Ollama tag or auto-registered .gguf path.
+        # On a Bedrock deployment REGLLM_LLM forces this client to Bedrock too;
+        # the tag is then ignored and the main bedrock_model_id is used.
         client = LocalLLMClient(ollama_model=str(inspect_model))
     else:
         client = get_client()

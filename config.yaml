@@ -25,6 +25,9 @@ llm:
   # gguf_n_gpu_layers: 0     # >0 to offload layers to GPU
   # bedrock_model_id: "eu.amazon.nova-micro-v1:0"
   # bedrock_region: "eu-west-1"
+  # inspect_bedrock_model_id: "eu.amazon.nova-micro-v1:0"  # cheap model for
+  #   the per-upload inspection step when generation uses a stronger Bedrock
+  #   model (env: INSPECT_BEDROCK_MODEL_ID). Falls back to bedrock_model_id.
   # For Azure OpenAI (managed, Azure deployments — see DQC/azure/deploy.sh),
   # set backend: "azure" and the keys below (or the AZURE_OPENAI_* env vars):
   # azure_endpoint: "https://<resource>.openai.azure.com"
