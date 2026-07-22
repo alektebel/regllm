@@ -24,6 +24,28 @@ def test_returns_all_when_under_cap():
     assert select_relevant_fields(fs, ["x"], cap=60) == fs
 
 
+def test_drops_ten_least_relevant_below_the_cap():
+    # 40 fields (< cap 60) but with 10 clearly-irrelevant ones trimmed:
+    # only 40-10 = 30 reach the prompt
+    fs = _fields(40)
+    chosen = select_relevant_fields(fs, ["campo relleno 3"], cap=60)
+    assert len(chosen) == 30
+
+
+def test_never_trims_a_small_dictionary():
+    # under the MIN_FIELDS_KEPT floor: nothing is dropped
+    fs = _fields(18)
+    assert select_relevant_fields(fs, ["x"], cap=60) == fs
+    # right at a size where the floor caps the trim (25 → keep 20, drop 5)
+    assert len(select_relevant_fields(_fields(25), ["x"], cap=60)) == 20
+
+
+def test_cap_and_tail_trim_together_drop_the_bottom_ten():
+    # 66-field dictionary (the real reporting table size): keep 66-10 = 56
+    fs = _fields(66)
+    assert len(select_relevant_fields(fs, ["campo relleno 1"], cap=60)) == 56
+
+
 def test_lexical_named_field_survives_the_cap():
     fs = _fields(70)
     fs.append(FieldEntry(name="PD_ESTIMADA", description="probabilidad"))

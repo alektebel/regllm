@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 # ── budgets (chars ≈ tokens×4; sized for an 8k-token local context) ─────────
 PROMPT_CHAR_BUDGET = 12_000     # max chars of dictionary text per LLM call
 MAX_FIELDS_PER_CALL = 60        # hard cap on fields sent to one agent
+DROP_LEAST_FIELDS = 10          # least-relevant fields never sent to the prompt
+MIN_FIELDS_KEPT = 20            # …but never trim a dictionary below this many
 SAMPLE_ROWS = 4                 # sample rows per sheet shown to the mapper
 CELL_TRUNC = 60                 # cell preview length
 
@@ -401,19 +403,28 @@ def _minmax(values: list[float]) -> list[float]:
 
 def select_relevant_fields(fields: list[FieldEntry], instructions: list[str],
                            cap: int = MAX_FIELDS_PER_CALL,
-                           embedder=None) -> list[FieldEntry]:
+                           embedder=None,
+                           drop_least: int = DROP_LEAST_FIELDS) -> list[FieldEntry]:
     """Fields worth sending to the agent for THIS instruction batch.
 
     Tier-1 schema-linking filter (MARS-SQL style): rank every field and keep
-    the top ``cap``. Lexical scoring (exact name, name parts, description /
+    the most relevant. Lexical scoring (exact name, name parts, description /
     formula word overlap) is always applied; when ``embedder`` is provided
     and actually produces vectors, a semantic channel (cosine similarity of
     the rule against each field's ``name. description``) is blended in so
     fields that are relevant but share no literal words are still surfaced.
     Falls back to pure lexical when there is no embedder or it is unavailable
-    (zero vectors), so behaviour is unchanged unless embeddings are on.
+    (zero vectors).
+
+    How many are kept: the ``cap``, minus the ``drop_least`` least-relevant
+    fields so obvious noise never reaches the prompt — but never trimmed
+    below ``MIN_FIELDS_KEPT`` (or the dictionary size, whichever is smaller),
+    so a small dictionary is left intact. Explicitly-named fields score
+    highest and are always kept.
     """
-    if len(fields) <= cap:
+    n = len(fields)
+    keep = min(cap, max(n - drop_least, min(n, MIN_FIELDS_KEPT)))
+    if keep >= n:
         return fields
     text = " ".join(instructions)
     words = {_norm(w) for w in _WORD_RE.findall(text)}
@@ -439,7 +450,7 @@ def select_relevant_fields(fields: list[FieldEntry], instructions: list[str],
                     for l, s in zip(lex_n, sem_n)]
 
     order = sorted(range(len(fields)), key=lambda i: (-combined[i], i))
-    chosen = {id(fields[i]) for i in order[:cap]}
+    chosen = {id(fields[i]) for i in order[:keep]}
     # keep original dictionary order for the prompt
     return [f for f in fields if id(f) in chosen]
 
