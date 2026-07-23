@@ -108,10 +108,13 @@ cleanup() { echo; echo "• stopping…"; for p in "${PIDS[@]:-}"; do kill "$p" 
 trap cleanup EXIT INT TERM
 
 # ── 1. Build the frontend (the real production build) ─────────────────────
-echo "• building the Angular frontend…"
+# NOTE: nothing serves on :$FRONTEND_PORT until AFTER this build finishes.
+# First run installs npm deps + builds — this can take a few minutes. Wait
+# for the "✓ READY" line before opening the browser.
+echo "• building the Angular frontend (first run can take a few minutes)…"
 ( cd "$ROOT/DQC/app" && { [[ -d node_modules ]] || npm ci; } && npx ng build --configuration production )
 DIST="$ROOT/DQC/app/dist/dqc-app/browser"
-[[ -f "$DIST/index.html" ]] || { echo "✗ build missing $DIST/index.html"; exit 1; }
+[[ -f "$DIST/index.html" ]] || { echo "✗ frontend build failed — no $DIST/index.html (see the build output above)"; exit 1; }
 
 # ── 2. Backend (FastAPI on localhost) ─────────────────────────────────────
 echo "• backend → http://localhost:$BACKEND_PORT"
@@ -134,11 +137,20 @@ DIST_DIR="$DIST" BACKEND="http://127.0.0.1:$BACKEND_PORT" PORT="$FRONTEND_PORT" 
     "$PYTHON" "$ROOT/scripts/_demo_proxy.py" &
 PIDS+=($!)
 
-# Wait for the demo server to answer before opening the tunnel
+# Wait for the demo server to actually answer, and confirm it (or fail loud)
+demo_ok=""
 for _ in $(seq 1 30); do
-    curl -sf "http://127.0.0.1:$FRONTEND_PORT" >/dev/null 2>&1 && break
+    if curl -sf "http://127.0.0.1:$FRONTEND_PORT" >/dev/null 2>&1; then demo_ok=1; break; fi
+    kill -0 "${PIDS[-1]}" 2>/dev/null || { echo "✗ demo server exited — see its error above."; exit 1; }
     sleep 1
 done
+if [[ -z "$demo_ok" ]]; then
+    echo "✗ demo server isn't responding on :$FRONTEND_PORT after 30s."
+    echo "  Check the output above for a Python traceback from _demo_proxy.py."
+    exit 1
+fi
+echo ""
+echo "  ✓ READY — the demo is now serving on port $FRONTEND_PORT."
 
 # ── 4. Expose it (public tunnel, or local network) ────────────────────────
 echo ""
