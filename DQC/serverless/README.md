@@ -20,7 +20,7 @@ AWS_REGION=eu-west-1 ./DQC/serverless/deploy.sh
               ┌──────────┴───────────┐
    default ("/*")                 "/api/*"
         │                              │  ← CloudFront Function strips "/api"
-   S3 (private, OAC)            API Gateway HTTP API
+   S3 (private, OAC)         Lambda Function URL   (no API Gateway)
    Angular static site                 │
                                  Lambda (FastAPI via Mangum)
                                         │
@@ -31,9 +31,10 @@ AWS_REGION=eu-west-1 ./DQC/serverless/deploy.sh
   bucket and served through CloudFront using Origin Access Control (the
   bucket is never public, so it works even with S3 Block Public Access on).
 - **Backend** — the same FastAPI app (`REGLLM_ROUTERS=dqc`) packaged for
-  Lambda via Mangum (`DQC/lambda/handler.py`), fronted by an API Gateway
-  HTTP API. The review store is SQLite on `/tmp` — **ephemeral** (no EFS, so
-  no VPC).
+  Lambda via Mangum (`DQC/lambda/handler.py`), exposed through a **Lambda
+  Function URL** (the function's own built-in HTTPS endpoint — **no API
+  Gateway**, so no `apigateway:*` permission needed). The review store is
+  SQLite on `/tmp` — **ephemeral** (no EFS, so no VPC).
 - **The trick** — a tiny CloudFront Function (`cf-strip-api.js`) rewrites
   `/api/dqc/x` → `/dqc/x` at the edge, exactly like the local dev proxy
   (`proxy.conf.json`). Because the UI and the API share one CloudFront
@@ -54,8 +55,8 @@ is the easiest place to run this):
 
 These are all serverless/edge permissions — **none are `ec2:*` / VPC**:
 
-- `lambda:*`
-- `apigateway:*` (API Gateway v2)
+- `lambda:*` (incl. `lambda:CreateFunctionUrlConfig` for the endpoint —
+  **no API Gateway is used**)
 - `iam:CreateRole`, `AttachRolePolicy`, `PutRolePolicy`, `PassRole`,
   `GetRole` (for the Lambda execution role)
 - `s3:*` on the site bucket
@@ -101,13 +102,15 @@ takes ~15 min — the script waits for you.
 - **Public** — the URL and the API are open to anyone with the link. Fine
   for a demo; don't leave it running indefinitely (it can burn Bedrock
   tokens). Tear it down when you're done.
-- **No live streaming** — API Gateway + CloudFront buffer the response, so
-  the decision-tree SSE animation isn't live; the tree appears when
-  generation finishes. (The result is identical, just not streamed.)
-- **29-second limit** — API Gateway caps a request at 29 s. Nova Micro on a
-  small demo dictionary is well under that; very large inputs may time out.
-- **10 MB payload** — API Gateway request/response cap. The demo Excels are
-  a few KB; huge workbooks would need presigned-S3 uploads (not wired here).
+- **No live streaming** — CloudFront buffers the response, so the
+  decision-tree SSE animation isn't live; the tree appears when generation
+  finishes. (The result is identical, just not streamed.)
+- **~60-second limit** — CloudFront's origin read timeout is set to 60 s, so
+  a single request must finish within that. Nova Micro on a small demo
+  dictionary is well under it; very large inputs may time out.
+- **Payload size** — a Lambda Function URL buffers up to ~6 MB per
+  request/response. The demo Excels are a few KB; huge workbooks would need
+  presigned-S3 uploads (not wired here).
 - **Ephemeral data** — validated/rejected review state lives on Lambda
   `/tmp` and resets on cold starts. Durable state needs EFS, which *would*
   require a VPC — deliberately avoided here.

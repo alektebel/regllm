@@ -2,8 +2,9 @@
 # Deploy the RegLLM DQC demo to AWS **without any VPC** and get one public
 # HTTPS URL to share.
 #
-#   Backend : Lambda (FastAPI via Mangum) + API Gateway HTTP API
-#             → ephemeral /tmp SQLite (no EFS ⇒ no VPC), LLM on Bedrock
+#   Backend : Lambda (FastAPI via Mangum) exposed through a Lambda Function
+#             URL — no API Gateway — ephemeral /tmp SQLite (no EFS ⇒ no VPC),
+#             LLM on Bedrock
 #   Frontend: Angular built to static files on a PRIVATE S3 bucket, served
 #             through CloudFront (Origin Access Control)
 #   Glue    : a CloudFront Function strips the `/api` prefix at the edge and
@@ -20,10 +21,10 @@
 #   - aws CLI configured (credentials + region)
 #   - python3 + pip, node + npm, zip
 #
-# Required IAM permissions (NOT ec2/vpc): lambda:*, apigateway (apigatewayv2),
-#   iam:CreateRole/AttachRolePolicy/PutRolePolicy/PassRole, s3:*,
-#   cloudfront:* (incl. functions + origin-access-control), and Bedrock model
-#   access enabled in the region.
+# Required IAM permissions (NOT ec2/vpc, NOT apigateway): lambda:* (incl.
+#   CreateFunctionUrlConfig), iam:CreateRole/AttachRolePolicy/PutRolePolicy/
+#   PassRole, s3:*, cloudfront:* (incl. functions + origin-access-control),
+#   and Bedrock model access enabled in the region.
 #
 # Override defaults via environment variables:
 #   AWS_REGION=eu-west-1              AWS region
@@ -59,7 +60,6 @@ echo "• account: $ACCOUNT  region: $AWS_REGION  (no VPC will be created)"
 # Resource names
 ROLE="${PROJECT}-lambda-exec"
 FUNC="${PROJECT}-api"
-API_NAME="${PROJECT}-http"
 SITE_BUCKET="${PROJECT}-site-${ACCOUNT}-${AWS_REGION}"
 OAC_NAME="${PROJECT}-oac"
 CF_FUNC_NAME="${PROJECT}-strip-api"
@@ -167,23 +167,25 @@ aws lambda wait function-updated --region "$AWS_REGION" --function-name "$FUNC"
 FUNC_ARN="$(aws lambda get-function --region "$AWS_REGION" --function-name "$FUNC" \
     --query 'Configuration.FunctionArn' --output text)"
 
-# ── 6. API Gateway HTTP API (quick-create: integration + $default route) ──
-API_ID="$(aws apigatewayv2 get-apis --region "$AWS_REGION" \
-    --query "Items[?Name=='$API_NAME'].ApiId | [0]" --output text)"
-if [[ -z "$API_ID" || "$API_ID" == "None" ]]; then
-    echo "• creating API Gateway HTTP API…"
-    API_ID="$(aws apigatewayv2 create-api --region "$AWS_REGION" \
-        --name "$API_NAME" --protocol-type HTTP --target "$FUNC_ARN" \
-        --query 'ApiId' --output text)"
+# ── 6. Lambda Function URL (built-in HTTPS endpoint; NO API Gateway) ──────
+# A Function URL gives the Lambda its own HTTPS endpoint, so we don't touch
+# API Gateway at all — that avoids apigateway:* permissions (which locked-down
+# accounts often deny) and needs only lambda:CreateFunctionUrlConfig.
+if ! aws lambda get-function-url-config --region "$AWS_REGION" \
+        --function-name "$FUNC" >/dev/null 2>&1; then
+    echo "• creating Lambda Function URL…"
+    aws lambda create-function-url-config --region "$AWS_REGION" \
+        --function-name "$FUNC" --auth-type NONE >/dev/null
 fi
-# Allow API Gateway to invoke the Lambda (idempotent — ignore if it exists)
+# Allow public (unsigned) calls to the Function URL — it sits behind CloudFront.
 aws lambda add-permission --region "$AWS_REGION" --function-name "$FUNC" \
-    --statement-id apigw-invoke --action lambda:InvokeFunction \
-    --principal apigateway.amazonaws.com \
-    --source-arn "arn:aws:execute-api:${AWS_REGION}:${ACCOUNT}:${API_ID}/*/*" \
-    >/dev/null 2>&1 || true
-API_DOMAIN="${API_ID}.execute-api.${AWS_REGION}.amazonaws.com"
-echo "  ↳ api: https://$API_DOMAIN"
+    --statement-id public-function-url --action lambda:InvokeFunctionUrl \
+    --principal "*" --function-url-auth-type NONE >/dev/null 2>&1 || true
+FUNC_URL="$(aws lambda get-function-url-config --region "$AWS_REGION" \
+    --function-name "$FUNC" --query 'FunctionUrl' --output text)"
+# Bare domain (no scheme, no trailing slash) for the CloudFront origin.
+API_DOMAIN="$(printf '%s' "$FUNC_URL" | sed -E 's#^https?://##; s#/+$##')"
+echo "  ↳ function url: $FUNC_URL"
 
 # ── 7. CloudFront: Origin Access Control + edge function ──────────────────
 OAC_ID="$(aws cloudfront list-origin-access-controls \
@@ -231,7 +233,7 @@ cfg = {
      "S3OriginConfig": {"OriginAccessIdentity": ""}},
     {"Id": "api-gw", "DomainName": api,
      "CustomOriginConfig": {"HTTPPort": 80, "HTTPSPort": 443,
-        "OriginProtocolPolicy": "https-only",
+        "OriginProtocolPolicy": "https-only", "OriginReadTimeout": 60,
         "OriginSslProtocols": {"Quantity": 1, "Items": ["TLSv1.2"]}}},
   ]},
   "DefaultCacheBehavior": {
