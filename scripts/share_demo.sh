@@ -5,11 +5,11 @@
 # (your existing credentials), so it works on a locked-down account that can't
 # make VPCs / API Gateways / Function URLs.
 #
-# How it works: the Angular app is built to static files and served — together
-# with an /api reverse-proxy to the local FastAPI backend — by one small local
-# server (scripts/_demo_proxy.py). A tunnel points at that server, so the
-# single public URL serves the UI and proxies the API on the same origin (no
-# CORS), mirroring the CloudFront design but on your machine.
+# How it works: the FastAPI backend runs on localhost, and the Angular app is
+# served by its dev server (`ng serve`) on one port, which proxies /api to the
+# backend (same origin, no CORS). A tunnel — or your LAN — points at that one
+# port, so a single URL serves the UI and the API. `--allowed-hosts` lets the
+# dev server accept tunnel/LAN hostnames.
 #
 #   ./scripts/share_demo.sh                 # auto: cloudflared → ngrok → LAN
 #   TUNNEL=ngrok ./scripts/share_demo.sh    # force ngrok
@@ -18,7 +18,7 @@
 # Prerequisites:
 #   - python3 (+ the DQC deps — install into the SAME interpreter:
 #       python3 -m pip install -r requirements-dqc.txt uvicorn)
-#   - node + npm (to build the frontend)
+#   - node + npm (runs the Angular dev server)
 #   - for a PUBLIC url, a tunnel tool (not needed for TUNNEL=lan):
 #       cloudflared (no account):  brew install cloudflared  · or
 #         https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
@@ -104,24 +104,15 @@ free_port "$FRONTEND_PORT"
 
 # ── Clean shutdown of every child on Ctrl-C / exit ────────────────────────
 PIDS=()
-cleanup() { echo; echo "• stopping…"; for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
+cleanup() { echo; echo "• stopping…"; for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -f "${PROXY_CFG:-}" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-# ── 1. Build the frontend (the real production build) ─────────────────────
-# NOTE: nothing serves on :$FRONTEND_PORT until AFTER this build finishes.
-# First run installs npm deps + builds — this can take a few minutes. Wait
-# for the "✓ READY" line before opening the browser.
-echo "• building the Angular frontend (first run can take a few minutes)…"
-( cd "$ROOT/DQC/app" && { [[ -d node_modules ]] || npm ci; } && npx ng build --configuration production )
-DIST="$ROOT/DQC/app/dist/dqc-app/browser"
-[[ -f "$DIST/index.html" ]] || { echo "✗ frontend build failed — no $DIST/index.html (see the build output above)"; exit 1; }
-
-# ── 2. Backend (FastAPI on localhost) ─────────────────────────────────────
+# ── 1. Backend (FastAPI on localhost) ─────────────────────────────────────
 echo "• backend → http://localhost:$BACKEND_PORT"
 ( cd "$ROOT" && exec "$PYTHON" -m uvicorn api.main:app --host 127.0.0.1 --port "$BACKEND_PORT" ) &
 PIDS+=($!)
 
-# Wait for the backend to actually answer before serving anything.
+# Wait for the backend to actually answer before serving the UI.
 echo "• waiting for the backend to come up…"
 backend_ok=""
 for _ in $(seq 1 40); do
@@ -131,22 +122,32 @@ for _ in $(seq 1 40); do
 done
 [[ -n "$backend_ok" ]] || echo "⚠ backend not healthy on :$BACKEND_PORT yet — /api calls may fail until it is."
 
-# ── 3. Static + /api proxy server (what the tunnel points at) ─────────────
-echo "• demo server → http://localhost:$FRONTEND_PORT  (serves UI + proxies /api)"
-DIST_DIR="$DIST" BACKEND="http://127.0.0.1:$BACKEND_PORT" PORT="$FRONTEND_PORT" \
-    "$PYTHON" "$ROOT/scripts/_demo_proxy.py" &
+# ── 2. Frontend via Angular dev server (proxies /api → backend) ───────────
+# A temp proxy config points /api at the chosen backend port and strips the
+# /api prefix (the backend serves /dqc, /health, …). --allowed-hosts lets the
+# dev server accept tunnel/LAN hostnames.
+echo "• installing frontend deps if needed…"
+( cd "$ROOT/DQC/app" && [[ -d node_modules ]] || ( cd "$ROOT/DQC/app" && npm ci ) )
+PROXY_CFG="$(mktemp --suffix=.json 2>/dev/null || mktemp)"
+cat >"$PROXY_CFG" <<JSON
+{ "/api": { "target": "http://127.0.0.1:$BACKEND_PORT", "secure": false, "pathRewrite": { "^/api": "" } } }
+JSON
+
+echo "• starting the Angular dev server on :$FRONTEND_PORT (first run takes a bit)…"
+( cd "$ROOT/DQC/app" && exec npx ng serve \
+    --host 0.0.0.0 --port "$FRONTEND_PORT" --allowed-hosts \
+    --proxy-config "$PROXY_CFG" ) &
 PIDS+=($!)
 
-# Wait for the demo server to actually answer, and confirm it (or fail loud)
+# Wait for the dev server to actually answer, and confirm it (or fail loud)
 demo_ok=""
-for _ in $(seq 1 30); do
+for _ in $(seq 1 120); do
     if curl -sf "http://127.0.0.1:$FRONTEND_PORT" >/dev/null 2>&1; then demo_ok=1; break; fi
-    kill -0 "${PIDS[-1]}" 2>/dev/null || { echo "✗ demo server exited — see its error above."; exit 1; }
+    kill -0 "${PIDS[-1]}" 2>/dev/null || { echo "✗ dev server exited — see its error above."; exit 1; }
     sleep 1
 done
 if [[ -z "$demo_ok" ]]; then
-    echo "✗ demo server isn't responding on :$FRONTEND_PORT after 30s."
-    echo "  Check the output above for a Python traceback from _demo_proxy.py."
+    echo "✗ dev server isn't responding on :$FRONTEND_PORT after 2 min. See output above."
     exit 1
 fi
 echo ""
