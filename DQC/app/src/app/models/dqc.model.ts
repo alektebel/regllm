@@ -183,9 +183,11 @@ export interface CheckRecord {
   description: string;
   severity: string;
   category: string;
-  sql: string;
+  sql: string | null;
   visible: boolean;
-  status: 'pending' | 'validated' | 'rejected';
+  status: 'pending' | 'validated' | 'rejected' | 'ambigua' | 'error';
+  /** failure reason when status is ambigua/error */
+  motivo?: string | null;
   reward: number | null;
   variable: string | null;
   tipo: string | null;

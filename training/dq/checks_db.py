@@ -42,11 +42,12 @@ CREATE TABLE IF NOT EXISTS checks (
     description           TEXT,
     severity              TEXT NOT NULL CHECK (severity IN ('HIGH','MED','LOW','bloqueante','advertencia','informativo')),
     category              TEXT NOT NULL CHECK (category IN ('cross_field','cross_table','cardinality','formula','consistencia','referencial','rango','completitud')),
-    sql                   TEXT NOT NULL,
+    sql                   TEXT,           -- null for failed/ambiguous items
     visible               INTEGER NOT NULL DEFAULT 1,
     status                TEXT NOT NULL DEFAULT 'pending'
-                          CHECK (status IN ('pending','validated','rejected')),
+                          CHECK (status IN ('pending','validated','rejected','ambigua','error')),
     reward                REAL,
+    motivo                TEXT,            -- why generation failed (ambigua/error)
     -- Rich DQC metadata (nullable — populated by /dqc/generate, empty for RL-only)
     variable              TEXT,
     tipo                  TEXT,
@@ -73,6 +74,13 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    # Lightweight migration for DBs created before the failed-item columns
+    # existed (adding a column is safe; CHECK/nullable changes only apply to
+    # freshly created tables — the demo uses an ephemeral DB, so it gets them).
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(checks)")}
+    if "motivo" not in cols:
+        conn.execute("ALTER TABLE checks ADD COLUMN motivo TEXT")
+        conn.commit()
     return conn
 
 
@@ -101,12 +109,13 @@ def insert_check(
     description: str,
     severity: str,
     category: str,
-    sql: str,
+    sql: str | None = None,
     check_id: str | None = None,
     rule_id: str | None = None,
     visible: bool = True,
     reward: float | None = None,
     status: str = "pending",
+    motivo: str | None = None,
     variable: str | None = None,
     tipo: str | None = None,
     condicion_error: str | None = None,
@@ -131,12 +140,12 @@ def insert_check(
     conn.execute(
         """INSERT INTO checks
            (check_id, rule_id, name, description, severity, category, sql,
-            visible, status, reward, variable, tipo, condicion_error,
+            visible, status, reward, motivo, variable, tipo, condicion_error,
             campos_entrada, referencia_regulatoria, umbral, periodicidad,
             justificacion, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (cid, rule_id, name, description, severity, category, sql,
-         int(visible), status, reward, variable, tipo, condicion_error,
+         int(visible), status, reward, motivo, variable, tipo, condicion_error,
          campos_json, referencia_regulatoria, umbral, periodicidad,
          justificacion, _now()),
     )

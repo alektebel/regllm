@@ -81,10 +81,11 @@ class CheckRecord(BaseModel):
     description: str = ""
     severity: str
     category: str
-    sql: str
+    sql: str | None = None
     visible: bool = True
     status: str = "pending"
     reward: float | None = None
+    motivo: str | None = None
     variable: str | None = None
     tipo: str | None = None
     condicion_error: str | None = None
@@ -739,6 +740,7 @@ async def generate_dqc_stream(
         comprobados = 0
         validaciones: dict[int, dict] = {}   # id(item) → executed validation
         traces: dict[int, list] = {}         # id(item) → decision trace
+        failed_items: list[dict] = []        # ambiguous/errored — persisted red
 
         for entry in plan:
             eid = entry["id"]
@@ -764,6 +766,11 @@ async def generate_dqc_stream(
                                     "falta": suf["falta"],
                                     "campos": suf["campos"],
                                     "trace": trace})
+                failed_items.append({
+                    "eid": eid, "prev_id": entry.get("prev_id") or "",
+                    "regla": entry["regla"], "estado": "ambigua",
+                    "motivo": suf["falta"], "campos": suf["campos"],
+                    "trace": list(trace)})
                 continue
 
             # ── optional value grounding: sample real domain values once per
@@ -876,6 +883,12 @@ async def generate_dqc_stream(
                                              f"{react.MAX_ATTEMPTS} intentos: "
                                              f"{error}",
                                     "trace": trace})
+                failed_items.append({
+                    "eid": eid, "prev_id": entry.get("prev_id") or "",
+                    "regla": entry["regla"], "estado": "error",
+                    "motivo": f"No validado tras {react.MAX_ATTEMPTS} "
+                              f"intentos: {error}", "campos": [],
+                    "trace": list(trace)})
                 continue
 
             trace.append({"paso": "resultado", "estado": "completado",
@@ -902,6 +915,27 @@ async def generate_dqc_stream(
                 if id(it) in validaciones or id(it) in traces])
         except Exception as exc:  # noqa: BLE001
             logger.warning("persist failed: %s", exc)
+
+        # Persist failed/ambiguous items too, so they show (red) in the panel
+        # with their reason + decision tree and can be retried from there.
+        for fi in failed_items:
+            try:
+                conn = _db()
+                try:
+                    fcid = checks_db.insert_check(
+                        conn,
+                        rule_id=fi["prev_id"] or None,
+                        name=(fi["prev_id"] or f"regla_{fi['eid']}").lower(),
+                        description=fi["regla"],
+                        severity="informativo", category="consistencia",
+                        sql=None, status=fi["estado"], motivo=fi["motivo"],
+                        campos_entrada=fi["campos"] or None,
+                    )
+                finally:
+                    conn.close()
+                _save_check_cases([(fcid, {"trace": fi["trace"]})])
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("failed-item persist failed: %s", exc)
 
         summary = (
             f"Se generaron {len(dqcs)} DQCs a partir de un plan de "

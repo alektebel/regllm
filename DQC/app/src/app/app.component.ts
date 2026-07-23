@@ -30,6 +30,8 @@ import { CheckCasesResponse, CheckRecord, TraceStep } from './models/dqc.model';
                   (click)="filter = 'validated'">Validados</button>
           <button class="filter-btn" [class.active]="filter === 'rejected'"
                   (click)="filter = 'rejected'">Rechazados</button>
+          <button class="filter-btn" [class.active]="filter === 'failed'"
+                  (click)="filter = 'failed'">Fallidos</button>
         </div>
 
         <button class="copy-all-btn" (click)="copyAll()" [disabled]="copiedAll">
@@ -70,7 +72,7 @@ import { CheckCasesResponse, CheckRecord, TraceStep } from './models/dqc.model';
             } @else {
               <div class="detail-actions">
                 <span class="status-label" [attr.data-status]="selected.status">
-                  {{ selected.status === 'validated' ? 'Validado' : 'Rechazado' }}
+                  {{ statusLabel(selected.status) }}
                 </span>
                 @if (selected.status === 'validated') {
                   <button class="btn-reject" (click)="setStatus(selected, 'rejected')">Invalidar</button>
@@ -98,18 +100,29 @@ import { CheckCasesResponse, CheckRecord, TraceStep } from './models/dqc.model';
               <p class="detail-desc">{{ selected.description }}</p>
             }
 
-            @if (selected.status === 'rejected') {
+            @if (isFailed(selected) && selected.motivo) {
+              <div class="fail-reason" [attr.data-status]="selected.status">
+                <strong>{{ selected.status === 'ambigua' ? 'No se generó (ambigua):' : 'No se generó (error):' }}</strong>
+                {{ selected.motivo }}
+              </div>
+            }
+
+            @if (canRetry(selected)) {
               <div class="retry-panel">
-                <label for="retry-instructions">Reformular para crear un DQC nuevo</label>
+                <label for="retry-instructions">
+                  {{ isFailed(selected) ? 'Aclara o reformula la regla y vuelve a generar' : 'Reformular para crear un DQC nuevo' }}
+                </label>
                 <textarea id="retry-instructions" [(ngModel)]="retryInstructions"
-                          placeholder="Describe la regla con otras palabras"></textarea>
+                          placeholder="Describe la regla con otras palabras (añade umbral, campos, criterio…)"></textarea>
                 <button class="btn-retry" [disabled]="!retryInstructions.trim()"
                         (click)="retryRejected()">Reintentar</button>
               </div>
             }
 
-            <h4>Consulta SQL</h4>
-            <pre class="sql-block">{{ selected.sql }}</pre>
+            @if (selected.sql) {
+              <h4>Consulta SQL</h4>
+              <pre class="sql-block">{{ selected.sql }}</pre>
+            }
 
             @if (selectedCases?.trace && selectedCases!.trace!.length > 0) {
               <h4>Árbol de decisión</h4>
@@ -256,6 +269,8 @@ import { CheckCasesResponse, CheckRecord, TraceStep } from './models/dqc.model';
     .dqc-item[data-status="pending"]   { border-left-color: #f9a825; }
     .dqc-item[data-status="validated"] { border-left-color: #2e7d32; }
     .dqc-item[data-status="rejected"]  { border-left-color: #c62828; }
+    .dqc-item[data-status="error"]     { border-left-color: #e5534b; background: rgba(229,83,75,0.06); }
+    .dqc-item[data-status="ambigua"]   { border-left-color: #f39c12; background: rgba(243,156,18,0.06); }
     .dqc-item-head { display: flex; align-items: center; justify-content: space-between; }
     .dqc-name { font-size: 12px; font-weight: 600; color: #e0e0e0; }
     .sev-dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -289,6 +304,13 @@ import { CheckCasesResponse, CheckRecord, TraceStep } from './models/dqc.model';
     .status-label { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; }
     .status-label[data-status="validated"] { background: rgba(46,125,50,0.15); color: #4caf50; }
     .status-label[data-status="rejected"]  { background: rgba(198,40,40,0.15); color: #ef5350; }
+    .status-label[data-status="error"]     { background: rgba(229,83,75,0.15); color: #f0938c; }
+    .status-label[data-status="ambigua"]   { background: rgba(243,156,18,0.15); color: #f0b429; }
+    .fail-reason { font-size: 12px; line-height: 1.5; margin: 0 0 14px; padding: 10px 12px;
+      border-radius: 6px; background: rgba(229,83,75,0.08); border: 1px solid rgba(229,83,75,0.3); color: #e6a8a2; }
+    .fail-reason[data-status="ambigua"] { background: rgba(243,156,18,0.08);
+      border-color: rgba(243,156,18,0.3); color: #e8c07a; }
+    .fail-reason strong { color: inherit; }
     .detail-body { flex: 1; overflow-y: auto; padding: 16px; }
     .detail-head h3 { margin: 0 0 8px; font-size: 16px; color: #fff; }
     .detail-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
@@ -345,7 +367,7 @@ export class AppComponent implements OnInit, OnDestroy {
   checks: CheckRecord[] = [];
   selected: CheckRecord | null = null;
   selectedCases: CheckCasesResponse | null = null;
-  filter: 'all' | 'pending' | 'validated' | 'rejected' = 'all';
+  filter: 'all' | 'pending' | 'validated' | 'rejected' | 'failed' = 'all';
   copiedAll = false;
   copyAllMsg = '';
   retryInstructions = '';
@@ -366,9 +388,15 @@ export class AppComponent implements OnInit, OnDestroy {
   get pending()   { return this.checks.filter(c => c.status === 'pending'); }
   get validated() { return this.checks.filter(c => c.status === 'validated'); }
   get rejected()  { return this.checks.filter(c => c.status === 'rejected'); }
+  get failed()    { return this.checks.filter(c => this.isFailed(c)); }
+
+  isFailed(c: CheckRecord): boolean {
+    return c.status === 'ambigua' || c.status === 'error';
+  }
 
   get filteredChecks(): CheckRecord[] {
     if (this.filter === 'all') return this.checks;
+    if (this.filter === 'failed') return this.failed;
     return this.checks.filter(c => c.status === this.filter);
   }
 
@@ -426,10 +454,20 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Reformulate a rejected OR failed (ambiguous/errored) DQC and regenerate. */
+  canRetry(c: CheckRecord | null): boolean {
+    return !!c && (c.status === 'rejected' || this.isFailed(c));
+  }
+
   retryRejected(): void {
-    if (!this.selected || this.selected.status !== 'rejected' || !this.retryInstructions.trim()) return;
+    if (!this.canRetry(this.selected) || !this.retryInstructions.trim()) return;
     this.retryRequest = this.retryInstructions.trim();
     this.retryInstructions = '';
+  }
+
+  statusLabel(s: string): string {
+    return { validated: 'Validado', rejected: 'Rechazado',
+             ambigua: 'Ambigua', error: 'Fallido' }[s] ?? s;
   }
 
   deleteCheck(c: CheckRecord): void {
