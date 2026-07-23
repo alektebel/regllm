@@ -86,6 +86,22 @@ if [[ "$REGLLM_LLM" == "bedrock" ]]; then
     fi
 fi
 
+# ── Free the ports we need (kill stragglers from a previous run) ──────────
+free_port() {
+    local port="$1" pids=""
+    if   command -v lsof  >/dev/null; then pids="$(lsof -ti "tcp:$port" 2>/dev/null || true)"
+    elif command -v fuser >/dev/null; then pids="$(fuser "$port/tcp" 2>/dev/null | tr -s ' ' '\n' || true)"
+    fi
+    [[ -n "$pids" ]] || return 0
+    echo "• port $port busy — stopping stale process(es): $(echo $pids | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+    sleep 1
+    for p in $pids; do kill -0 "$p" 2>/dev/null && kill -9 "$p" 2>/dev/null || true; done
+}
+free_port "$BACKEND_PORT"
+free_port "$FRONTEND_PORT"
+
 # ── Clean shutdown of every child on Ctrl-C / exit ────────────────────────
 PIDS=()
 cleanup() { echo; echo "• stopping…"; for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
@@ -101,6 +117,16 @@ DIST="$ROOT/DQC/app/dist/dqc-app/browser"
 echo "• backend → http://localhost:$BACKEND_PORT"
 ( cd "$ROOT" && exec "$PYTHON" -m uvicorn api.main:app --host 127.0.0.1 --port "$BACKEND_PORT" ) &
 PIDS+=($!)
+
+# Wait for the backend to actually answer before serving anything.
+echo "• waiting for the backend to come up…"
+backend_ok=""
+for _ in $(seq 1 40); do
+    if curl -sf "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1; then backend_ok=1; break; fi
+    kill -0 "${PIDS[-1]}" 2>/dev/null || { echo "✗ backend process exited — see its error above (bad deps? port still busy?)."; exit 1; }
+    sleep 1
+done
+[[ -n "$backend_ok" ]] || echo "⚠ backend not healthy on :$BACKEND_PORT yet — /api calls may fail until it is."
 
 # ── 3. Static + /api proxy server (what the tunnel points at) ─────────────
 echo "• demo server → http://localhost:$FRONTEND_PORT  (serves UI + proxies /api)"
