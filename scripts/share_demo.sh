@@ -35,6 +35,11 @@ export BEDROCK_REGION="${BEDROCK_REGION:-eu-west-1}"
 export INSPECT_BEDROCK_MODEL_ID="${INSPECT_BEDROCK_MODEL_ID:-$BEDROCK_MODEL_ID}"
 export REGLLM_ROUTERS="${REGLLM_ROUTERS:-dqc}"
 export CORS_ORIGINS="${CORS_ORIGINS:-*}"
+# The demo needs no durable data. Keep the review store (SQLite) in a
+# throwaway temp file so every run starts clean and there's never a write
+# issue on a path inside the repo. Generation still works — results stream
+# back in the response; the store only holds validate/reject review state.
+export REGLLM_CHECKS_DB="${REGLLM_CHECKS_DB:-$(mktemp -u --suffix=.db 2>/dev/null || mktemp -u)}"
 FRONTEND_PORT="${FRONTEND_PORT:-4200}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 # Interpreter to run the backend with. Override if `python3` isn't the one you
@@ -104,7 +109,7 @@ free_port "$FRONTEND_PORT"
 
 # ── Clean shutdown of every child on Ctrl-C / exit ────────────────────────
 PIDS=()
-cleanup() { echo; echo "• stopping…"; for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -f "${PROXY_CFG:-}" 2>/dev/null || true; }
+cleanup() { echo; echo "• stopping…"; for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -f "${PROXY_CFG:-}" "${REGLLM_CHECKS_DB:-}" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
 # ── 1. Backend (FastAPI on localhost) ─────────────────────────────────────
