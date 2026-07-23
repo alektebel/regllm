@@ -11,15 +11,18 @@
 # single public URL serves the UI and proxies the API on the same origin (no
 # CORS), mirroring the CloudFront design but on your machine.
 #
-#   ./scripts/share_demo.sh
+#   ./scripts/share_demo.sh                 # auto: cloudflared → ngrok → LAN
+#   TUNNEL=ngrok ./scripts/share_demo.sh    # force ngrok
+#   TUNNEL=lan   ./scripts/share_demo.sh    # no public URL; serve on your LAN
 #
 # Prerequisites:
 #   - python3 (+ the DQC deps — install into the SAME interpreter:
 #       python3 -m pip install -r requirements-dqc.txt uvicorn)
 #   - node + npm (to build the frontend)
-#   - a tunnel tool: cloudflared (preferred, no account) or ngrok
-#       macOS:  brew install cloudflared
-#       linux:  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+#   - for a PUBLIC url, a tunnel tool (not needed for TUNNEL=lan):
+#       cloudflared (no account):  brew install cloudflared  · or
+#         https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+#       ngrok (free acct + authtoken):  https://ngrok.com/download
 #   - AWS credentials with Bedrock InvokeModel access (aws configure)
 #
 # Env overrides: BEDROCK_MODEL_ID, BEDROCK_REGION, FRONTEND_PORT (4200),
@@ -54,16 +57,24 @@ if ! "$PYTHON" -c "import uvicorn, fastapi, openpyxl" 2>/dev/null; then
     exit 1
 fi
 
-TUNNEL=""
-if   command -v cloudflared >/dev/null; then TUNNEL=cloudflared
-elif command -v ngrok       >/dev/null; then TUNNEL=ngrok
-else
-    echo "✗ no tunnel tool found. Install one:"
-    echo "    cloudflared (no account):  brew install cloudflared"
-    echo "        or  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-    echo "    ngrok:  https://ngrok.com/download"
-    exit 1
-fi
+# How to expose the demo. TUNNEL=auto (default) prefers cloudflared, then
+# ngrok, then falls back to LAN. Force one with TUNNEL=cloudflared|ngrok|lan.
+#   lan  = no public tunnel; serve on your local network (same Wi-Fi/LAN).
+MODE="${TUNNEL:-auto}"
+case "$MODE" in
+    lan|none|local) MODE=lan ;;
+    cloudflared) command -v cloudflared >/dev/null || { echo "✗ cloudflared not found"; exit 1; } ;;
+    ngrok)       command -v ngrok       >/dev/null || { echo "✗ ngrok not found (https://ngrok.com/download)"; exit 1; } ;;
+    auto)
+        if   command -v cloudflared >/dev/null; then MODE=cloudflared
+        elif command -v ngrok       >/dev/null; then MODE=ngrok
+        else
+            echo "• no tunnel tool found — serving on your LOCAL NETWORK instead."
+            echo "  (for a public URL: install cloudflared/ngrok, or set TUNNEL=ngrok)"
+            MODE=lan
+        fi ;;
+    *) echo "✗ unknown TUNNEL='$MODE' (use cloudflared | ngrok | lan)"; exit 1 ;;
+esac
 
 if [[ "$REGLLM_LLM" == "bedrock" ]]; then
     if command -v aws >/dev/null && aws sts get-caller-identity >/dev/null 2>&1; then
@@ -103,13 +114,38 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
-# ── 4. Public tunnel ──────────────────────────────────────────────────────
+# ── 4. Expose it (public tunnel, or local network) ────────────────────────
 echo ""
-echo "• opening a public tunnel with $TUNNEL — the https URL it prints is the"
-echo "  one you share. Press Ctrl-C here to stop everything."
-echo ""
-if [[ "$TUNNEL" == cloudflared ]]; then
-    exec cloudflared tunnel --url "http://localhost:$FRONTEND_PORT"
-else
-    exec ngrok http "$FRONTEND_PORT"
-fi
+case "$MODE" in
+    cloudflared)
+        echo "• opening a public tunnel with cloudflared — share the https URL it"
+        echo "  prints below. Ctrl-C to stop everything."
+        echo ""
+        exec cloudflared tunnel --url "http://localhost:$FRONTEND_PORT" ;;
+    ngrok)
+        echo "• opening a public tunnel with ngrok — share the https URL it shows."
+        echo "  (first time only: ngrok config add-authtoken <token> — free at"
+        echo "   https://dashboard.ngrok.com). Ctrl-C to stop everything."
+        echo ""
+        exec ngrok http "$FRONTEND_PORT" ;;
+    lan)
+        LAN_IP="$("$PYTHON" -c 'import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+try:
+    s.connect(("8.8.8.8",80)); print(s.getsockname()[0])
+except Exception:
+    print("YOUR-IP")
+finally:
+    s.close()' 2>/dev/null || echo "YOUR-IP")"
+        echo "✓ Serving on your LOCAL NETWORK — no public tunnel."
+        echo "  People on the SAME Wi-Fi/LAN can open:"
+        echo ""
+        echo "        http://${LAN_IP}:${FRONTEND_PORT}"
+        echo ""
+        echo "  On this machine:  http://localhost:${FRONTEND_PORT}"
+        echo "  Can't reach it from another device? Your OS firewall may be"
+        echo "  blocking port ${FRONTEND_PORT} — allow it, or check you're on the"
+        echo "  same network (this won't work over the public internet)."
+        echo "  Ctrl-C to stop."
+        wait ;;
+esac
