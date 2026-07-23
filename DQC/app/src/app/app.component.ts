@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatComponent } from './chat/chat.component';
 import { DqcService } from './services/dqc.service';
-import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
+import { CheckCasesResponse, CheckRecord, TraceStep } from './models/dqc.model';
 
 @Component({
   selector: 'app-root',
@@ -110,6 +110,22 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
 
             <h4>Consulta SQL</h4>
             <pre class="sql-block">{{ selected.sql }}</pre>
+
+            @if (selectedCases?.trace && selectedCases!.trace!.length > 0) {
+              <h4>Árbol de decisión</h4>
+              <div class="trace-tree">
+                @for (step of selectedCases!.trace!; track $index) {
+                  <div class="trace-step" [class]="traceClass(step)">
+                    <span class="trace-node">{{ traceLabel(step) }}
+                      @if (traceOutcome(step)) {
+                        <span class="trace-badge">{{ traceOutcome(step) }}</span>
+                      }
+                    </span>
+                    @if (step.detalle) { <div class="trace-detail">{{ step.detalle }}</div> }
+                  </div>
+                }
+              </div>
+            }
 
             @if (selectedCases?.available) {
               <h4>
@@ -309,6 +325,19 @@ import { CheckCasesResponse, CheckRecord } from './models/dqc.model';
     .cases-table td { color: #aaa; }
     .cases-meta { font-size: 11px; color: #666; margin: 0 0 16px; }
     .cases-hint { font-size: 12px; color: #8a93c4; margin: 0 0 6px; }
+    .trace-tree { margin: 0 0 18px; padding-left: 6px; }
+    .trace-step { position: relative; padding: 0 0 14px 18px; border-left: 2px solid #2a2a3a; }
+    .trace-step:last-child { border-left-color: transparent; padding-bottom: 0; }
+    .trace-step::before { content: ''; position: absolute; left: -6px; top: 3px;
+      width: 10px; height: 10px; border-radius: 50%; background: #555; }
+    .trace-step.trace-good::before { background: #4caf50; }
+    .trace-step.trace-bad::before  { background: #e5534b; }
+    .trace-node { font-size: 12px; color: #cdd3f0; font-weight: 600; }
+    .trace-badge { margin-left: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      padding: 1px 6px; border-radius: 8px; background: #2a2a3a; color: #99a; }
+    .trace-step.trace-good .trace-badge { background: rgba(76,175,80,.18); color: #7dda80; }
+    .trace-step.trace-bad  .trace-badge { background: rgba(229,83,75,.18); color: #f0938c; }
+    .trace-detail { font-size: 11px; color: #888; margin-top: 3px; }
     .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   `],
 })
@@ -363,6 +392,32 @@ export class AppComponent implements OnInit, OnDestroy {
     if (sev === 'HIGH') return 'sev-high';
     if (sev === 'MED')  return 'sev-med';
     return 'sev-low';
+  }
+
+  // ── decision-trace rendering (detail-panel tree) ──────────────────────
+  traceLabel(s: TraceStep): string {
+    if (s.pregunta) return s.pregunta;
+    const map: Record<string, string> = {
+      suficiencia: '¿Información suficiente?',
+      generacion: (s.intento ?? 1) > 1 ? `Generar consulta (intento ${s.intento})` : 'Generar consulta SAS',
+      validacion: '¿Consulta válida?',
+      juicio: '¿El juez la aprueba?',
+      resultado: 'Resultado',
+    };
+    return map[s.paso] ?? s.paso;
+  }
+
+  traceOutcome(s: TraceStep): string {
+    if (s.paso === 'resultado') return s.estado ?? '';
+    if (s.resultado) return s.resultado === 'si' ? 'Sí' : 'No';
+    return '';
+  }
+
+  traceClass(s: TraceStep): string {
+    const e = (s.estado ?? s.resultado ?? '').toLowerCase();
+    if (['ambigua', 'error', 'no', 'fallo'].includes(e)) return 'trace-bad';
+    if (['completado', 'si', 'ok'].includes(e)) return 'trace-good';
+    return 'trace-neutral';
   }
 
   setStatus(c: CheckRecord, status: 'validated' | 'rejected'): void {

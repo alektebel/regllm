@@ -145,6 +145,8 @@ export interface CheckCasesResponse {
   precision?: number | null;
   recall?: number | null;
   esperados?: number | null;
+  /** persisted decision trace behind this DQC (drives the detail-panel tree) */
+  trace?: TraceStep[];
 }
 
 export interface EvaluateResponse {

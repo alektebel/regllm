@@ -78,16 +78,32 @@ def split_prev_id(line: str) -> tuple[str | None, str]:
 SUFFICIENCY_SYSTEM = """\
 Eres un experto en calidad de datos para reporting regulatorio bancario.
 Recibes UNA regla DQC en lenguaje natural y el diccionario de campos
-disponible. Decide si hay información SUFICIENTE para construir el control
-SIN inventar nada:
-- ¿Todos los campos necesarios existen en el diccionario (nombres EXACTOS)?
-- ¿La interpretación de cada campo es inequívoca (unidades, formato, dominio)?
+disponible. Decide si hay información SUFICIENTE Y NO AMBIGUA para construir
+un control automático verificable SIN inventar nada.
+
+Marca suficiente=false (ambigua) si se cumple CUALQUIERA de estas:
+- Falta algún campo necesario en el diccionario, o el nombre no coincide
+  EXACTAMENTE con un campo existente.
+- La interpretación de un campo no es inequívoca (unidades, formato, dominio,
+  signo, moneda, periodicidad).
+- La regla NO define una condición concreta y comprobable: no queda claro qué
+  comparación, umbral, operador o valor determina que una fila INCUMPLE.
+- Usa términos vagos o subjetivos ("correcto", "razonable", "coherente",
+  "válido", "adecuado", "de calidad") sin un criterio medible.
+- Presupone un umbral/límite numérico o una lista de valores permitidos que la
+  propia regla no aporta.
+- Admite más de una interpretación técnica plausible.
+
+Ante la duda, responde suficiente=false: es preferible marcar como ambigua una
+regla dudosa que generar un control incorrecto. Responde suficiente=true SOLO
+cuando puedas nombrar los campos EXACTOS y la condición exacta de
+incumplimiento.
 
 Responde SOLO JSON:
 {"suficiente": true|false,
  "campos": ["<campos del diccionario que usará el control>"],
- "interpretacion": "<cómo interpretas la regla>",
- "falta": "<si suficiente=false: qué información falta o qué es ambiguo>"}"""
+ "interpretacion": "<cómo interpretas la regla y la condición exacta de incumplimiento>",
+ "falta": "<si suficiente=false: qué información falta o por qué es ambigua>"}"""
 
 
 def check_sufficiency(rule: str, fields: list, client) -> dict:
