@@ -1,0 +1,7 @@
+DQC_PD_001: La PD estimada debe estar entre 0 y 1
+DQC_EAD_002: El EAD total no puede ser negativo
+La LGD estimada debe estar entre 0 y 1
+DQC_ECL_003: El ECL debe ser igual a PD * LGD * EAD
+El STAGE_IFRS9 debe pertenecer al dominio 1, 2 o 3
+Toda operación debe tener el colateral correctamente informado
+El importe en divisa debe estar convertido a EUR

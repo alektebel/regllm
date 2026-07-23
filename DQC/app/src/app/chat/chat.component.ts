@@ -68,10 +68,20 @@ export class ChatComponent implements OnInit, OnChanges {
         return null;
       }
     };
+    const fetchText = async (path: string): Promise<string | null> => {
+      try {
+        const resp = await fetch(path);
+        if (!resp.ok) return null;
+        return (await resp.text()).trim() || null;
+      } catch {
+        return null;
+      }
+    };
 
-    const [dict, casos] = await Promise.all([
+    const [dict, casos, reglas] = await Promise.all([
       fetchAsset('assets/demo/diccionario_demo.xlsx', 'diccionario_demo.xlsx'),
       fetchAsset('assets/demo/casos_demo.xlsx', 'casos_demo.xlsx'),
+      fetchText('assets/demo/reglas_demo.txt'),
     ]);
     this.zone.run(() => {
       if (this.dictionaryFile || this.dataFile) return;  // user was faster
@@ -83,9 +93,11 @@ export class ChatComponent implements OnInit, OnChanges {
         this.dataFile = casos;
         this.dataFileName = casos.name;
       }
+      if (reglas && !this.instructions) this.instructions = reglas;
       const loaded: string[] = [];
       if (dict) loaded.push(`diccionario: ${dict.name}`);
       if (casos) loaded.push(`casos: ${casos.name}`);
+      if (reglas) loaded.push('reglas de ejemplo');
       if (loaded.length) {
         this.messages.push({
           role: 'assistant',

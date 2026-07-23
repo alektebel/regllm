@@ -91,8 +91,12 @@ if __name__ == "__main__":
     FIXTURES.mkdir(exist_ok=True)
     paths = [diccionario(), casos(), diccionario_ambiguo()]
     ASSETS.mkdir(parents=True, exist_ok=True)
-    for p in paths[:2]:                      # the two the UI auto-loads
+    for p in paths[:2]:                      # the two Excels the UI auto-loads
         shutil.copy(p, ASSETS / p.name)
+    # the rules the UI auto-loads too (a hand-written .txt, not generated)
+    reglas = HERE / "reglas_demo.txt"
+    if reglas.exists():
+        shutil.copy(reglas, ASSETS / reglas.name)
     for p in paths:
         print("wrote", p)
     print("assets refreshed in", ASSETS)
