@@ -390,6 +390,27 @@ def _coerce(value: Any) -> Any:
     return str(value)
 
 
+def _dedupe_headers(headers: list[str], reserved: str) -> list[str]:
+    """Make column names non-empty and unique. SQLite is case-insensitive and
+    rejects duplicate or blank column names, so an Excel with an empty trailing
+    column (two blank headers) or two columns differing only in case fails with
+    'duplicate column name'. Real names are kept; only blanks and collisions are
+    renamed (blank → columna_N, collision → name_2), so the generated SQL still
+    matches its intended columns. Row order/length is preserved."""
+    seen = {reserved.lower()}
+    out: list[str] = []
+    for i, h in enumerate(headers, start=1):
+        name = (h or "").strip() or f"columna_{i}"
+        base, key, n = name, name.lower(), 1
+        while key in seen:
+            n += 1
+            name = f"{base}_{n}"
+            key = name.lower()
+        seen.add(key)
+        out.append(name)
+    return out
+
+
 def load_cases(data: bytes, table_name: str) -> CasesContext:
     """Parse the cases Excel (first sheet; first non-empty row = headers;
     optional DQC_ID label column) into a queryable context."""
@@ -412,8 +433,10 @@ def load_cases(data: bytes, table_name: str) -> CasesContext:
     wb.close()
     if not headers:
         raise ValueError("El Excel de datos no tiene cabeceras")
+    # find the label column on the ORIGINAL names, then sanitise for SQLite
     label_idx = next((i for i, h in enumerate(headers)
                       if h.lower() in _LABEL_HEADERS), None)
+    headers = _dedupe_headers(headers, _CASE_COL)
     return CasesContext(headers, rows, label_idx, table_name)
 
 
