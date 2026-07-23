@@ -357,13 +357,37 @@ def _require_xlsx(upload: UploadFile, what: str = "dictionary") -> None:
 
 
 def _workbook_read_error(filename: str | None, exc: Exception) -> str:
-    """User-facing detail for a workbook openpyxl could not load."""
-    name = (filename or "").lower()
-    if name.endswith(".xls"):
-        return ("El formato .xls antiguo no está soportado. Abre el fichero "
-                "en Excel, guárdalo como .xlsx y vuelve a subirlo.")
-    return (f"No se pudo leer el Excel ({exc.__class__.__name__}). Comprueba "
-            "que es un .xlsx válido y que no está protegido con contraseña.")
+    """Verbose, user-facing detail for a workbook openpyxl could not load:
+    a symptom-specific hint plus the technical reason. The full error (with
+    traceback) is also logged server-side for `aws logs tail` / the console."""
+    name = filename or "sin nombre"
+    lower = name.lower()
+    cls = exc.__class__.__name__
+    msg = str(exc).strip() or "(sin mensaje)"
+    mlow = msg.lower()
+    logger.warning("workbook read failed for %r: %s: %s", name, cls, msg,
+                   exc_info=True)
+
+    if lower.endswith(".xls"):
+        hint = ("Es un .xls antiguo (formato no soportado). Ábrelo en Excel o "
+                "LibreOffice y usa «Guardar como → Libro de Excel (.xlsx)».")
+    elif cls == "BadZipFile" or "not a zip" in mlow or "file is not" in mlow:
+        hint = ("El fichero no es un .xlsx real por dentro (un .xlsx es un ZIP). "
+                "Suele pasar con un .csv, un .xls, o un export de Google Sheets / "
+                "Apple Numbers renombrado a .xlsx. Ábrelo y usa «Guardar como → "
+                "Libro de Excel (.xlsx)».")
+    elif any(k in mlow for k in ("password", "encrypt", "protected", "cifr")):
+        hint = ("Parece protegido con contraseña o cifrado. Quita la protección "
+                "(Archivo → Información → Quitar contraseña) y guárdalo de nuevo.")
+    elif "support" in mlow and ("xls" in mlow or "format" in mlow):
+        hint = ("Formato no soportado. Guárdalo como «Libro de Excel (.xlsx)» "
+                "(no .xls, .csv ni .ods).")
+    else:
+        hint = ("Comprueba que es un .xlsx válido, sin contraseña y no corrupto; "
+                "si dudas, vuelve a exportarlo desde el origen como .xlsx.")
+
+    return (f"No se pudo leer el Excel «{name}»: {hint} "
+            f"[detalle técnico → {cls}: {msg}]")
 
 
 def _parse_mapping_form(column_mapping: str | None) -> dict | None:
