@@ -63,9 +63,17 @@ These are all serverless/edge permissions — **none are `ec2:*` / VPC**:
 - `cloudfront:*` (distributions, functions, origin-access-controls)
 - `bedrock:InvokeModel*`
 
-If your account is locked down enough that even these are denied, fall back
-to **running locally** (`./scripts/run_local.sh`) — that needs no AWS
-resource-creation permissions at all, only Bedrock (or `REGLLM_LLM=ollama`).
+If your account is locked down enough that even these are denied (can't
+create a VPC / API Gateway / Function URL), you can't host this on AWS at
+all — use one of these instead, neither of which creates AWS infrastructure:
+
+- **Share without deploying:** `./scripts/share_demo.sh` runs the app on
+  your machine and exposes **one public https URL via a tunnel**
+  (cloudflared/ngrok). Only needs Bedrock InvokeModel — no resource
+  creation. The URL lives while your machine is running. Best for a live
+  demo to other people.
+- **Just run it yourself:** `./scripts/run_local.sh` (no public URL, no AWS
+  resource creation; Bedrock, or `REGLLM_LLM=ollama`/`stub`).
 
 ## Configuration
 
