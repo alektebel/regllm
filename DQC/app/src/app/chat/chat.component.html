@@ -70,6 +70,15 @@
                     @if (p.estado === 'ambigua') {
                       <span class="plan-falta">Ambigua — {{ p.falta }}</span>
                     }
+                    @if (p.estado === 'error') {
+                      <span class="plan-error">No se generó — {{ p.error || 'la generación falló tras varios intentos' }}</span>
+                    }
+                    @if (p.estado === 'ambigua' || p.estado === 'error') {
+                      <button class="plan-retry"
+                              (click)="retryItem(p); $event.stopPropagation()">
+                        ↻ reintentar esta regla
+                      </button>
+                    }
                     @if (p.estado === 'completado' && p.dqcs && p.dqcs.length > 0) {
                       <span class="plan-count">
                         ✓ DQC validado

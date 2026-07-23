@@ -443,6 +443,12 @@
 .plan-accion { font-size: 11px; color: #777; }
 .plan-count  { font-size: 11px; color: #2ecc71; }
 .plan-error  { font-size: 11px; color: #e74c3c; }
+.plan-retry {
+  display: inline-block; margin-top: 6px; align-self: flex-start;
+  font-size: 11px; background: none; border: 1px solid #6c7bbf;
+  color: #9aa6e0; border-radius: 6px; padding: 2px 9px; cursor: pointer;
+}
+.plan-retry:hover { background: rgba(108, 123, 191, 0.15); }
 .plan-fase   { font-size: 11px; color: #6c7bbf; font-style: italic; }
 .plan-falta  { font-size: 11px; color: #f39c12; }
 .plan-hint   { font-size: 11px; color: #8a93c4; margin: 4px 0 2px; display: block; }

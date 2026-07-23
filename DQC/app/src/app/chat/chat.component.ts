@@ -362,6 +362,19 @@ export class ChatComponent implements OnInit, OnChanges {
     return 'Filas que la consulta marca como incumplimiento de la regla.';
   }
 
+  /** Load a failed/ambiguous rule back into the input so it can be clarified
+   * and regenerated. An ambiguous rule usually needs editing to succeed, so
+   * we prefill rather than blindly re-running the same text. */
+  retryItem(p: PlanItem): void {
+    this.instructions = p.regla;
+    this.messages.push({
+      role: 'assistant',
+      content: p.estado === 'ambigua'
+        ? 'Regla cargada en el cuadro de texto. Aclárala (añade el umbral, los campos o el criterio que falta) y pulsa «Generar» para reintentar.'
+        : 'Regla cargada en el cuadro de texto. Revísala o reformúlala y pulsa «Generar» para reintentar.',
+    });
+  }
+
   faseLabel(p: PlanItem): string {
     const labels: Record<string, string> = {
       suficiencia: 'verificando información…',
