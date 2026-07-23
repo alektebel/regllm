@@ -88,12 +88,18 @@ DIST="$REPO_ROOT/DQC/app/dist/dqc-app/browser"
 echo "• packaging Lambda deployment zip…"
 PKG="$WORK/pkg"
 mkdir -p "$PKG"
+# boto3/botocore already ship inside the Lambda Python runtime, so bundling
+# them just bloats the zip (~70 MB) and makes pip's resolver report conflicts
+# against the host's awscli (the "botocore x.y.z is incompatible" message you
+# see in CloudShell). Drop them from the package and use the runtime's copy.
+grep -viE '^[[:space:]]*(boto3|botocore)([<>=!~[:space:]]|$)' \
+    "$REPO_ROOT/requirements-dqc.txt" > "$WORK/reqs.txt"
 # Cross-platform-safe install: fetch manylinux/x86_64 wheels for py3.11 so a
 # build from macOS/ARM still produces Linux-compatible binaries (pydantic-core).
 pip install -q \
     --platform manylinux2014_x86_64 --implementation cp --python-version 3.11 \
     --only-binary=:all: --upgrade \
-    -r "$REPO_ROOT/requirements-dqc.txt" -t "$PKG"
+    -r "$WORK/reqs.txt" -t "$PKG"
 cp "$REPO_ROOT/DQC/lambda/handler.py" "$PKG/"
 cp "$REPO_ROOT/config.yaml" "$PKG/"
 for d in api src training data; do
