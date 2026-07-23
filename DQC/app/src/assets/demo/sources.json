@@ -1,0 +1,6 @@
+{
+  "_comment": "Override where the default dictionary / cases / rules load from. Put a URL (e.g. an S3 object, a CDN, any web server) to load from there instead of the bundled file, or leave it null to use the bundled file under assets/demo/. URL query params ?dict= ?cases= ?rules= take precedence over these. Remote files must be reachable by the browser: public or presigned, and served with CORS headers allowing this app's origin (localhost:4200, your LAN IP, or the tunnel domain).",
+  "dictionary": null,
+  "cases": null,
+  "rules": null
+}

@@ -52,6 +52,32 @@ export class ChatComponent implements OnInit, OnChanges {
     });
   }
 
+  /** Resolve WHERE the default dictionary/cases/rules load from. Precedence:
+   *   1. URL query params  ?dict=<url>&cases=<url>&rules=<url>
+   *   2. assets/demo/sources.json  (edit to point at your own hosted files,
+   *      e.g. S3 objects — no rebuild needed)
+   *   3. the files bundled under assets/demo/  (fallback)
+   * Remote URLs must be reachable by the browser (public/presigned + CORS
+   * allowing this app's origin). */
+  private async resolveDemoSources(): Promise<{ dictionary: string; cases: string; rules: string }> {
+    const bundled = {
+      dictionary: 'assets/demo/diccionario_demo.xlsx',
+      cases: 'assets/demo/casos_demo.xlsx',
+      rules: 'assets/demo/reglas_demo.txt',
+    };
+    let cfg: Record<string, string | null> = {};
+    try {
+      const r = await fetch('assets/demo/sources.json', { cache: 'no-store' });
+      if (r.ok) cfg = await r.json();
+    } catch { /* no config file → use bundled */ }
+    const q = new URLSearchParams(window.location.search);
+    return {
+      dictionary: q.get('dict')  || cfg['dictionary'] || bundled.dictionary,
+      cases:      q.get('cases') || cfg['cases']      || bundled.cases,
+      rules:      q.get('rules') || cfg['rules']      || bundled.rules,
+    };
+  }
+
   /** Preload the bundled demo dictionary + cases Excel so the app starts
    * ready to generate. Silent no-op when the assets are absent (e.g. a
    * deployment that strips them) or the user already picked files. */
@@ -78,10 +104,11 @@ export class ChatComponent implements OnInit, OnChanges {
       }
     };
 
+    const src = await this.resolveDemoSources();
     const [dict, casos, reglas] = await Promise.all([
-      fetchAsset('assets/demo/diccionario_demo.xlsx', 'diccionario_demo.xlsx'),
-      fetchAsset('assets/demo/casos_demo.xlsx', 'casos_demo.xlsx'),
-      fetchText('assets/demo/reglas_demo.txt'),
+      fetchAsset(src.dictionary, 'diccionario_demo.xlsx'),
+      fetchAsset(src.cases, 'casos_demo.xlsx'),
+      fetchText(src.rules),
     ]);
     this.zone.run(() => {
       if (this.dictionaryFile || this.dataFile) return;  // user was faster
