@@ -88,11 +88,13 @@ DIST="$REPO_ROOT/DQC/app/dist/dqc-app/browser"
 echo "• packaging Lambda deployment zip…"
 PKG="$WORK/pkg"
 mkdir -p "$PKG"
-# boto3/botocore already ship inside the Lambda Python runtime, so bundling
-# them just bloats the zip (~70 MB) and makes pip's resolver report conflicts
-# against the host's awscli (the "botocore x.y.z is incompatible" message you
-# see in CloudShell). Drop them from the package and use the runtime's copy.
-grep -viE '^[[:space:]]*(boto3|botocore)([<>=!~[:space:]]|$)' \
+# Trim packages the Lambda doesn't need at runtime — they only bloat the zip
+# and make pip's resolver report conflicts against the host's preinstalled
+# tools (the "botocore/click is incompatible" messages in CloudShell):
+#   - boto3/botocore : already provided by the Lambda Python runtime
+#   - uvicorn        : the local dev server; Mangum is the ASGI adapter here
+#     (drops click, uvloop, httptools, websockets, watchfiles too)
+grep -viE '^[[:space:]]*(boto3|botocore|uvicorn)([^A-Za-z0-9_-]|$)' \
     "$REPO_ROOT/requirements-dqc.txt" > "$WORK/reqs.txt"
 # Cross-platform-safe install: fetch manylinux/x86_64 wheels for py3.11 so a
 # build from macOS/ARM still produces Linux-compatible binaries (pydantic-core).
@@ -123,26 +125,21 @@ aws s3 cp "$WORK/api.zip" "s3://$SITE_BUCKET/_deploy/api.zip" --only-show-errors
 
 # ── 4. IAM execution role (Lambda + Bedrock) ──────────────────────────────
 echo "• ensuring IAM role $ROLE…"
+# Policy documents are passed INLINE (not via file://) so the deploy never
+# depends on a temp file being present/readable — the "unable to load
+# paramfile" class of errors can't happen.
+TRUST_DOC='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
 if ! aws iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
-    cat >"$WORK/trust.json" <<'JSON'
-{"Version":"2012-10-17","Statement":[{"Effect":"Allow",
-  "Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}
-JSON
     aws iam create-role --role-name "$ROLE" \
-        --assume-role-policy-document "file://$WORK/trust.json" >/dev/null
+        --assume-role-policy-document "$TRUST_DOC" >/dev/null
     aws iam attach-role-policy --role-name "$ROLE" \
         --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole >/dev/null
     echo "  ↳ waiting for role to propagate…"
     sleep 12
 fi
-cat >"$WORK/bedrock.json" <<JSON
-{"Version":"2012-10-17","Statement":[{"Effect":"Allow",
-  "Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream"],
-  "Resource":["arn:aws:bedrock:${AWS_REGION}:${ACCOUNT}:inference-profile/${BEDROCK_MODEL_ID}",
-              "arn:aws:bedrock:*::foundation-model/*"]}]}
-JSON
+BEDROCK_DOC="{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"bedrock:InvokeModel\",\"bedrock:InvokeModelWithResponseStream\"],\"Resource\":[\"arn:aws:bedrock:${AWS_REGION}:${ACCOUNT}:inference-profile/${BEDROCK_MODEL_ID}\",\"arn:aws:bedrock:*::foundation-model/*\"]}]}"
 aws iam put-role-policy --role-name "$ROLE" --policy-name bedrock-invoke \
-    --policy-document "file://$WORK/bedrock.json" >/dev/null
+    --policy-document "$BEDROCK_DOC" >/dev/null
 ROLE_ARN="$(aws iam get-role --role-name "$ROLE" --query 'Role.Arn' --output text)"
 
 # ── 5. Lambda function ────────────────────────────────────────────────────
@@ -219,10 +216,11 @@ if [[ -z "$DIST_ID" || "$DIST_ID" == "None" ]]; then
     S3_DOMAIN="${SITE_BUCKET}.s3.${AWS_REGION}.amazonaws.com"
     CALLER_REF="${PROJECT}-$(date +%s)"
     # Managed policy IDs: CachingOptimized / CachingDisabled / AllViewerExceptHostHeader
-    python3 - "$WORK/dist.json" \
+    # Build the config with Python (valid JSON) and pass it INLINE (no file://).
+    DIST_CONFIG="$(python3 - \
         "$S3_DOMAIN" "$OAC_ID" "$API_DOMAIN" "$CF_FUNC_ARN" "$CF_COMMENT" "$CALLER_REF" <<'PY'
 import json, sys
-out, s3, oac, api, fn, comment, ref = sys.argv[1:8]
+s3, oac, api, fn, comment, ref = sys.argv[1:7]
 cfg = {
   "CallerReference": ref,
   "Comment": comment,
@@ -260,10 +258,11 @@ cfg = {
     {"ErrorCode": 404, "ResponseCode": "200", "ResponsePagePath": "/index.html",
      "ErrorCachingMinTTL": 10}]},
 }
-json.dump({"DistributionConfig": cfg}, open(out, "w"))
+print(json.dumps({"DistributionConfig": cfg}))
 PY
+)"
     DIST_ID="$(aws cloudfront create-distribution \
-        --distribution-config "file://$WORK/dist.json" \
+        --distribution-config "$DIST_CONFIG" \
         --query 'Distribution.Id' --output text)"
 else
     echo "• reusing CloudFront distribution $DIST_ID"
@@ -272,13 +271,8 @@ DIST_DOMAIN="$(aws cloudfront get-distribution --id "$DIST_ID" \
     --query 'Distribution.DomainName' --output text)"
 
 # ── 9. Bucket policy: allow this distribution (OAC) to read the site ──────
-cat >"$WORK/bucket.json" <<JSON
-{"Version":"2012-10-17","Statement":[{"Sid":"AllowCloudFrontOAC",
-  "Effect":"Allow","Principal":{"Service":"cloudfront.amazonaws.com"},
-  "Action":"s3:GetObject","Resource":"arn:aws:s3:::${SITE_BUCKET}/*",
-  "Condition":{"StringEquals":{"AWS:SourceArn":"arn:aws:cloudfront::${ACCOUNT}:distribution/${DIST_ID}"}}}]}
-JSON
-aws s3api put-bucket-policy --bucket "$SITE_BUCKET" --policy "file://$WORK/bucket.json"
+BUCKET_DOC="{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowCloudFrontOAC\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"cloudfront.amazonaws.com\"},\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::${SITE_BUCKET}/*\",\"Condition\":{\"StringEquals\":{\"AWS:SourceArn\":\"arn:aws:cloudfront::${ACCOUNT}:distribution/${DIST_ID}\"}}}]}"
+aws s3api put-bucket-policy --bucket "$SITE_BUCKET" --policy "$BUCKET_DOC"
 
 # ── 10. Upload the site + invalidate cache ────────────────────────────────
 echo "• uploading frontend to S3…"
