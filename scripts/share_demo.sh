@@ -14,7 +14,8 @@
 #   ./scripts/share_demo.sh
 #
 # Prerequisites:
-#   - python3 (+ the DQC deps: pip install -r requirements-dqc.txt uvicorn)
+#   - python3 (+ the DQC deps — install into the SAME interpreter:
+#       python3 -m pip install -r requirements-dqc.txt uvicorn)
 #   - node + npm (to build the frontend)
 #   - a tunnel tool: cloudflared (preferred, no account) or ngrok
 #       macOS:  brew install cloudflared
@@ -33,14 +34,25 @@ export REGLLM_ROUTERS="${REGLLM_ROUTERS:-dqc}"
 export CORS_ORIGINS="${CORS_ORIGINS:-*}"
 FRONTEND_PORT="${FRONTEND_PORT:-4200}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
+# Interpreter to run the backend with. Override if `python3` isn't the one you
+# pip-installed into, e.g.  PYTHON=python3.11  or  PYTHON=./venv/bin/python
+PYTHON="${PYTHON:-python3}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────
-command -v python3 >/dev/null || { echo "✗ python3 required"; exit 1; }
-command -v npm     >/dev/null || { echo "✗ node/npm required (to build the frontend)"; exit 1; }
-python3 -c "import uvicorn" 2>/dev/null || {
-    echo "✗ backend deps missing. Install them first:"
-    echo "    pip install -r requirements-dqc.txt uvicorn"; exit 1; }
+command -v "$PYTHON" >/dev/null || { echo "✗ '$PYTHON' not found (set PYTHON=...)"; exit 1; }
+command -v npm       >/dev/null || { echo "✗ node/npm required (to build the frontend)"; exit 1; }
+if ! "$PYTHON" -c "import uvicorn, fastapi, openpyxl" 2>/dev/null; then
+    WHICH="$("$PYTHON" -c 'import sys; print(sys.executable)' 2>/dev/null || echo "$PYTHON")"
+    echo "✗ backend deps aren't importable by the interpreter this script uses:"
+    echo "    $WHICH"
+    echo "  You likely pip-installed into a DIFFERENT Python. Install into THIS one:"
+    echo "    $PYTHON -m pip install -r requirements-dqc.txt uvicorn"
+    echo "  …or point the script at the Python that has them:"
+    echo "    PYTHON=/path/to/your/python ./scripts/share_demo.sh"
+    echo "    (if you used a venv, 'source venv/bin/activate' first)"
+    exit 1
+fi
 
 TUNNEL=""
 if   command -v cloudflared >/dev/null; then TUNNEL=cloudflared
@@ -76,13 +88,13 @@ DIST="$ROOT/DQC/app/dist/dqc-app/browser"
 
 # ── 2. Backend (FastAPI on localhost) ─────────────────────────────────────
 echo "• backend → http://localhost:$BACKEND_PORT"
-( cd "$ROOT" && exec python3 -m uvicorn api.main:app --host 127.0.0.1 --port "$BACKEND_PORT" ) &
+( cd "$ROOT" && exec "$PYTHON" -m uvicorn api.main:app --host 127.0.0.1 --port "$BACKEND_PORT" ) &
 PIDS+=($!)
 
 # ── 3. Static + /api proxy server (what the tunnel points at) ─────────────
 echo "• demo server → http://localhost:$FRONTEND_PORT  (serves UI + proxies /api)"
 DIST_DIR="$DIST" BACKEND="http://127.0.0.1:$BACKEND_PORT" PORT="$FRONTEND_PORT" \
-    python3 "$ROOT/scripts/_demo_proxy.py" &
+    "$PYTHON" "$ROOT/scripts/_demo_proxy.py" &
 PIDS+=($!)
 
 # Wait for the demo server to answer before opening the tunnel
