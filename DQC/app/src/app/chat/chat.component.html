@@ -336,12 +336,16 @@ Toda hipoteca debe tener COLATERAL_TIPO = HIPOTECA"
           Evaluar Excel de datos
         </button>
       }
-      <button
-        class="generate-btn"
-        (click)="generate()"
-        [disabled]="isLoading || isInspecting || (!instructions.trim() && !testsFile) || !dictionaryFile">
-        Generar DQCs
-      </button>
+      @if (isLoading) {
+        <button class="stop-btn" (click)="stopGeneration()">■ Detener</button>
+      } @else {
+        <button
+          class="generate-btn"
+          (click)="generate()"
+          [disabled]="isInspecting || (!instructions.trim() && !testsFile) || !dictionaryFile">
+          Generar DQCs
+        </button>
+      }
     </div>
   </div>
 </div>

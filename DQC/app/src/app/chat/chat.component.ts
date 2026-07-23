@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, NgZone, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { DqcService } from '../services/dqc.service';
 import { ChatMessage, InspectResponse, PlanItem, StreamEvent, TreeNode } from '../models/dqc.model';
 
@@ -25,6 +26,7 @@ export class ChatComponent implements OnInit, OnChanges {
   dataFile: File | null = null;
   dataFileName = '';
   isLoading = false;
+  private genSub?: Subscription;
   isInspecting = false;
 
   // experimental anti-hallucination features, off by default
@@ -249,7 +251,7 @@ export class ChatComponent implements OnInit, OnChanges {
     // The plan renders as a live checklist that ticks off item by item.
     this.activePlan = null;
 
-    this.dqcService
+    this.genSub = this.dqcService
       .generateStream(this.dictionaryFile, text, this.tableName,
                       this.selectedSheet ?? undefined, this.columnMapping ?? undefined,
                       this.testsFile ?? undefined, this.dataFile ?? undefined,
@@ -276,8 +278,24 @@ export class ChatComponent implements OnInit, OnChanges {
           }
           this.isLoading = false;
         }),
-        complete: () => this.zone.run(() => { this.isLoading = false; }),
+        complete: () => this.zone.run(() => { this.isLoading = false; this.genSub = undefined; }),
       });
+  }
+
+  /** Cancel an in-flight generation — unsubscribing aborts the streaming
+   * request (the observable's teardown calls AbortController.abort()). */
+  stopGeneration(): void {
+    if (!this.isLoading) return;
+    this.genSub?.unsubscribe();
+    this.genSub = undefined;
+    this.activePlan?.forEach((p) => {
+      if (p.estado === 'en_curso') {
+        p.estado = 'error';
+        p.error = 'Detenido por el usuario';
+      }
+    });
+    this.isLoading = false;
+    this.messages.push({ role: 'assistant', content: 'Generación detenida.' });
   }
 
   /** Run the already-stored DQCs against the uploaded cases Excel (no LLM). */

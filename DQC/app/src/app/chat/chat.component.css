@@ -297,6 +297,18 @@
 }
 .generate-btn:hover:not(:disabled) { background: #5a69a8; }
 .generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.stop-btn {
+  align-self: flex-end;
+  padding: 10px 24px;
+  background: #c0392b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.stop-btn:hover { background: #a93226; }
 
 /* ── sheet-selection option buttons ── */
 .sheet-options {
