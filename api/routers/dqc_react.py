@@ -440,12 +440,36 @@ def load_cases(data: bytes, table_name: str) -> CasesContext:
     return CasesContext(headers, rows, label_idx, table_name)
 
 
+def _sas_to_sqlite(q: str) -> str:
+    """Best-effort rewrite of common SAS PROC SQL idioms to their SQLite
+    equivalents, so a query that is valid SAS still runs when we validate it
+    against the cases Excel (loaded into SQLite). Conservative — only
+    well-known, unambiguous substitutions; the stored/displayed query stays
+    SAS, this only affects the in-memory validation run."""
+    # SAS not-equal operators → ANSI
+    q = q.replace("^=", "<>").replace("~=", "<>")
+    # comparison against the SAS numeric-missing dot:  x = .  /  x <> .
+    q = re.sub(r"(<>|=)\s*\.(?!\d)",
+               lambda m: " IS NOT NULL" if m.group(1) == "<>" else " IS NULL", q)
+    # MISSING(expr) → (expr IS NULL)   (one level of parentheses)
+    q = re.sub(r"(?i)\bMISSING\s*\(([^()]*)\)", r"(\1 IS NULL)", q)
+    # CALCULATED alias reference (SAS-only keyword; SQLite doesn't need it)
+    q = re.sub(r"(?i)\bCALCULATED\s+", "", q)
+    # function-name differences
+    q = re.sub(r"(?i)\bUPCASE\s*\(", "UPPER(", q)
+    q = re.sub(r"(?i)\bLOWCASE\s*\(", "LOWER(", q)
+    q = re.sub(r"(?i)\bSTRIP\s*\(", "TRIM(", q)
+    q = re.sub(r"(?i)\bINDEX\s*\(", "INSTR(", q)
+    return q
+
+
 def run_query(ctx: CasesContext, sql: str, table_name: str) -> dict:
     """Execute a generated query against the cases; returns
     {ok, error?, columnas, ejemplos, n_casos, casos (set of _CASO_ ids)}."""
     q = sql.strip().rstrip(";")
     # tolerate PROC SQL wrappers the model might add despite instructions
     q = re.sub(r"(?im)^\s*(proc\s+sql\s*;|quit\s*;?)\s*$", "", q).strip()
+    q = _sas_to_sqlite(q)
     q = re.sub(re.escape(table_name), f'"{ctx.table}"', q, flags=re.I)
     # a bare lib.table nobody declared → last part only
     q = re.sub(r"\b[A-Za-z_]\w*\." + re.escape(ctx.table) + r"\b",
