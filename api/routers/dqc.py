@@ -12,129 +12,47 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, File, Form, UploadFile
-from pydantic import BaseModel
 
 from src.knowledge import get_client, get_inspect_client
 from training.dq import checks_db
 
 from . import dqc_dictionary as dict_ai
 from . import dqc_react as react
+from . import dqc_store as store
+from .dqc_models import (
+    CheckRecord,
+    DashboardResponse,
+    DQCItem,
+    EvaluateResponse,
+    EvalResult,
+    GenerateResponse,
+    InspectResponse,
+    SheetSummary,
+    StatusUpdate,
+)
+from .dqc_uploads import (
+    parse_mapping_form as _parse_mapping_form,
+    require_xlsx as _require_xlsx,
+    split_instructions as _split_instructions,
+    workbook_read_error as _workbook_read_error,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dqc", tags=["dqc"])
 
-
-# ── Models ────────────────────────────────────────────────────────────────────
-
-class DQCItem(BaseModel):
-    dqc_id: str = ""
-    prev_id: str = ""              # previous/official id given by the user
-    variable: str = ""
-    descripcion: str = ""
-    tipo: str = ""
-    severidad: str = ""
-    regla_sql: str = ""
-    condicion_error: str = ""
-    campos_entrada: list[str] = []
-    referencia_regulatoria: str = ""
-    umbral: str = ""
-    periodicidad: str = ""
-    justificacion: str = ""
-
-
-class GenerateResponse(BaseModel):
-    dqcs: list[DQCItem]
-    dictionary_fields: int
-    context_summary: str = ""
-    sheet_used: str = ""
-    mapping_source: str = ""       # llm | heuristic | user
-    formats_inferred: int = 0
-    agents_used: int = 0           # stateless LLM calls spent on this run
-
-
-class SheetSummary(BaseModel):
-    name: str
-    rows: int
-    headers: list[str]
-    score: int
-
-
-class InspectResponse(BaseModel):
-    sheets: list[SheetSummary]
-    proposed_sheet: str | None = None
-    column_mapping: dict[str, str | None] = {}
-    confidence: float = 0.0
-    source: str = "heuristic"      # llm | heuristic
-    question: str | None = None    # non-null ⇒ the UI should ask the user
-    options: list[str] = []
-
-
-class CheckRecord(BaseModel):
-    check_id: str
-    rule_id: str | None = None
-    name: str
-    description: str = ""
-    severity: str
-    category: str
-    sql: str | None = None
-    visible: bool = True
-    status: str = "pending"
-    reward: float | None = None
-    motivo: str | None = None
-    variable: str | None = None
-    tipo: str | None = None
-    condicion_error: str | None = None
-    campos_entrada: list[str] = []
-    referencia_regulatoria: str | None = None
-    umbral: str | None = None
-    periodicidad: str | None = None
-    justificacion: str | None = None
-    created_at: str | None = None
-    validated_at: str | None = None
-
-
-class EvalResult(BaseModel):
-    check_id: str
-    name: str
-    prev_id: str | None = None
-    descripcion: str = ""
-    condicion_error: str = ""      # human explanation of why a row is flagged
-    ok: bool
-    error: str = ""
-    n_casos: int = 0
-    columnas: list[str] = []
-    ejemplos: list[dict] = []
-    precision: float | None = None
-    recall: float | None = None
-    esperados: int | None = None
-
-
-class EvaluateResponse(BaseModel):
-    casos: int
-    resultados: list[EvalResult]
-    evaluados: int                 # queries that executed successfully
-    fallidos: int                  # queries that errored on the cases
-    precision_media: float | None = None
-    recall_medio: float | None = None
-
-
-class StatusUpdate(BaseModel):
-    status: str  # "validated" | "rejected"
-
-
-class DashboardResponse(BaseModel):
-    ready: bool
-    pending_visible: int
-    validated: int
-    rejected: int
-    oculto: int
-    sql: str | None = None
-    checks: list[CheckRecord] = []
+# Persistence lives in dqc_store; these aliases keep the call sites below
+# (and their tests) reading the same as before the split.
+_db = store.connect
+_persist_dqc_items = store.persist_dqc_items
+_save_check_cases = store.save_check_cases
+_SEV_MAP = store._SEV_MAP
+_CAT_MAP = store._CAT_MAP
+_EVAL_CASES_SCHEMA = store._EVAL_CASES_SCHEMA
+_CASE_KEYS = store._CASE_KEYS
 
 
 # ── Prompt ──────────────────────────────────────────────────────────────────
@@ -186,19 +104,6 @@ Responde SOLO con JSON:
 No omitas ninguna regla. Mantén el orden recibido."""
 
 
-_SEV_MAP = {"bloqueante": "HIGH", "advertencia": "MED", "informativo": "LOW"}
-_CAT_MAP = {
-    "formula": "formula", "consistencia": "consistencia",
-    "referencial": "referencial", "rango": "rango", "completitud": "completitud",
-}
-
-
-# ── Helpers ─────────────────────────────────────────────────────────────────
-
-def _db() -> sqlite3.Connection:
-    return checks_db.connect()
-
-
 def _extract_dqc_list(result: Any) -> list[dict]:
     if not isinstance(result, dict):
         return []
@@ -226,84 +131,6 @@ def _parse_dqc_items(result: Any) -> list[DQCItem]:
             cleaned[k] = v
         items.append(DQCItem(**cleaned))
     return items
-
-
-def _persist_dqc_items(items: list[DQCItem]) -> list[tuple[DQCItem, str]]:
-    """Insert items; returns (item, check_id) pairs for the ones stored."""
-    ids: list[tuple[DQCItem, str]] = []
-    conn = _db()
-    try:
-        for it in items:
-            sev = _SEV_MAP.get(it.severidad, it.severidad or "MED")
-            cat = _CAT_MAP.get(it.tipo, it.tipo or "consistencia")
-            try:
-                cid = checks_db.insert_check(
-                    conn,
-                    rule_id=it.prev_id or None,
-                    name=(it.dqc_id or "dqc").lower(),
-                    description=it.descripcion,
-                    severity=sev,
-                    category=cat,
-                    sql=it.regla_sql,
-                    visible=True,
-                    status="pending",
-                    variable=it.variable,
-                    tipo=it.tipo,
-                    condicion_error=it.condicion_error,
-                    campos_entrada=it.campos_entrada,
-                    referencia_regulatoria=it.referencia_regulatoria,
-                    umbral=it.umbral,
-                    periodicidad=it.periodicidad,
-                    justificacion=it.justificacion,
-                )
-                ids.append((it, cid))
-            except sqlite3.IntegrityError as exc:
-                logger.warning("DQC persist clash: %s", exc)
-    finally:
-        conn.close()
-    return ids
-
-
-# ── last-evaluation cases per check (feeds the sidebar detail panel) ─────────
-
-_EVAL_CASES_SCHEMA = """\
-CREATE TABLE IF NOT EXISTS check_eval_cases (
-    check_id     TEXT PRIMARY KEY,
-    payload      TEXT NOT NULL,
-    evaluated_at TEXT NOT NULL
-)"""
-
-_CASE_KEYS = ("n_casos", "columnas", "ejemplos", "precision", "recall",
-              "esperados", "trace")
-
-
-def _save_check_cases(entries: list[tuple[str, dict]]) -> None:
-    """Upsert the latest detected-cases payload for each check_id."""
-    if not entries:
-        return
-    from datetime import datetime, timezone
-
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    conn = _db()
-    try:
-        conn.execute(_EVAL_CASES_SCHEMA)
-        for check_id, data in entries:
-            payload = {k: data[k] for k in _CASE_KEYS if data.get(k) is not None}
-            conn.execute(
-                "INSERT OR REPLACE INTO check_eval_cases VALUES (?, ?, ?)",
-                (check_id, json.dumps(payload, ensure_ascii=False), now))
-        conn.commit()
-    except Exception as exc:  # noqa: BLE001 — cases cache is best-effort
-        logger.warning("saving eval cases failed: %s", exc)
-    finally:
-        conn.close()
-
-
-def _split_instructions(text: str) -> list[str]:
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if lines:
-        return lines
-    return [text.strip()] if text.strip() else []
 
 
 # ── Dictionary inspection (sheet + mapping proposal) ─────────────────────────
@@ -347,58 +174,6 @@ async def inspect_dictionary(
         question=ask,
         options=proposal.get("options", []),
     )
-
-
-def _require_xlsx(upload: UploadFile, what: str = "dictionary") -> None:
-    if not upload.filename or not upload.filename.lower().endswith((".xlsx", ".xls")):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400,
-                            detail=f"{what} must be an Excel file (.xlsx)")
-
-
-def _workbook_read_error(filename: str | None, exc: Exception) -> str:
-    """Verbose, user-facing detail for a workbook openpyxl could not load:
-    a symptom-specific hint plus the technical reason. The full error (with
-    traceback) is also logged server-side for `aws logs tail` / the console."""
-    name = filename or "sin nombre"
-    lower = name.lower()
-    cls = exc.__class__.__name__
-    msg = str(exc).strip() or "(sin mensaje)"
-    mlow = msg.lower()
-    logger.warning("workbook read failed for %r: %s: %s", name, cls, msg,
-                   exc_info=True)
-
-    if lower.endswith(".xls"):
-        hint = ("Es un .xls antiguo (formato no soportado). Ábrelo en Excel o "
-                "LibreOffice y usa «Guardar como → Libro de Excel (.xlsx)».")
-    elif cls == "BadZipFile" or "not a zip" in mlow or "file is not" in mlow:
-        hint = ("El fichero no es un .xlsx real por dentro (un .xlsx es un ZIP). "
-                "Suele pasar con un .csv, un .xls, o un export de Google Sheets / "
-                "Apple Numbers renombrado a .xlsx. Ábrelo y usa «Guardar como → "
-                "Libro de Excel (.xlsx)».")
-    elif any(k in mlow for k in ("password", "encrypt", "protected", "cifr")):
-        hint = ("Parece protegido con contraseña o cifrado. Quita la protección "
-                "(Archivo → Información → Quitar contraseña) y guárdalo de nuevo.")
-    elif "support" in mlow and ("xls" in mlow or "format" in mlow):
-        hint = ("Formato no soportado. Guárdalo como «Libro de Excel (.xlsx)» "
-                "(no .xls, .csv ni .ods).")
-    else:
-        hint = ("Comprueba que es un .xlsx válido, sin contraseña y no corrupto; "
-                "si dudas, vuelve a exportarlo desde el origen como .xlsx.")
-
-    return (f"No se pudo leer el Excel «{name}»: {hint} "
-            f"[detalle técnico → {cls}: {msg}]")
-
-
-def _parse_mapping_form(column_mapping: str | None) -> dict | None:
-    if not column_mapping:
-        return None
-    from fastapi import HTTPException
-    try:
-        parsed = json.loads(column_mapping)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="column_mapping must be JSON")
-    return parsed if isinstance(parsed, dict) else None
 
 
 def _resolve_dictionary_context(
@@ -943,23 +718,10 @@ async def generate_dqc_stream(
         # Persist failed/ambiguous items too, so they show (red) in the panel
         # with their reason + decision tree and can be retried from there.
         for fi in failed_items:
-            try:
-                conn = _db()
-                try:
-                    fcid = checks_db.insert_check(
-                        conn,
-                        rule_id=fi["prev_id"] or None,
-                        name=(fi["prev_id"] or f"regla_{fi['eid']}").lower(),
-                        description=fi["regla"],
-                        severity="informativo", category="consistencia",
-                        sql=None, status=fi["estado"], motivo=fi["motivo"],
-                        campos_entrada=fi["campos"] or None,
-                    )
-                finally:
-                    conn.close()
-                _save_check_cases([(fcid, {"trace": fi["trace"]})])
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("failed-item persist failed: %s", exc)
+            store.save_failed_item(
+                rule=fi["regla"], estado=fi["estado"], motivo=fi["motivo"],
+                prev_id=fi["prev_id"], eid=fi["eid"],
+                campos=fi["campos"], trace=fi["trace"])
 
         summary = (
             f"Se generaron {len(dqcs)} DQCs a partir de un plan de "
@@ -1082,18 +844,7 @@ async def evaluate_checks(
 def check_cases(check_id: str) -> dict:
     """Latest detected-cases payload for one stored check (from the last
     generation run or /evaluate). {"available": false} when never executed."""
-    conn = _db()
-    try:
-        conn.execute(_EVAL_CASES_SCHEMA)
-        row = conn.execute(
-            "SELECT payload, evaluated_at FROM check_eval_cases "
-            "WHERE check_id = ?", (check_id,)).fetchone()
-    finally:
-        conn.close()
-    if not row:
-        return {"available": False}
-    return {"available": True, "evaluated_at": row["evaluated_at"],
-            **json.loads(row["payload"])}
+    return store.load_check_cases(check_id)
 
 
 # ── Validation pipeline ───────────────────────────────────────────────────────
