@@ -1,0 +1,59 @@
+name: Deploy UI showcase to GitHub Pages
+
+# Publishes the Angular app as a static site with the in-browser demo
+# backend (canned data, no API) so the workflow can be shown to anyone.
+# Live at https://<owner>.github.io/<repo>/
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'DQC/app/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: DQC/app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: DQC/app/package-lock.json
+
+      - run: npm ci
+
+      # base-href must match the Pages sub-path (/<repo>/)
+      - run: npx ng build --base-href "/${GITHUB_REPOSITORY#*/}/"
+
+      # stop Jekyll from swallowing Angular's hashed asset files
+      - run: touch dist/dqc-app/browser/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: DQC/app/dist/dqc-app/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -79,6 +79,7 @@ export interface TraceStep {
   detalle?: string;
   intento?: number;
   estado?: string;
+  accion?: string;
   n_casos?: number | null;
 }
 
@@ -145,6 +146,8 @@ export interface CheckCasesResponse {
   precision?: number | null;
   recall?: number | null;
   esperados?: number | null;
+  /** persisted ReAct decision trace, shown before the SQL when editing */
+  trace?: TraceStep[];
 }
 
 export interface EvaluateResponse {

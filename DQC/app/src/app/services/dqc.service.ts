@@ -6,13 +6,18 @@ import {
   DashboardResponse, EvaluateResponse, InspectResponse, StreamEvent,
 } from '../models/dqc.model';
 
+import { DEMO_MODE, DemoBackend } from '../demo/demo-backend';
+
 @Injectable({ providedIn: 'root' })
 export class DqcService {
   private apiUrl = '/api/dqc';
+  /** static-showcase backend: canned data, no network (see demo-backend.ts) */
+  private demo: DemoBackend | null = DEMO_MODE ? new DemoBackend() : null;
 
   constructor(private http: HttpClient) {}
 
   inspect(dictionary: File): Observable<InspectResponse> {
+    if (this.demo) return this.demo.inspect();
     const form = new FormData();
     form.append('dictionary', dictionary);
     return this.http.post<InspectResponse>(`${this.apiUrl}/inspect_dictionary`, form);
@@ -33,6 +38,7 @@ export class DqcService {
     dataFile?: File,
     opts?: { valueGrounding?: boolean; semanticJudge?: boolean },
   ): Observable<StreamEvent> {
+    if (this.demo) return this.demo.generateStream();
     const form = new FormData();
     form.append('dictionary', dictionary);
     form.append('instructions', instructions);
@@ -105,6 +111,7 @@ export class DqcService {
   /** Run the stored DQC queries against an extracted-cases Excel (no LLM). */
   evaluate(dataFile: File, tableName = 'mylib.ciclos_recuperacion',
            status?: 'pending' | 'validated' | 'rejected'): Observable<EvaluateResponse> {
+    if (this.demo) return this.demo.evaluate();
     const form = new FormData();
     form.append('data_file', dataFile);
     form.append('table_name', tableName);
@@ -113,20 +120,24 @@ export class DqcService {
   }
 
   counts(): Observable<CountsResponse> {
+    if (this.demo) return this.demo.counts();
     return this.http.get<CountsResponse>(`${this.apiUrl}/checks/counts`);
   }
 
   list(status?: 'pending' | 'validated' | 'rejected'): Observable<CheckRecord[]> {
+    if (this.demo) return this.demo.list(status);
     const q = status ? `?status=${status}` : '';
     return this.http.get<CheckRecord[]>(`${this.apiUrl}/checks${q}`);
   }
 
   /** Last detected cases for one stored check (sidebar detail panel). */
   checkCases(checkId: string): Observable<CheckCasesResponse> {
+    if (this.demo) return this.demo.checkCases(checkId);
     return this.http.get<CheckCasesResponse>(`${this.apiUrl}/checks/${checkId}/cases`);
   }
 
   setStatus(checkId: string, status: 'validated' | 'rejected'): Observable<CheckRecord> {
+    if (this.demo) return this.demo.setStatus(checkId, status);
     return this.http.post<CheckRecord>(
       `${this.apiUrl}/checks/${checkId}/status`,
       { status },
@@ -134,10 +145,12 @@ export class DqcService {
   }
 
   delete(checkId: string): Observable<unknown> {
+    if (this.demo) return this.demo.delete(checkId);
     return this.http.delete(`${this.apiUrl}/checks/${checkId}`);
   }
 
   dashboard(): Observable<DashboardResponse> {
+    if (this.demo) return this.demo.dashboard();
     return this.http.get<DashboardResponse>(`${this.apiUrl}/dashboard`);
   }
 }
