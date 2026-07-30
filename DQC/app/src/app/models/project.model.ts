@@ -13,4 +13,4 @@ export interface Project {
   description: string;
 }
 
-export type ProjectLayer = 'generar' | 'editar';
+export type ProjectLayer = 'resumen' | 'generar' | 'editar';

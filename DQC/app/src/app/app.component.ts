@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ChatComponent } from './chat/chat.component';
 import { EditorComponent } from './editor/editor.component';
 import { ProjectsComponent } from './projects/projects.component';
+import { SummaryComponent } from './summary/summary.component';
 import { DqcService } from './services/dqc.service';
 import { CountsResponse } from './models/dqc.model';
 import { Project, ProjectLayer } from './models/project.model';
@@ -16,7 +17,8 @@ import { DEMO_MODE } from './demo/demo-backend';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, ChatComponent, EditorComponent, ProjectsComponent],
+  imports: [CommonModule, ChatComponent, EditorComponent, ProjectsComponent,
+            SummaryComponent],
   template: `
     <div class="shell">
       @if (demo) {
@@ -36,6 +38,9 @@ import { DEMO_MODE } from './demo/demo-backend';
             <span class="table">{{ project.tableName }}</span>
           </div>
           <nav class="layers">
+            <button [class.active]="layer === 'resumen'" (click)="layer = 'resumen'">
+              Resumen
+            </button>
             <button [class.active]="layer === 'generar'" (click)="layer = 'generar'">
               Generar DQCs
             </button>
@@ -54,7 +59,9 @@ import { DEMO_MODE } from './demo/demo-backend';
         </header>
 
         <main class="layer-body">
-          @if (layer === 'generar') {
+          @if (layer === 'resumen') {
+            <app-summary [project]="project" [counts]="counts" (go)="layer = $event" />
+          } @else if (layer === 'generar') {
             <app-chat [projectId]="project.id" (dqcGenerated)="onGenerated()" />
           } @else {
             <app-editor [projectId]="project.id" (checksChanged)="loadCounts()" />
@@ -95,13 +102,13 @@ import { DEMO_MODE } from './demo/demo-backend';
     .cnt-validated { background: #2e7d32; color: #fff; }
     .cnt-rejected { background: #c62828; color: #fff; }
     .layer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-    app-projects, app-chat, app-editor { flex: 1; min-height: 0; }
+    app-projects, app-chat, app-editor, app-summary { flex: 1; min-height: 0; }
   `],
 })
 export class AppComponent implements OnInit, OnDestroy {
   readonly demo = DEMO_MODE;
   project: Project | null = null;
-  layer: ProjectLayer = 'generar';
+  layer: ProjectLayer = 'resumen';
   counts: CountsResponse | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -123,7 +130,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   openProject(p: Project): void {
     this.project = p;
-    this.layer = 'generar';
+    this.layer = 'resumen';
     this.loadCounts();
   }
 
