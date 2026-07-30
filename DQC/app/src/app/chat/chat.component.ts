@@ -14,6 +14,7 @@ import { ChatMessage, InspectResponse, PlanItem, StreamEvent, TreeNode } from '.
 export class ChatComponent implements OnInit, OnChanges {
   @Output() dqcGenerated = new EventEmitter<void>();
   @Input() retryInstructions = '';
+  @Input() projectId = '';
 
   messages: ChatMessage[] = [];
   instructions = '';
@@ -214,7 +215,8 @@ export class ChatComponent implements OnInit, OnChanges {
       .generateStream(this.dictionaryFile, text, this.tableName,
                       this.selectedSheet ?? undefined, this.columnMapping ?? undefined,
                       this.testsFile ?? undefined, this.dataFile ?? undefined,
-                      { valueGrounding: this.useGrounding, semanticJudge: this.useJudge })
+                      { valueGrounding: this.useGrounding, semanticJudge: this.useJudge,
+                        projectId: this.projectId || undefined })
       // fetch() resolves outside Angular's zone — re-enter it so the
       // checklist repaints on every event
       .subscribe({
@@ -247,7 +249,8 @@ export class ChatComponent implements OnInit, OnChanges {
     this.messages.push({ role: 'user', content: `Evaluar Excel de datos: ${this.dataFileName}` });
     this.isLoading = true;
 
-    this.dqcService.evaluate(this.dataFile, this.tableName).subscribe({
+    this.dqcService.evaluate(this.dataFile, this.tableName, undefined,
+                             this.projectId || undefined).subscribe({
       next: (res) => {
         let summary = `Evaluación sobre ${res.casos} casos: ` +
           `${res.evaluados} DQC${res.evaluados !== 1 ? 's' : ''} ejecutado${res.evaluados !== 1 ? 's' : ''}` +

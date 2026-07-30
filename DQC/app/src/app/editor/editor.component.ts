@@ -255,7 +255,7 @@ import { CheckCasesResponse, CheckRecord, TraceStep } from '../models/dqc.model'
   `],
 })
 export class EditorComponent implements OnInit, OnDestroy {
-  @Input() refreshToken = 0;
+  @Input() projectId = '';
   @Output() checksChanged = new EventEmitter<void>();
 
   readonly filters = [
@@ -362,6 +362,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   }
 
   load(): void {
-    this.dqc.list().subscribe({ next: (cs) => { this.checks = cs; } });
+    this.dqc.list(undefined, this.projectId || undefined)
+      .subscribe({ next: (cs) => { this.checks = cs; } });
   }
 }

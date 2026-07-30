@@ -227,7 +227,8 @@ def _parse_dqc_items(result: Any) -> list[DQCItem]:
     return items
 
 
-def _persist_dqc_items(items: list[DQCItem]) -> list[tuple[DQCItem, str]]:
+def _persist_dqc_items(items: list[DQCItem],
+                       project_id: str | None = None) -> list[tuple[DQCItem, str]]:
     """Insert items; returns (item, check_id) pairs for the ones stored."""
     ids: list[tuple[DQCItem, str]] = []
     conn = _db()
@@ -239,6 +240,7 @@ def _persist_dqc_items(items: list[DQCItem]) -> list[tuple[DQCItem, str]]:
                 cid = checks_db.insert_check(
                     conn,
                     rule_id=it.prev_id or None,
+                    project_id=project_id,
                     name=(it.dqc_id or "dqc").lower(),
                     description=it.descripcion,
                     severity=sev,
@@ -648,6 +650,8 @@ async def generate_dqc_stream(
     semantic_judge: bool = Form(
         False, description="Experimental: LLM-as-judge semantic review of "
                            "each accepted query"),
+    project_id: str | None = Form(
+        None, description="Data-quality project the generated DQCs belong to"),
 ):
     """Plan-mode ReAct generation, streamed over Server-Sent Events.
 
@@ -893,7 +897,7 @@ async def generate_dqc_stream(
 
         _dedupe_ids(dqcs)
         try:
-            saved = _persist_dqc_items(dqcs)
+            saved = _persist_dqc_items(dqcs, project_id)
             logger.info("persisted %d/%d DQCs", len(saved), len(dqcs))
             _save_check_cases([
                 (cid, {**validaciones.get(id(it), {}),
@@ -951,6 +955,7 @@ async def evaluate_checks(
     data_file: UploadFile = File(..., description="Extracted cases Excel"),
     table_name: str = Form("mylib.ciclos_recuperacion"),
     status: str | None = Form(None, description="pending|validated|rejected; all visible if empty"),
+    project_id: str | None = Form(None, description="restrict to one project's checks"),
 ) -> EvaluateResponse:
     """Execute the stored DQC queries against an extracted-cases Excel.
 
@@ -971,7 +976,8 @@ async def evaluate_checks(
 
     conn = _db()
     try:
-        checks = checks_db.list_checks(conn, status=status or None, visible=True)
+        checks = checks_db.list_checks(conn, status=status or None, visible=True,
+                                       project_id=project_id)
         checks = [check for check in checks if check["status"] != "rejected"]
     finally:
         conn.close()
@@ -1044,10 +1050,12 @@ def check_cases(check_id: str) -> dict:
 def list_checks(
     status: str | None = None,
     visible: bool | None = True,
+    project_id: str | None = None,
 ) -> list[CheckRecord]:
     conn = _db()
     try:
-        rows = checks_db.list_checks(conn, status=status, visible=visible)
+        rows = checks_db.list_checks(conn, status=status, visible=visible,
+                                     project_id=project_id)
         return [CheckRecord(**r) for r in rows]
     finally:
         conn.close()

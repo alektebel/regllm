@@ -57,11 +57,25 @@ CREATE TABLE IF NOT EXISTS checks (
     periodicidad          TEXT,
     justificacion         TEXT,
     created_at            TEXT NOT NULL,
-    validated_at          TEXT
+    validated_at          TEXT,
+    -- data-quality project this check belongs to (NULL = unscoped/legacy)
+    project_id            TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_checks_status  ON checks(status);
 CREATE INDEX IF NOT EXISTS idx_checks_visible ON checks(visible);
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after a DB was first created (CREATE TABLE
+    IF NOT EXISTS won't alter an existing table)."""
+    have = {r[1] for r in conn.execute("PRAGMA table_info(checks)")}
+    if "project_id" not in have:
+        conn.execute("ALTER TABLE checks ADD COLUMN project_id TEXT")
+    # index lives here (not in _SCHEMA) so it is only created once the
+    # column is guaranteed to exist, on fresh and migrated DBs alike
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_checks_project ON checks(project_id)")
+    conn.commit()
 
 
 def _now() -> str:
@@ -73,6 +87,7 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     return conn
 
 
@@ -115,6 +130,7 @@ def insert_check(
     umbral: str | None = None,
     periodicidad: str | None = None,
     justificacion: str | None = None,
+    project_id: str | None = None,
 ) -> str:
     """Insert one check; returns its id. Idempotent on (rule_id, sql)
     when ``rule_id`` is set — re-inserting the same trained-check row is
@@ -133,12 +149,12 @@ def insert_check(
            (check_id, rule_id, name, description, severity, category, sql,
             visible, status, reward, variable, tipo, condicion_error,
             campos_entrada, referencia_regulatoria, umbral, periodicidad,
-            justificacion, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            justificacion, created_at, project_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (cid, rule_id, name, description, severity, category, sql,
          int(visible), status, reward, variable, tipo, condicion_error,
          campos_json, referencia_regulatoria, umbral, periodicidad,
-         justificacion, _now()),
+         justificacion, _now(), project_id),
     )
     conn.commit()
     return cid
@@ -167,6 +183,7 @@ def list_checks(
     *,
     status: str | None = None,
     visible: bool | None = None,
+    project_id: str | None = None,
 ) -> list[dict]:
     q = "SELECT * FROM checks WHERE 1=1"
     params: list[Any] = []
@@ -174,6 +191,8 @@ def list_checks(
         q += " AND status=?"; params.append(status)
     if visible is not None:
         q += " AND visible=?"; params.append(int(visible))
+    if project_id is not None:
+        q += " AND project_id=?"; params.append(project_id)
     q += " ORDER BY severity DESC, created_at DESC"
     return [_row_to_dict(r) for r in conn.execute(q, params).fetchall()]
 

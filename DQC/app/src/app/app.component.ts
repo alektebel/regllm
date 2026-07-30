@@ -55,9 +55,9 @@ import { DEMO_MODE } from './demo/demo-backend';
 
         <main class="layer-body">
           @if (layer === 'generar') {
-            <app-chat (dqcGenerated)="onGenerated()" />
+            <app-chat [projectId]="project.id" (dqcGenerated)="onGenerated()" />
           } @else {
-            <app-editor (checksChanged)="loadCounts()" />
+            <app-editor [projectId]="project.id" (checksChanged)="loadCounts()" />
           }
         </main>
       }
@@ -136,6 +136,6 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   loadCounts(): void {
-    this.dqc.counts().subscribe({ next: (c) => { this.counts = c; } });
+    this.dqc.counts(this.project?.id).subscribe({ next: (c) => { this.counts = c; } });
   }
 }

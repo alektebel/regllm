@@ -122,8 +122,15 @@ const CASES: Record<string, CheckCasesResponse> = {
              columnas: COLS, ejemplos: ROWS['lgd'], trace: TRACE_OK as any },
 };
 
-/** Mutable copy so validar/rechazar work during the demo. */
-let store: CheckRecord[] = SEED.map((c) => ({ ...c }));
+/** Mutable copy so validar/rechazar work during the demo. Each check is
+ * tagged with the project it was generated in, so switching projects
+ * shows a genuinely separate set (empty until you generate there). */
+type DemoCheck = CheckRecord & { project_id?: string };
+let store: DemoCheck[] = SEED.map((c) => ({ ...c }));
+
+function scoped(projectId?: string): DemoCheck[] {
+  return projectId ? store.filter((c) => c.project_id === projectId) : store;
+}
 
 export class DemoBackend {
   inspect(): Observable<InspectResponse> {
@@ -142,7 +149,9 @@ export class DemoBackend {
   }
 
   /** Replays a full plan-mode run: plan → per-item phases → done. */
-  generateStream(): Observable<StreamEvent> {
+  generateStream(projectId?: string): Observable<StreamEvent> {
+    // the run "produces" the seeded checks for this project
+    if (projectId) store.forEach((c) => { if (!c.project_id) c.project_id = projectId; });
     const plan = [
       { id: 1, regla: 'La PD estimada debe estar entre 0 y 1', prev_id: 'DQC_PD_001',
         accion: 'Check de rango sobre PD_ESTIMADA (0 ≤ PD ≤ 1)' },
@@ -214,18 +223,20 @@ export class DemoBackend {
     });
   }
 
-  list(status?: string): Observable<CheckRecord[]> {
-    const rows = status ? store.filter((c) => c.status === status) : store;
+  list(status?: string, projectId?: string): Observable<CheckRecord[]> {
+    const base = scoped(projectId);
+    const rows = status ? base.filter((c) => c.status === status) : base;
     return of(rows.map((c) => ({ ...c }))).pipe(delay(120));
   }
 
-  counts(): Observable<CountsResponse> {
+  counts(projectId?: string): Observable<CountsResponse> {
+    const rows = scoped(projectId);
     return of({
-      pending_visible: store.filter((c) => c.status === 'pending').length,
-      validated: store.filter((c) => c.status === 'validated').length,
-      rejected: store.filter((c) => c.status === 'rejected').length,
+      pending_visible: rows.filter((c) => c.status === 'pending').length,
+      validated: rows.filter((c) => c.status === 'validated').length,
+      rejected: rows.filter((c) => c.status === 'rejected').length,
       oculto: 0,
-      dashboard_ready: store.some((c) => c.status === 'validated'),
+      dashboard_ready: rows.some((c) => c.status === 'validated'),
     }).pipe(delay(80));
   }
 
@@ -247,8 +258,8 @@ export class DemoBackend {
     return of(CASES[checkId] ?? { available: false }).pipe(delay(200));
   }
 
-  evaluate(): Observable<EvaluateResponse> {
-    const resultados = store
+  evaluate(projectId?: string): Observable<EvaluateResponse> {
+    const resultados = scoped(projectId)
       .filter((c) => CASES[c.check_id]?.available)
       .map((c) => {
         const k = CASES[c.check_id];

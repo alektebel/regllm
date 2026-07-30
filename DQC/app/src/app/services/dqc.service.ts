@@ -36,9 +36,9 @@ export class DqcService {
     columnMapping?: Record<string, string | null>,
     instructionsFile?: File,
     dataFile?: File,
-    opts?: { valueGrounding?: boolean; semanticJudge?: boolean },
+    opts?: { valueGrounding?: boolean; semanticJudge?: boolean; projectId?: string },
   ): Observable<StreamEvent> {
-    if (this.demo) return this.demo.generateStream();
+    if (this.demo) return this.demo.generateStream(opts?.projectId);
     const form = new FormData();
     form.append('dictionary', dictionary);
     form.append('instructions', instructions);
@@ -49,6 +49,7 @@ export class DqcService {
     if (dataFile) form.append('data_file', dataFile);
     if (opts?.valueGrounding) form.append('value_grounding', 'true');
     if (opts?.semanticJudge) form.append('semantic_judge', 'true');
+    if (opts?.projectId) form.append('project_id', opts.projectId);
 
     return new Observable<StreamEvent>((observer) => {
       const controller = new AbortController();
@@ -110,23 +111,29 @@ export class DqcService {
 
   /** Run the stored DQC queries against an extracted-cases Excel (no LLM). */
   evaluate(dataFile: File, tableName = 'mylib.ciclos_recuperacion',
-           status?: 'pending' | 'validated' | 'rejected'): Observable<EvaluateResponse> {
-    if (this.demo) return this.demo.evaluate();
+           status?: 'pending' | 'validated' | 'rejected',
+           projectId?: string): Observable<EvaluateResponse> {
+    if (this.demo) return this.demo.evaluate(projectId);
     const form = new FormData();
     form.append('data_file', dataFile);
     form.append('table_name', tableName);
     if (status) form.append('status', status);
+    if (projectId) form.append('project_id', projectId);
     return this.http.post<EvaluateResponse>(`${this.apiUrl}/evaluate`, form);
   }
 
-  counts(): Observable<CountsResponse> {
-    if (this.demo) return this.demo.counts();
+  counts(projectId?: string): Observable<CountsResponse> {
+    if (this.demo) return this.demo.counts(projectId);
     return this.http.get<CountsResponse>(`${this.apiUrl}/checks/counts`);
   }
 
-  list(status?: 'pending' | 'validated' | 'rejected'): Observable<CheckRecord[]> {
-    if (this.demo) return this.demo.list(status);
-    const q = status ? `?status=${status}` : '';
+  list(status?: 'pending' | 'validated' | 'rejected',
+       projectId?: string): Observable<CheckRecord[]> {
+    if (this.demo) return this.demo.list(status, projectId);
+    const qs = new URLSearchParams();
+    if (status) qs.set('status', status);
+    if (projectId) qs.set('project_id', projectId);
+    const q = qs.toString() ? `?${qs}` : '';
     return this.http.get<CheckRecord[]>(`${this.apiUrl}/checks${q}`);
   }
 
