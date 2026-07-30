@@ -30,6 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # turns Pages on for the repo if it isn't already (needs pages: write),
+      # so no manual Settings → Pages step is required
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
